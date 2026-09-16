@@ -26,11 +26,13 @@ module RelatedIssues # :nodoc:
     issues = github('graphql', query: query, variables: { owner: owner, name: name })
              .fetch('data').fetch('repository').fetch('issues').fetch('nodes')
     @related_issues = {}
-    issues.each do |issue|
+    query_text = @report_item ? evidence_query(@report_item) : ''
+    issues = issues.sort_by { |issue| [-relevance(issue.fetch('title'), query_text), issue.fetch('number')] }
+    issues.first(8).each do |issue|
       next if @kind == 'issue' && issue.fetch('number') == @number
 
       candidate = @related_issues.merge(issue.fetch('number') => issue.fetch('title')[0, 160])
-      break if JSON.generate(candidate).bytesize > 8000
+      break if JSON.generate(candidate).bytesize > 2000
 
       @related_issues = candidate
     end
@@ -109,6 +111,7 @@ module RelatedIssues # :nodoc:
     return false unless duplicate_mode == 'close'
     return false if @kind == 'issue' && number >= @number
     return false if item['stateReason'] == 'REOPENED' || maintainer?(item['authorAssociation'])
+    return false if @state&.data&.fetch('maintainer_replied', false)
 
     item.fetch('comments').fetch('nodes').none? do |comment|
       maintainer?(comment['authorAssociation']) ||

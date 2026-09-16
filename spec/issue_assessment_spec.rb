@@ -179,7 +179,7 @@ RSpec.describe IssueAssessment, type: :task do
     allow(assessment).to receive(:ask_copilot).and_return(nil)
 
     assessment.run
-    expect(assessment).to have_received(:puts).with(/Copilot unavailable/)
+    expect(assessment).to have_received(:puts).with(/^Skipped: Copilot unavailable/)
     expect(assessment).not_to have_received(:mutate)
   end
 
@@ -276,6 +276,23 @@ RSpec.describe IssueAssessment, type: :task do
 
       expect(assessment).not_to have_received(:mutate).with('addComment', anything)
       expect(assessment).to have_received(:mutate).with('addReaction', anything)
+    end
+
+    [
+      'The report requests filtering chats; see [[docs/tools.md]].',
+      'A useful next check is whether filtering exists; see [[docs/tools.md]].'
+    ].each do |comment|
+      it "suppresses a source-based recap even with a valid citation: #{comment}" do
+        answer = JSON.generate(comment: comment, sources: ['docs/tools.md'])
+        selection = JSON.generate(labels: ['bug'], reply: nil, files: ['docs/tools.md'])
+        allow(assessment).to receive(:ask_copilot).and_return(selection, answer)
+
+        assessment.run
+
+        expect(assessment).not_to have_received(:mutate).with('addComment', anything)
+        expect(assessment).to have_received(:mutate).with('addLabelsToLabelable', anything)
+        expect(assessment).to have_received(:mutate).with('addReaction', anything)
+      end
     end
 
     [

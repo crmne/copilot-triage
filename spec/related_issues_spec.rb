@@ -273,7 +273,7 @@ RSpec.describe 'Related issue assessment' do
     end
     assessment.run
     expect(mutations).to be_empty
-    expect(assessment).to have_received(:puts).with(include('related issue changed'))
+    expect(assessment).to have_received(:puts).with(start_with('Skipped: related issue changed'))
   end
 
   it 'rechecks the current report after inference and skips if it changed' do
@@ -284,7 +284,7 @@ RSpec.describe 'Related issue assessment' do
     end
     assessment.run
     expect(mutations).to be_empty
-    expect(assessment).to have_received(:puts).with(include('report changed'))
+    expect(assessment).to have_received(:puts).with(start_with('Skipped: the report changed'))
   end
 
   it 'applies a cached preview with no new model calls while still rechecking both reports' do

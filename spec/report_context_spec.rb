@@ -69,8 +69,8 @@ RSpec.describe 'Report context' do
     expect(assessment).to have_received(:ask_copilot).with(include('[6000 repeated NUL bytes]')).twice
   end
 
-  it 'posts a report-based initial assessment with a single model call' do
-    comment = 'The report describes a theme change that does not reach Spotifast. Does restarting the app pick it up?'
+  it 'posts a necessary clarification without a recap with a single model call' do
+    comment = 'Does restarting the app pick up the system theme?'
     allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: nil, files: [],
                                                                         comment: comment))
 
@@ -79,6 +79,99 @@ RSpec.describe 'Report context' do
     expect(assessment).to have_received(:ask_copilot).once
     expect(assessment).to have_received(:mutate).with('addComment', subjectId: 'report-id',
                                                                     body: start_with("#{comment}\n\n"))
+  end
+
+  it 'allows one useful recap on a newly opened issue' do
+    environment.merge!('GITHUB_EVENT_NAME' => 'issues', 'GITHUB_EVENT_PATH' => 'event.json')
+    File.write('event.json', JSON.generate(action: 'opened'))
+    comment = 'On Arch Linux, connected sessions use 90% CPU while idle; a patched build uses 0-5% on the same profile.'
+    allow(assessment).to receive(:ask_copilot).and_return(
+      JSON.generate(labels: [], reply: nil, files: [], comment: comment)
+    )
+
+    assessment.run
+
+    expect(assessment).to have_received(:mutate).with('addComment', subjectId: 'report-id',
+                                                                    body: start_with(comment))
+  end
+
+  it 'does not treat reopening an issue as permission for another recap' do
+    environment.merge!('GITHUB_EVENT_NAME' => 'issues', 'GITHUB_EVENT_PATH' => 'event.json')
+    File.write('event.json', JSON.generate(action: 'reopened'))
+    allow(assessment).to receive(:ask_copilot).and_return(
+      JSON.generate(labels: [], reply: nil, files: [], comment: 'The report describes high idle CPU usage.')
+    )
+
+    assessment.run
+
+    expect(assessment).not_to have_received(:mutate).with('addComment', anything)
+  end
+
+  it 'remembers that the initial issue assessment has already happened' do
+    environment.merge!('GITHUB_EVENT_NAME' => 'issues', 'GITHUB_EVENT_PATH' => 'event.json',
+                       'TRIAGE_STATE_DIR' => 'state')
+    File.write('event.json', JSON.generate(action: 'opened'))
+    comment = 'On Arch Linux, connected sessions use 90% CPU while idle.'
+    allow(assessment).to receive(:ask_copilot).and_return(
+      JSON.generate(labels: [], reply: nil, files: [], comment: comment)
+    )
+
+    assessment.run
+    assessment.run
+
+    expect(assessment).to have_received(:ask_copilot).once
+    expect(assessment).to have_received(:mutate).with('addComment', anything).once
+    expect(JSON.parse(File.read(Dir['state/*.json'].first))['initial_assessed']).to be(true)
+  end
+
+  it 'does not turn a silent initial assessment into a later recap' do
+    environment.merge!('GITHUB_EVENT_NAME' => 'issues', 'GITHUB_EVENT_PATH' => 'event.json',
+                       'TRIAGE_STATE_DIR' => 'state')
+    File.write('event.json', JSON.generate(action: 'opened'))
+    assessment.run
+    item['body'] = 'An edited report changes the event fingerprint.'
+    allow(assessment).to receive(:ask_copilot).and_return(
+      JSON.generate(labels: [], reply: nil, files: [], comment: 'The report describes high CPU usage.')
+    )
+
+    assessment.run
+
+    expect(assessment).to have_received(:ask_copilot).twice
+    expect(assessment).not_to have_received(:mutate).with('addComment', anything)
+  end
+
+  it 'rejects a forced generic next check even on an initial issue assessment' do
+    environment.merge!('GITHUB_EVENT_NAME' => 'issues', 'GITHUB_EVENT_PATH' => 'event.json')
+    File.write('event.json', JSON.generate(action: 'opened'))
+    allow(assessment).to receive(:ask_copilot).and_return(
+      JSON.generate(labels: [], reply: nil, files: [],
+                    comment: 'CPU is high while idle. A useful next check is to inspect the redraw loop.')
+    )
+
+    assessment.run
+
+    expect(assessment).not_to have_received(:mutate).with('addComment', anything)
+  end
+
+  [
+    'The report describes a theme change that does not reach the app. Does restarting the app pick it up?',
+    'The report establishes high CPU usage. A useful next check is whether restarting helps.',
+    'The request is to package the app for NixOS.',
+    'This was fixed in version 0.14.0.'
+  ].each do |comment|
+    it "suppresses a report-only statement while still applying labels: #{comment}" do
+      allow(assessment).to receive(:read_report).and_return([item, [{ 'name' => 'bug', 'id' => 'bug-id' }]])
+      allow(assessment).to receive(:ask_copilot).and_return(
+        JSON.generate(labels: ['bug'], reply: nil, files: [], comment: comment)
+      )
+
+      assessment.run
+
+      expect(assessment).not_to have_received(:mutate).with('addComment', anything)
+      expect(assessment).to have_received(:mutate).with('addLabelsToLabelable', labelableId: 'report-id',
+                                                                                labelIds: ['bug-id'])
+      expect(assessment).to have_received(:mutate).with('addReaction', anything)
+    end
   end
 
   it 'previews an initial assessment without publishing it' do

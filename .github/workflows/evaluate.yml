@@ -1,0 +1,44 @@
+name: Evaluate replies
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Copilot model to evaluate (consumes credits)
+        default: gpt-5.6-luna
+        required: true
+      case:
+        description: Optional fixture ID; leave empty to evaluate all cases
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reply-evaluation
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+      - run: npm install --global --no-audit --no-fund @github/copilot@1.0.83
+      - name: Evaluate fixture replies without publishing
+        shell: bash
+        run: |
+          args=(--live --model "$TRIAGE_EVAL_MODEL")
+          if [[ -n "$TRIAGE_EVAL_CASE" ]]; then
+            args+=(--case "$TRIAGE_EVAL_CASE")
+          fi
+          ruby eval/run.rb "${args[@]}"
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          TRIAGE_EVAL_MODEL: ${{ inputs.model }}
+          TRIAGE_EVAL_CASE: ${{ inputs.case }}

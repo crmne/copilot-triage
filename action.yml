@@ -27,26 +27,74 @@ inputs:
   dry-run:
     description: Preview the decision without publishing. Uncached prompts still consume credits.
     default: 'false'
+  debounce-seconds:
+    description: Wait for nearby follow-up comments before assessment (0 to 60 seconds).
+    default: '10'
 
 runs:
   using: composite
   steps:
+    - name: Check event eligibility
+      id: event
+      shell: bash
+      run: ruby "$TRIAGE_ACTION_PATH/lib/triage_event.rb"
+      env:
+        TRIAGE_ACTION_PATH: ${{ github.action_path }}
     - uses: actions/checkout@v7
+      if: steps.event.outputs.eligible == 'true'
       with:
         ref: ${{ github.event.repository.default_branch }}
         persist-credentials: false
         token: ${{ inputs.github-token }}
     - uses: actions/cache@v6
+      if: steps.event.outputs.eligible == 'true'
       with:
-        path: ${{ runner.temp }}/copilot-triage-cache
-        key: triage-${{ inputs.kind }}-${{ inputs.number }}-${{ github.run_id }}-${{ github.run_attempt }}
-        restore-keys: triage-${{ inputs.kind }}-${{ inputs.number }}-
-    - name: Install Copilot
-      shell: bash
-      run: npm install --global @github/copilot@1.0.83
-    - name: Assess the report
+        path: |
+          ${{ runner.temp }}/copilot-triage-cache
+          ${{ runner.temp }}/copilot-triage-state
+        key: triage-v2-${{ inputs.kind }}-${{ inputs.number }}-${{ steps.event.outputs.thread }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: triage-v2-${{ inputs.kind }}-${{ inputs.number }}-${{ steps.event.outputs.thread }}-
+    - name: Prepare an eligible report
+      id: report
+      if: steps.event.outputs.eligible == 'true'
       shell: bash
       run: ruby "$TRIAGE_ACTION_PATH/lib/assessment.rb"
+      env:
+        TRIAGE_ACTION_PATH: ${{ github.action_path }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        TRIAGE_CONFIG: ${{ inputs.config }}
+        TRIAGE_KIND: ${{ inputs.kind }}
+        TRIAGE_NUMBER: ${{ inputs.number }}
+        TRIAGE_DRY_RUN: ${{ inputs.dry-run }}
+        TRIAGE_STATE_DIR: ${{ runner.temp }}/copilot-triage-state
+        TRIAGE_PREPARE_ONLY: 'true'
+        TRIAGE_PREPARED_PATH: ${{ runner.temp }}/copilot-triage-prepared.json
+        TRIAGE_DEBOUNCE_SECONDS: ${{ inputs.debounce-seconds }}
+        TRIAGE_METRICS_PATH: ${{ runner.temp }}/copilot-triage-metrics.json
+    - name: Restore Copilot CLI
+      id: cli
+      if: steps.report.outputs.eligible == 'true'
+      uses: actions/cache@v6
+      with:
+        path: ${{ runner.temp }}/copilot-triage-cli
+        key: copilot-cli-${{ runner.os }}-${{ runner.arch }}-1.0.83
+    - name: Restore reusable evidence
+      if: steps.report.outputs.eligible == 'true'
+      uses: actions/cache@v6
+      with:
+        path: ${{ runner.temp }}/copilot-triage-evidence
+        key: triage-evidence-v1-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: triage-evidence-v1-
+    - name: Install Copilot
+      if: steps.report.outputs.eligible == 'true' && steps.cli.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm install --prefix "$RUNNER_TEMP/copilot-triage-cli" --no-audit --no-fund @github/copilot@1.0.83
+    - name: Assess the report
+      if: steps.report.outputs.eligible == 'true'
+      shell: bash
+      run: |
+        export PATH="$RUNNER_TEMP/copilot-triage-cli/node_modules/.bin:$PATH"
+        ruby "$TRIAGE_ACTION_PATH/lib/assessment.rb"
       env:
         TRIAGE_ACTION_PATH: ${{ github.action_path }}
         GH_TOKEN: ${{ inputs.github-token }}
@@ -57,3 +105,7 @@ runs:
         TRIAGE_MODEL: ${{ inputs.model }}
         TRIAGE_DRY_RUN: ${{ inputs.dry-run }}
         TRIAGE_CACHE_DIR: ${{ runner.temp }}/copilot-triage-cache
+        TRIAGE_STATE_DIR: ${{ runner.temp }}/copilot-triage-state
+        TRIAGE_PREPARED_PATH: ${{ runner.temp }}/copilot-triage-prepared.json
+        TRIAGE_METRICS_PATH: ${{ runner.temp }}/copilot-triage-metrics.json
+        TRIAGE_EVIDENCE_DIR: ${{ runner.temp }}/copilot-triage-evidence

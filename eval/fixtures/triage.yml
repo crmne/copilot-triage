@@ -1,0 +1,19 @@
+duplicates: close
+followups: selective
+labels:
+  bug: A reported defect.
+  enhancement: A feature request.
+  question: A usage question or essential missing information.
+sources:
+  - docs/*.md
+replies:
+  version: Which version are you using?
+  error: What is the exact error message? Please remove credentials and personal data.
+instructions: |
+  Help the reporter when you have a useful answer, documented policy, verified
+  released fix, duplicate, or necessary question. On a newly opened issue,
+  one concise recap of a long report is useful. Short clear requests can be
+  labeled silently. Never recap follow-up comments or suggest generic next checks.
+  Never re-request supplied facts or repeat previous questions. Use evidence for factual
+  answers; a closed issue does not prove a release. Ask for text when an essential
+  error is only in an unreadable image. Leave product decisions to maintainers.

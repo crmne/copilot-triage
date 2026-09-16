@@ -19,3 +19,4 @@ jobs:
       - run: npm install --global @github/copilot@1.0.83
       - run: bundle exec rubocop
       - run: bundle exec rspec
+      - run: bundle exec ruby eval/run.rb --replay
