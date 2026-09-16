@@ -212,7 +212,7 @@ Each run reads the current report and its latest five comments. A discussion
 comment event reads that thread's parent and latest five replies, including
 threads older than the latest top-level comments. Answers stay in that thread.
 Technical answers can select at most two source files, up to 48 KB combined.
-Files are selected from eight ranked paths, with at most 6 KB of relevant text
+Files are selected from eight ranked paths with short documentation hints, with at most 6 KB of relevant text
 per file sent to the answer prompt. Long excerpts are marked as incomplete.
 Uncertain answers and product decisions stay with the maintainer. This bounds
 the work; it does not reproduce a full repository
@@ -283,7 +283,8 @@ The first decision can request up to two scoped, read-only searches in `lookup`:
 30 updated closed issues. Each returns at most two records with bounded bodies.
 These requests share the single optional evidence call; they cannot be combined
 with a duplicate comparison or extended into another round of searches.
-The final answer cites only supplied evidence. Release and resolved-issue records
+If a search is inconclusive, the final call may ask one essential missing-information
+question instead of claiming an answer. Factual answers cite only supplied evidence. Release and resolved-issue records
 are fetched again before publishing; changes invalidate the answer. A closed
 issue is not proof that a fix shipped, and prereleases must not be described as
 stable releases.

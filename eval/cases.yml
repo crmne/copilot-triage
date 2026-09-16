@@ -23,7 +23,7 @@
   title: Idle CPU usage high
   body: Version 0.14.0 uses 90% CPU while idle.
   comment: I measured 98% CPU with the window focused and 96% with it unfocused.
-  expected: {action: silent, max_calls: 1, min_calls: 1}
+  expected: {action: silent, max_calls: 2, min_calls: 1}
   replay:
     - {labels: [bug], reply: null, files: [], comment: 'The latest measurements show 98% CPU focused and 96% unfocused, confirming that the idle CPU problem persists.'}
 
@@ -51,7 +51,7 @@
 - id: zapfast-34-clear-feature
   title: Packaging for NixOS
   body: It would be nice to package the app for NixOS. I can help with packaging.
-  expected: {action: silent, max_calls: 1}
+  expected: {action: silent, max_calls: 2}
   replay:
     - {labels: [enhancement], reply: null, files: [], comment: 'The report requests NixOS packaging. A useful next check is whether a package exists elsewhere.'}
 
@@ -67,7 +67,7 @@
   body: Images do not appear inline on Windows.
   previous_question: Which version are you using?
   comment: Version 0.14.0.
-  expected: {action: silent, max_calls: 1}
+  expected: {action: silent, max_calls: 2}
   replay:
     - {labels: [bug], reply: version, files: [], question_answered: true}
 
@@ -108,7 +108,7 @@
   title: Images fail on Windows
   body: Some inline images fail on Windows in version 1.2.0.
   comment: 'After upgrading to 1.2.1, I get Error: unsupported image format for every image.'
-  expected: {action: reply, contains: [format], max_calls: 1, min_calls: 1}
+  expected: {action: reply, contains: [format], max_calls: 2, min_calls: 1}
   replay:
     - {labels: [bug], reply: null, files: [], comment: 'Which image format triggers that error?'}
 

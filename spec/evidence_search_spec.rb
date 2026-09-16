@@ -72,11 +72,39 @@ RSpec.describe 'Bounded evidence requests' do
     expect(assessment).not_to have_received(:mutate)
   end
 
-  it 'excludes draft releases and avoids an answer call when there are no matches' do
+  it 'excludes draft releases from evidence even when the model tries to cite one' do
     release['isDraft'] = true
     assessment.run
-    expect(assessment).to have_received(:ask_copilot).once
+    expect(assessment).to have_received(:ask_copilot).twice
     expect(assessment).not_to have_received(:mutate).with('addComment', anything)
+  end
+
+  it 'accepts a single validated lookup object without requiring an extra model call' do
+    allow(assessment).to receive(:ask_copilot).and_return(
+      JSON.generate(labels: [], reply: nil, files: [], lookup: { tool: 'releases', query: 'Windows images' }), answer
+    )
+    assessment.run
+    expect(assessment).to have_received(:ask_copilot).twice
+    expect(assessment).to have_received(:mutate).with('addComment', anything)
+  end
+
+  it 'can ask a necessary clarification after an evidence search has no matches' do
+    release['description'] = 'Unrelated change'
+    release['name'] = 'Unrelated change'
+    question = 'Which image format triggers that error?'
+    allow(assessment).to receive(:ask_copilot).and_return(
+      selection, JSON.generate(comment: question, sources: [])
+    )
+    assessment.run
+    expect(assessment).to have_received(:ask_copilot).twice
+    expect(assessment).to have_received(:mutate).with('addComment', subjectId: 'issue-1',
+                                                                    body: start_with(question))
+  end
+
+  it 'adds compact relevant documentation hints to the source catalog' do
+    catalog = assessment.send(:source_catalog, item)
+    expect(catalog.fetch('docs/tools.md').fetch(:hint)).to be_a(String)
+    expect(catalog.fetch('docs/tools.md').fetch(:hint).bytesize).to be < 300
   end
 
   it 'keeps closed-issue evidence separate from duplicate closure' do

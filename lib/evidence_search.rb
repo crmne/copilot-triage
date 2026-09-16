@@ -33,6 +33,19 @@ module EvidenceSearch
     ranked.sort_by { |path, score| [-score, path] }.first(8).map(&:first)
   end
 
+  def source_catalog(item)
+    query = evidence_query(item)
+    ranked_sources(item).to_h do |path|
+      entry = { bytes: File.size(path) }
+      if path.match?(/\.(?:md|rst|txt)\z/i)
+        lines = File.readlines(path).map(&:strip).reject(&:empty?)
+        useful = lines.sort_by { |line| -relevance(line, query) }.first(2).join(' ')
+        entry[:hint] = bounded_text(useful, 240)
+      end
+      [path, entry]
+    end
+  end
+
   def source_excerpt(path, query)
     text = File.read(path)
     return text if text.bytesize <= 6000
@@ -95,8 +108,6 @@ module EvidenceSearch
         lookup_remote(call.fetch('tool'), call.fetch('query'))
       end
     end.to_h
-    return if sources.empty?
-
     answer_from_sources(item, sources)
   end
 
