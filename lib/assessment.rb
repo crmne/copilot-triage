@@ -260,7 +260,7 @@ class IssueAssessment # :nodoc:
 
     @model_calls += 1
     @prompt_bytes += bytes
-    response = ask_copilot(prompt) || raise(Skipped, 'Copilot unavailable')
+    response = ask_copilot(prompt) || raise(Skipped, @copilot_failure_reason || 'Copilot unavailable')
     yield response
   end
 
@@ -413,6 +413,7 @@ class IssueAssessment # :nodoc:
   end
 
   def ask_copilot(prompt)
+    @copilot_failure_reason = nil
     Dir.mktmpdir('issue-assessment-') do |directory|
       Dir.mkdir(File.join(directory, 'agents'))
       File.write(File.join(directory, 'agents', 'triage.agent.md'), <<~AGENT)
@@ -446,8 +447,10 @@ class IssueAssessment # :nodoc:
       ledger_path = File.join(directory, 'evidence.json')
       @tool_ledger = JSON.parse(File.read(ledger_path)) if File.file?(ledger_path)
       unless status.success? && copilot_response(output) && File.file?(ledger_path)
-        report("Copilot produced no submitted decision (exit #{status.exitstatus}; " \
-               "evidence calls #{@tool_ledger&.fetch('calls', 0) || 0}).")
+        @copilot_failure_reason = "Copilot unavailable (exit #{status.exitstatus}; " \
+                                  "evidence calls #{@tool_ledger&.fetch('calls', 0) || 0}; " \
+                                  "ledger present #{File.file?(ledger_path)})"
+        report("Copilot produced no submitted decision: #{@copilot_failure_reason}.")
         next
       end
 
