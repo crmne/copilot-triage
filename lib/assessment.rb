@@ -403,11 +403,18 @@ class IssueAssessment # :nodoc:
       Reply when you can help the maintainer or unblock the reporter
       with a necessary clarification, supported answer, workaround, policy, released
       fix, or useful issue link. No follow-up recaps, acknowledgements, speculative next checks,
-      implementation tasks, promises, or claims of reproduction. Clear requests,
-      progress updates, thanks, and complaints about the bot normally need no reply.
-      Volunteer useful help: check documentation for existing support or applicable
-      policy, and release evidence when it could identify an already fixed bug.
-      A clear report is not a reason to withhold a supported answer or useful link.
+      implementation tasks, promises, or claims of reproduction. Progress updates,
+      thanks, and complaints about the bot normally need no reply.
+      Before choosing silence or a recap, check whether useful help is available:
+      - A plausible open issue: request a comparison; titles alone are not proof.
+      - A feature or platform request: inspect relevant docs for existing support
+        or product policy before leaving an unanswered product decision to a maintainer.
+      - A bug on a specific version: search release notes for a matching fix.
+      - An essential missing diagnostic detail: ask one focused question, including
+        when a new error or regression is reported without a question mark.
+      Do not search merely because a version was supplied in answer to your own
+      question, or for repeated measurements without a new problem. Useful help
+      takes priority over a recap. Short clear reports can still deserve answers.
       #{initial_reply_policy}
       Address the latest human update. On follow-ups, do not restate supplied facts.
       Never request answered tests or repeat previous bot questions.
@@ -415,6 +422,7 @@ class IssueAssessment # :nodoc:
 
       Return JSON:
       {"labels":[],"reply":null,"comment":null,"files":[],"related_issue":null,"lookup":null,"question_answered":false}
+      Always include labels and files as arrays, even when empty; never null.
       Set question_answered true only when the latest human update answers the
       pending bot clarification. Do not ask it again or invent a replacement.
       Choose at most two allowed labels; discussions have none. Choose ONE route:
@@ -431,7 +439,8 @@ class IssueAssessment # :nodoc:
         resolved_issues for prior resolutions. Ruby retrieves bounded evidence for
         one final answer. No further searches. A closed issue or code on main does
         not prove a released fix; name a version only with explicit release evidence.
-      Otherwise leave every route null/empty. Images and external links were not opened.
+      Otherwise return labels with reply/comment/related_issue/lookup null and files [].
+      Images and external links were not opened.
 
       Project policy:
       #{@config.fetch('instructions')}

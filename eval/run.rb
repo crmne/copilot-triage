@@ -5,13 +5,14 @@ require_relative '../lib/assessment'
 
 # Uses fixture GitHub data and never publishes. Only --live contacts the model.
 class TriageEvaluation < IssueAssessment
-  attr_reader :metrics, :decision
+  attr_reader :metrics, :decision, :model_responses
 
   def initialize(environment, example, replay:)
     super(environment)
     @example = example
     @replay = replay
     @responses = example.fetch('replay').map { |value| JSON.generate(value) }
+    @model_responses = []
   end
 
   private
@@ -21,9 +22,9 @@ class TriageEvaluation < IssueAssessment
   end
 
   def ask_copilot(prompt)
-    return super unless @replay
-
-    @responses.shift || raise('Replay exhausted: unexpected model call')
+    response = @replay ? @responses.shift || raise('Replay exhausted: unexpected model call') : super
+    @model_responses << response
+    response
   end
 
   def read_report
@@ -115,7 +116,7 @@ results = cases.map do |example|
                metrics.fetch('model_calls') >= expected.fetch('min_calls', 0) &&
                expected.fetch('contains', []).all? { |text| body.to_s.downcase.include?(text.to_s.downcase) }
       { id: example.fetch('id'), passed: passed, expected: expected['action'], actual: action,
-        reply: body, metrics: metrics }
+        reply: body, metrics: metrics, model_responses: runner.model_responses }
     end
   end
 end
