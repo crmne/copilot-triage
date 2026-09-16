@@ -19,7 +19,8 @@ bundle exec ruby eval/run.rb --live --model gpt-5.6-luna --output luna-eval.json
 ```
 
 The live option consumes Copilot credits but still uses fixture GitHub evidence
-and dry-run publishing. Compare another model by changing `--model`. Use
+and dry-run publishing. Compare another model by changing `--model`, or compare
+`--reasoning-effort none` and `--reasoning-effort low`. Use
 `--case verified-released-fix` to narrow a run. The runner returns a nonzero exit
 status when an expected outcome, required content, or call budget fails.
 

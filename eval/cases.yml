@@ -74,7 +74,11 @@
 - id: documented-platform-policy
   title: Android support
   body: Please port the app to Android.
-  expected: {action: reply, contains: [desktop], max_calls: 2}
+  expected:
+    action: reply
+    contains: [guide]
+    contains_any: [desktop, outside, not supported, does not support]
+    max_calls: 2
   replay:
     - {labels: [enhancement], reply: null, files: [], lookup: [{tool: docs, query: Android platform policy}]}
     - {comment: 'The project supports desktop platforms only; see [[docs/guide.md]].', sources: [docs/guide.md]}

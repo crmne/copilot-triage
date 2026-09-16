@@ -78,12 +78,13 @@ class TriageEvaluation < IssueAssessment
   end
 end
 
-options = { replay: true, model: 'gpt-5.6-luna' }
+options = { replay: true, model: 'gpt-5.6-luna', effort: 'none' }
 OptionParser.new do |parser|
   parser.banner = 'Usage: ruby eval/run.rb [--replay | --live] [--model ID] [--case ID] [--output PATH]'
   parser.on('--replay', 'Offline replay; no model credits (default)') { options[:replay] = true }
   parser.on('--live', 'Evaluate fresh model output using COPILOT_GITHUB_TOKEN') { options[:replay] = false }
   parser.on('--model ID') { |value| options[:model] = value }
+  parser.on('--reasoning-effort EFFORT', %w[none low]) { |value| options[:effort] = value }
   parser.on('--case ID') { |value| options[:case] = value }
   parser.on('--output PATH') { |value| options[:output] = value }
 end.parse!
@@ -100,6 +101,7 @@ results = cases.map do |example|
                       'TRIAGE_CONFIG' => 'triage.yml',
                       'TRIAGE_DRY_RUN' => 'true', 'TRIAGE_DEBOUNCE_SECONDS' => '0', 'TRIAGE_STATE_DIR' => 'state',
                       'TRIAGE_MODEL' => options[:model],
+                      'TRIAGE_REASONING_EFFORT' => options[:effort],
                       'COPILOT_GITHUB_TOKEN' => ENV.fetch('COPILOT_GITHUB_TOKEN', nil),
                       'GITHUB_EVENT_NAME' => example['comment'] ? 'issue_comment' : 'issues',
                       'GITHUB_EVENT_PATH' => 'fixture-event' }
@@ -112,16 +114,20 @@ results = cases.map do |example|
         action = 'error'
       end
       expected = example.fetch('expected')
+      content = body.to_s.downcase
+      alternatives = expected.fetch('contains_any', [])
       passed = action == expected.fetch('action') && metrics.fetch('model_calls') <= expected.fetch('max_calls') &&
                metrics.fetch('model_calls') >= expected.fetch('min_calls', 0) &&
-               expected.fetch('contains', []).all? { |text| body.to_s.downcase.include?(text.to_s.downcase) }
+               expected.fetch('contains', []).all? { |text| content.include?(text.to_s.downcase) } &&
+               (alternatives.empty? || alternatives.any? { |text| content.include?(text.to_s.downcase) })
       { id: example.fetch('id'), passed: passed, expected: expected['action'], actual: action,
         reply: body, metrics: metrics, model_responses: runner.model_responses }
     end
   end
 end
 summary = {
-  mode: options[:replay] ? 'offline_replay' : 'live', model: options[:model], cases: results.size,
+  mode: options[:replay] ? 'offline_replay' : 'live', model: options[:model], reasoning_effort: options[:effort],
+  cases: results.size,
   passed: results.count { |result| result[:passed] },
   unnecessary_replies: results.count do |result|
     result[:expected] == 'silent' && %w[reply duplicate].include?(result[:actual])

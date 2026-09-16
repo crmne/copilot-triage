@@ -326,7 +326,7 @@ class IssueAssessment # :nodoc:
 
     model = @environment.fetch('TRIAGE_MODEL', 'gpt-5.6-luna')
     scripts = Dir.glob(File.join(__dir__, '*.rb')).map { |path| File.read(path) }
-    key = Digest::SHA256.hexdigest([model, *scripts, prompt].join("\0"))
+    key = Digest::SHA256.hexdigest([model, reasoning_effort, *scripts, prompt].join("\0"))
     File.join(directory, "#{key}.json")
   end
 
@@ -622,7 +622,7 @@ class IssueAssessment # :nodoc:
       output, _errors, status = Open3.capture3(
         environment, 'timeout', '--kill-after=5s', '90s', 'copilot',
         '--model', @environment.fetch('TRIAGE_MODEL', 'gpt-5.6-luna'),
-        '--reasoning-effort=none', '--agent=triage', '--excluded-tools=skill,sql',
+        "--reasoning-effort=#{reasoning_effort}", '--agent=triage', '--excluded-tools=skill,sql',
         '--disable-builtin-mcps', '--no-custom-instructions', '--no-ask-user',
         '--no-auto-update', '--no-remote-export', '--max-ai-credits=30',
         '--usage-output-file', File.join(directory, 'usage.json'),
@@ -631,6 +631,12 @@ class IssueAssessment # :nodoc:
       usage_path = File.join(directory, 'usage.json')
       record_usage(usage_path) if File.file?(usage_path)
       status.success? ? output : nil
+    end
+  end
+
+  def reasoning_effort
+    @environment.fetch('TRIAGE_REASONING_EFFORT', 'none').tap do |effort|
+      raise ArgumentError, 'reasoning effort must be none or low' unless %w[none low].include?(effort)
     end
   end
 

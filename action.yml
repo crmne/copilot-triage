@@ -24,6 +24,9 @@ inputs:
   model:
     description: Copilot model ID.
     default: gpt-5.6-luna
+  reasoning-effort:
+    description: Copilot reasoning effort (none or low).
+    default: none
   dry-run:
     description: Preview the decision without publishing. Uncached prompts still consume credits.
     default: 'false'
@@ -103,6 +106,7 @@ runs:
         TRIAGE_KIND: ${{ inputs.kind }}
         TRIAGE_NUMBER: ${{ inputs.number }}
         TRIAGE_MODEL: ${{ inputs.model }}
+        TRIAGE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
         TRIAGE_DRY_RUN: ${{ inputs.dry-run }}
         TRIAGE_CACHE_DIR: ${{ runner.temp }}/copilot-triage-cache
         TRIAGE_STATE_DIR: ${{ runner.temp }}/copilot-triage-state

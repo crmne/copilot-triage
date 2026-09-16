@@ -10,6 +10,11 @@ on:
       case:
         description: Optional fixture ID; leave empty to evaluate all cases
         required: false
+      reasoning-effort:
+        description: Reasoning effort to compare
+        type: choice
+        options: [none, low]
+        default: none
 
 permissions:
   contents: read
@@ -33,7 +38,7 @@ jobs:
       - name: Evaluate fixture replies without publishing
         shell: bash
         run: |
-          args=(--live --model "$TRIAGE_EVAL_MODEL")
+          args=(--live --model "$TRIAGE_EVAL_MODEL" --reasoning-effort "$TRIAGE_EVAL_EFFORT")
           if [[ -n "$TRIAGE_EVAL_CASE" ]]; then
             args+=(--case "$TRIAGE_EVAL_CASE")
           fi
@@ -42,3 +47,4 @@ jobs:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
           TRIAGE_EVAL_MODEL: ${{ inputs.model }}
           TRIAGE_EVAL_CASE: ${{ inputs.case }}
+          TRIAGE_EVAL_EFFORT: ${{ inputs.reasoning-effort }}
