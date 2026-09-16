@@ -6,7 +6,7 @@ require_relative 'tool_server'
 
 # Uses fixture GitHub data and never publishes. Only --live contacts the model.
 class TriageEvaluation < IssueAssessment
-  attr_reader :metrics, :decision, :model_responses, :tool_ledger
+  attr_reader :metrics, :decision, :model_responses, :tool_ledger, :copilot_debug
 
   def initialize(environment, example, replay:)
     super(environment)
@@ -84,6 +84,7 @@ class TriageEvaluation < IssueAssessment
   end
 
   def report(message)
+    @copilot_debug = JSON.parse(message.delete_prefix('Triage debug: ')) if message.start_with?('Triage debug: ')
     return unless message.start_with?('Triage metrics: ')
 
     @metrics = JSON.parse(message.delete_prefix('Triage metrics: '))
@@ -112,6 +113,7 @@ results = cases.map do |example|
       environment = { 'GITHUB_REPOSITORY' => 'example/project', 'TRIAGE_NUMBER' => '100',
                       'TRIAGE_CONFIG' => 'triage.yml',
                       'TRIAGE_DRY_RUN' => 'true', 'TRIAGE_DEBOUNCE_SECONDS' => '0', 'TRIAGE_STATE_DIR' => 'state',
+                      'TRIAGE_DEBUG' => 'true',
                       'TRIAGE_MODEL' => options[:model],
                       'TRIAGE_REASONING_EFFORT' => options[:effort],
                       'COPILOT_GITHUB_TOKEN' => ENV.fetch('COPILOT_GITHUB_TOKEN', nil),
@@ -139,7 +141,7 @@ results = cases.map do |example|
                (alternatives.empty? || alternatives.any? { |text| content.include?(text.to_s.downcase) })
       { id: example.fetch('id'), passed: passed, expected: expected['action'], allowed_actions: actions, actual: action,
         reply: body, metrics: metrics, model_responses: runner.model_responses,
-        tool_calls: runner.tool_ledger.fetch('trace', []) }
+        tool_calls: runner.tool_ledger.fetch('trace', []), copilot_debug: runner.copilot_debug }
     end
   end
 end

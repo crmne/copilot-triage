@@ -73,9 +73,27 @@ RSpec.describe 'Issue assessment Copilot integration', type: :task do
       expect(assessment.send(:ask_copilot, 'Assess the report.')).to be_nil
       expect(requests.size).to eq(1)
     end
+
+    it 'exits unsuccessfully without publishing or caching a completed assessment' do
+      output, _errors, status = run_assessment_command
+
+      expect(status.exitstatus).to eq(1)
+      expect(output).to include('Failed: Copilot unavailable', '"outcome":"error"')
+      expect(File.readlines('github-reads.txt').size).to eq(1)
+      expect(Dir.glob('state/**/*')).to be_empty
+    end
   end
 
   it 'runs from another checkout and rereads GitHub before publishing' do
+    first, errors, status = run_assessment_command
+    expect(status.success?).to be(true), errors
+    expect(first).to include('"labels":[]')
+    expect(File.readlines('github-reads.txt').size).to eq(2)
+    expect(requests.size).to eq(2)
+    expect(requests.first.fetch('tools').size).to eq(5)
+  end
+
+  def run_assessment_command
     Dir.mkdir('bin')
     File.write('bin/gh', <<~RUBY)
       #!/usr/bin/env ruby
@@ -91,16 +109,11 @@ RSpec.describe 'Issue assessment Copilot integration', type: :task do
     environment = {
       'PATH' => "#{Dir.pwd}/bin:#{ENV.fetch('PATH')}", 'GITHUB_REPOSITORY' => 'crmne/ruby_llm',
       'COPILOT_GITHUB_TOKEN' => 'offline-test', 'TRIAGE_CONFIG' => 'triage.yml',
-      'TRIAGE_NUMBER' => '123', 'TRIAGE_DRY_RUN' => 'true', 'TRIAGE_CACHE_DIR' => 'cache'
+      'TRIAGE_NUMBER' => '123', 'TRIAGE_DRY_RUN' => 'true', 'TRIAGE_STATE_DIR' => 'state'
     }
     script = File.expand_path('../lib/assessment.rb', __dir__)
 
-    first, errors, status = Open3.capture3(environment, RbConfig.ruby, script)
-    expect(status.success?).to be(true), errors
-    expect(first).to include('"labels":[]')
-    expect(File.readlines('github-reads.txt').size).to eq(2)
-    expect(requests.size).to eq(2)
-    expect(requests.first.fetch('tools').size).to eq(5)
+    Open3.capture3(environment, RbConfig.ruby, script)
   end
 
   def copilot_installed?

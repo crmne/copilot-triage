@@ -11,6 +11,7 @@ require_relative 'triage_tools'
 
 class IssueAssessment # :nodoc:
   class Skipped < StandardError; end
+  class Failed < StandardError; end
 
   def initialize(environment = ENV)
     @environment = environment
@@ -67,12 +68,18 @@ class IssueAssessment # :nodoc:
     @state.save unless dry_run?
   rescue Skipped => e
     skip("#{e.message}; left for a maintainer")
+  rescue Failed => e
+    fail_assessment("#{e.message}; left for a maintainer")
   rescue JSON::ParserError, KeyError, ArgumentError => e
     location = e.backtrace_locations.first
-    skip("invalid assessment (#{e.class} in #{location.base_label} at " \
-         "#{File.basename(location.path)}:#{location.lineno}); left for a maintainer")
+    fail_assessment("invalid assessment (#{e.class} in #{location.base_label} at " \
+                    "#{File.basename(location.path)}:#{location.lineno}); left for a maintainer")
   ensure
     report_metrics unless @outcome == 'prepared'
+  end
+
+  def failed?
+    @outcome == 'error'
   end
 
   private
@@ -217,6 +224,13 @@ class IssueAssessment # :nodoc:
     nil
   end
 
+  def fail_assessment(reason)
+    @outcome = 'error'
+    @skip_reason = reason
+    report("Failed: #{reason}.")
+    nil
+  end
+
   def report_metrics
     elapsed = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - @started).round(3)
     metrics = { outcome: @outcome, reason: @skip_reason, model_calls: @model_calls,
@@ -262,7 +276,7 @@ class IssueAssessment # :nodoc:
 
     @model_calls += 1
     @prompt_bytes += bytes
-    response = ask_copilot(prompt) || raise(Skipped, @copilot_failure_reason || 'Copilot unavailable')
+    response = ask_copilot(prompt) || raise(Failed, @copilot_failure_reason || 'Copilot unavailable')
     yield response
   end
 
@@ -486,7 +500,8 @@ class IssueAssessment # :nodoc:
     tool_events = events.filter_map do |event|
       next unless %w[tool.execution_start tool.execution_complete session.error].include?(event['type'])
 
-      event.slice('type').merge('data' => event.fetch('data', {}).slice('toolName', 'success', 'error'))
+      event.slice('type').merge('data' => event.fetch('data', {}).slice('toolName', 'success', 'error', 'errorType',
+                                                                        'message'))
     end
     details = JSON.generate(final_text: copilot_response(output)&.slice(0, 2000),
                             decision: @tool_ledger&.fetch('decision', nil),
@@ -712,4 +727,8 @@ class IssueAssessment # :nodoc:
   end
 end
 
-IssueAssessment.new.run if $PROGRAM_NAME == __FILE__
+if $PROGRAM_NAME == __FILE__
+  assessment = IssueAssessment.new
+  assessment.run
+  exit(assessment.failed? ? 1 : 0)
+end

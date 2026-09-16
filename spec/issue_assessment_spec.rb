@@ -64,6 +64,7 @@ RSpec.describe IssueAssessment, type: :task do
     it 'rejects labels' do
       assessment.run
       expect(assessment).not_to have_received(:mutate)
+      expect(assessment).to be_failed
     end
   end
 
@@ -114,6 +115,7 @@ RSpec.describe IssueAssessment, type: :task do
     assessment.run
     expect(assessment).not_to have_received(:ask_copilot)
     expect(assessment).not_to have_received(:mutate)
+    expect(assessment).not_to be_failed
   end
 
   it 'skips reports created by bots' do
@@ -179,7 +181,8 @@ RSpec.describe IssueAssessment, type: :task do
     allow(assessment).to receive(:ask_copilot).and_return(nil)
 
     assessment.run
-    expect(assessment).to have_received(:puts).with(/^Skipped: Copilot unavailable/)
+    expect(assessment).to have_received(:puts).with(/^Failed: Copilot unavailable/)
+    expect(assessment).to be_failed
     expect(assessment).not_to have_received(:mutate)
   end
 

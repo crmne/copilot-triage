@@ -203,7 +203,7 @@ RSpec.describe 'Report context' do
 
     expect(assessment).not_to have_received(:mutate)
     expect(assessment).to have_received(:puts).with(
-      start_with('Skipped: invalid assessment (ArgumentError in validate at')
+      start_with('Failed: invalid assessment (ArgumentError in validate at')
     )
   end
 
