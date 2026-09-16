@@ -108,6 +108,8 @@ module EvidenceSearch
         lookup_remote(call.fetch('tool'), call.fetch('query'))
       end
     end.to_h
+    return if sources.empty? && !clarification_allowed?(item)
+
     answer_from_sources(item, sources)
   end
 

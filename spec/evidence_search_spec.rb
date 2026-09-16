@@ -115,6 +115,27 @@ RSpec.describe 'Bounded evidence requests' do
     expect(assessment).not_to have_received(:mutate)
   end
 
+  it 'does not manufacture a replacement question after the previous question was answered' do
+    allow(assessment).to receive(:ask_copilot).and_return(
+      JSON.parse(selection).merge('question_answered' => true).to_json,
+      JSON.generate(comment: 'Which image format triggers that error?', sources: [])
+    )
+    assessment.run
+    expect(assessment).not_to have_received(:mutate).with('addComment', anything)
+  end
+
+  it 'spends no answer call on an empty search after a routine follow-up measurement' do
+    environment.merge!('GITHUB_EVENT_NAME' => 'issue_comment', 'GITHUB_EVENT_PATH' => 'event.json',
+                       'TRIAGE_DEBOUNCE_SECONDS' => '0')
+    comment = { 'id' => 'human-1', 'body' => 'It uses 98% CPU.', 'author' => { 'login' => 'reporter' } }
+    item['comments']['nodes'] << comment
+    File.write('event.json', JSON.generate(action: 'created', comment: { node_id: 'human-1' }))
+    release['isDraft'] = true
+    assessment.run
+    expect(assessment).to have_received(:ask_copilot).once
+    expect(assessment).not_to have_received(:mutate).with('addComment', anything)
+  end
+
   it 'keeps closed-issue evidence separate from duplicate closure' do
     resolved = { 'id' => 'resolved-1', 'number' => 42, 'title' => 'Images fail',
                  'body' => 'Use the native image viewer.',

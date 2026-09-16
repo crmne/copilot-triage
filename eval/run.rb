@@ -78,7 +78,7 @@ class TriageEvaluation < IssueAssessment
   end
 end
 
-options = { replay: true, model: 'gpt-5.6-luna', effort: 'none' }
+options = { replay: true, model: 'gpt-5.6-luna', effort: 'low' }
 OptionParser.new do |parser|
   parser.banner = 'Usage: ruby eval/run.rb [--replay | --live] [--model ID] [--case ID] [--output PATH]'
   parser.on('--replay', 'Offline replay; no model credits (default)') { options[:replay] = true }
@@ -116,11 +116,14 @@ results = cases.map do |example|
       expected = example.fetch('expected')
       content = body.to_s.downcase
       alternatives = expected.fetch('contains_any', [])
-      passed = action == expected.fetch('action') && metrics.fetch('model_calls') <= expected.fetch('max_calls') &&
+      actions = expected.fetch('allowed_actions', [expected.fetch('action')])
+      passed = actions.include?(action) && metrics.fetch('model_calls') <= expected.fetch('max_calls') &&
                metrics.fetch('model_calls') >= expected.fetch('min_calls', 0) &&
-               expected.fetch('contains', []).all? { |text| content.include?(text.to_s.downcase) } &&
+               (action == 'silent' || expected.fetch('contains', []).all? do |text|
+                 content.include?(text.to_s.downcase)
+               end) &&
                (alternatives.empty? || alternatives.any? { |text| content.include?(text.to_s.downcase) })
-      { id: example.fetch('id'), passed: passed, expected: expected['action'], actual: action,
+      { id: example.fetch('id'), passed: passed, expected: expected['action'], allowed_actions: actions, actual: action,
         reply: body, metrics: metrics, model_responses: runner.model_responses }
     end
   end
@@ -130,9 +133,11 @@ summary = {
   cases: results.size,
   passed: results.count { |result| result[:passed] },
   unnecessary_replies: results.count do |result|
-    result[:expected] == 'silent' && %w[reply duplicate].include?(result[:actual])
+    !result[:allowed_actions].include?(result[:actual]) && %w[reply duplicate].include?(result[:actual])
   end,
-  missed_helpful_replies: results.count { |result| result[:expected] != 'silent' && result[:actual] == 'silent' },
+  missed_helpful_replies: results.count do |result|
+    !result[:allowed_actions].include?('silent') && result[:actual] == 'silent'
+  end,
   model_calls: results.sum { |result| result[:metrics].fetch('model_calls') },
   prompt_bytes: results.sum { |result| result[:metrics].fetch('prompt_bytes') },
   elapsed_seconds: results.sum { |result| result[:metrics].fetch('elapsed_seconds') }.round(3),

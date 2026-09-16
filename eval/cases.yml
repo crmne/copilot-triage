@@ -112,7 +112,8 @@
   title: Images fail on Windows
   body: Some inline images fail on Windows in version 1.2.0.
   comment: 'After upgrading to 1.2.1, I get Error: unsupported image format for every image.'
-  expected: {action: reply, contains: [format], max_calls: 2, min_calls: 1}
+  # New evidence must be assessed, but must not force an unnecessary question.
+  expected: {action: reply, allowed_actions: [reply, silent], contains: [format], max_calls: 2, min_calls: 1}
   replay:
     - {labels: [bug], reply: null, files: [], comment: 'Which image format triggers that error?'}
 

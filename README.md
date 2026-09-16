@@ -359,7 +359,10 @@ output from a valid decision to stay silent.
 
 ## Cost and caching
 
-The default model is `gpt-5.6-luna`; set `model` to change it. The first prompt
+The default model is `gpt-5.6-luna` with `reasoning-effort: low`; set `model` to
+change it. `reasoning-effort: none` is available for comparison, but live checks
+found it missed useful initial summaries and duplicate comparisons. These are
+small fixture evaluations, not a general model benchmark. The first prompt
 is limited to 24 KB and the answer or comparison prompt to 64 KB. Long runs of
 repeated NUL bytes in pasted logs become a compact count; surrounding messages
 remain intact.
@@ -367,7 +370,7 @@ Other oversized input is left for a maintainer rather than silently truncated. C
 context, so billed input exceeds the text supplied by the script.
 
 Validated responses are cached through GitHub Actions. The key includes the
-complete prompt, model, and script version. An unchanged prompt costs **zero
+complete prompt, model, reasoning effort, and script version. An unchanged prompt costs **zero
 model calls**. New report text, recent comments, policy, or models change the key.
 Answer keys include source contents, so documentation changes refresh the answer
 while source selection can still be reused. Comparison keys include both reports

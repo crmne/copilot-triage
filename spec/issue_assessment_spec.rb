@@ -422,12 +422,15 @@ RSpec.describe IssueAssessment, type: :task do
       expect(child_environment).to include('GH_TOKEN' => nil, 'GITHUB_TOKEN' => nil)
       expect(child_environment.fetch('COPILOT_HOME')).to eq(options.fetch(:chdir))
       expect(arguments).to include('--agent=triage', '--excluded-tools=skill,sql', '--disable-builtin-mcps',
-                                   '--no-custom-instructions', '--no-remote-export', '--max-ai-credits=30')
+                                   '--no-custom-instructions', '--no-remote-export', '--max-ai-credits=30',
+                                   '--output-format=json')
       expect(arguments.last).to include(item['body'])
       expect(arguments).not_to include('--allow-all')
       agent = File.read(File.join(options.fetch(:chdir), 'agents', 'triage.agent.md'))
       expect(agent).to include('tools: []')
-      [response, '', status]
+      output = [JSON.generate(type: 'assistant.message', data: { content: response }),
+                JSON.generate(type: 'result', exitCode: 0)].join("\n")
+      [output, '', status]
     end
 
     assessment.run

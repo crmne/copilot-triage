@@ -58,6 +58,10 @@ module TriageEvent
     end.uniq
   end
 
+  def new_failure?(body)
+    prose(body).match?(/\b(?:error|exception|panic|traceback|regression|crash\w*|fail\w*|freez\w*)\b/i)
+  end
+
   def skip_reason(name, event)
     return if name == 'workflow_dispatch'
     return 'pull requests are outside triage' if event.dig('issue', 'pull_request')

@@ -14,7 +14,7 @@ on:
         description: Reasoning effort to compare
         type: choice
         options: [none, low]
-        default: none
+        default: low
 
 permissions:
   contents: read

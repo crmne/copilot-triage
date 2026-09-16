@@ -38,6 +38,10 @@ release evidence, a new regression without a question mark, and a confirmed
 duplicate. Release and documentation details are synthetic fixtures, not claims
 about actual ZapFast releases.
 
+The new-regression case requires assessment, not a manufactured question: either
+a necessary clarification or silence is allowed. Cases with a clear answer,
+required missing error, useful initial summary, or duplicate still require help.
+
 Results include unnecessary replies, missed helpful replies, model calls, input
 bytes, wall time, and each actual reply. Per-case token counts appear when the
 CLI reports usage. Review the replies as well as the pass count: keyword checks
