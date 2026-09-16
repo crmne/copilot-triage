@@ -436,20 +436,20 @@ class IssueAssessment # :nodoc:
   def ask_copilot(prompt)
     @copilot_failure_reason = nil
     Dir.mktmpdir('issue-assessment-') do |directory|
+      settings_path = File.join(directory, 'tools.json')
+      File.write(settings_path, JSON.generate(tools_settings(directory)), perm: 0o600)
+      command, *args = tools_command(settings_path)
+      mcp = { triage: { type: 'stdio', command: command, args: args, tools: ['*'], deferTools: 'never' } }
       Dir.mkdir(File.join(directory, 'agents'))
       File.write(File.join(directory, 'agents', 'triage.agent.md'), <<~AGENT)
         ---
         name: triage
         description: A helpful maintainer companion with scoped read-only tools.
         tools: ['triage/*']
+        mcp-servers: #{JSON.generate(mcp)}
         ---
         #{system_prompt}
       AGENT
-      settings_path = File.join(directory, 'tools.json')
-      File.write(settings_path, JSON.generate(tools_settings(directory)), perm: 0o600)
-      command, *args = tools_command(settings_path)
-      mcp = { mcpServers: { triage: { type: 'stdio', command: command, args: args, tools: ['*'],
-                                      deferTools: 'never' } } }
       environment = {
         'COPILOT_GITHUB_TOKEN' => @environment.fetch('COPILOT_GITHUB_TOKEN'),
         'COPILOT_HOME' => directory, 'GH_TOKEN' => nil, 'GITHUB_TOKEN' => nil
@@ -458,7 +458,7 @@ class IssueAssessment # :nodoc:
         environment, 'timeout', '--kill-after=5s', '90s', 'copilot',
         '--model', @environment.fetch('TRIAGE_MODEL', 'gpt-5.6-luna'),
         "--reasoning-effort=#{reasoning_effort}", '--agent=triage', '--excluded-tools=skill,sql',
-        '--additional-mcp-config', JSON.generate(mcp), '--allow-tool=triage',
+        '--allow-tool=triage',
         '--disable-builtin-mcps', '--no-custom-instructions', '--no-ask-user',
         '--no-auto-update', '--no-remote-export', '--max-ai-credits=30',
         '--usage-output-file', File.join(directory, 'usage.json'),
