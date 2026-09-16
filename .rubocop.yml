@@ -5,6 +5,7 @@ AllCops:
 
   Exclude:
     - 'spec/fixtures/**/*'
+    - 'vendor/bundle/**/*'
 
 Metrics:
   Enabled: false
