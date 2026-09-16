@@ -306,7 +306,7 @@ RSpec.describe IssueAssessment, type: :task do
   it 'isolates credentials and exposes only scoped tools when processing untrusted text' do
     allow(assessment).to receive(:ask_copilot).and_call_original
     item['body'] = '$(touch /tmp/never-run-this) --allow-all'
-    status = instance_double(Process::Status, success?: true)
+    status = instance_double(Process::Status, success?: true, exitstatus: 0)
     allow(Open3).to receive(:capture3) do |child_environment, *arguments, **options|
       expect(child_environment).to include('GH_TOKEN' => nil, 'GITHUB_TOKEN' => nil)
       expect(child_environment.fetch('COPILOT_HOME')).to eq(options.fetch(:chdir))
@@ -324,5 +324,7 @@ RSpec.describe IssueAssessment, type: :task do
 
     assessment.run
     expect(Open3).to have_received(:capture3).once
+    expect(assessment).not_to have_received(:mutate)
+    expect(assessment).to have_received(:puts).with(include('Copilot produced no submitted decision'))
   end
 end
