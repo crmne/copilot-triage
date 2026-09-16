@@ -436,20 +436,20 @@ class IssueAssessment # :nodoc:
   def ask_copilot(prompt)
     @copilot_failure_reason = nil
     Dir.mktmpdir('issue-assessment-') do |directory|
-      settings_path = File.join(directory, 'tools.json')
-      File.write(settings_path, JSON.generate(tools_settings(directory)), perm: 0o600)
-      command, *args = tools_command(settings_path)
-      mcp = { triage: { type: 'stdio', command: command, args: args, tools: ['*'], deferTools: 'never' } }
       Dir.mkdir(File.join(directory, 'agents'))
       File.write(File.join(directory, 'agents', 'triage.agent.md'), <<~AGENT)
         ---
         name: triage
         description: A helpful maintainer companion with scoped read-only tools.
         tools: ['triage/*']
-        mcp-servers: #{JSON.generate(mcp)}
         ---
         #{system_prompt}
       AGENT
+      settings_path = File.join(directory, 'tools.json')
+      File.write(settings_path, JSON.generate(tools_settings(directory)), perm: 0o600)
+      command, *args = tools_command(settings_path)
+      mcp = { mcpServers: { triage: { type: 'stdio', command: command, args: args, tools: ['*'],
+                                      deferTools: 'never' } } }
       environment = {
         'COPILOT_GITHUB_TOKEN' => @environment.fetch('COPILOT_GITHUB_TOKEN'),
         'COPILOT_HOME' => directory, 'GH_TOKEN' => nil, 'GITHUB_TOKEN' => nil
@@ -458,7 +458,7 @@ class IssueAssessment # :nodoc:
         environment, 'timeout', '--kill-after=5s', '90s', 'copilot',
         '--model', @environment.fetch('TRIAGE_MODEL', 'gpt-5.6-luna'),
         "--reasoning-effort=#{reasoning_effort}", '--agent=triage', '--excluded-tools=skill,sql',
-        '--allow-tool=triage',
+        '--additional-mcp-config', JSON.generate(mcp), '--allow-tool=triage',
         '--disable-builtin-mcps', '--no-custom-instructions', '--no-ask-user',
         '--no-auto-update', '--no-remote-export', '--max-ai-credits=30',
         '--usage-output-file', File.join(directory, 'usage.json'),
@@ -468,7 +468,7 @@ class IssueAssessment # :nodoc:
       record_usage(usage_path) if File.file?(usage_path)
       ledger_path = File.join(directory, 'evidence.json')
       @tool_ledger = JSON.parse(File.read(ledger_path)) if File.file?(ledger_path)
-      debug_copilot(output, directory) if dry_run? && @environment['TRIAGE_DEBUG'] == 'true'
+      debug_copilot(output) if dry_run? && @environment['TRIAGE_DEBUG'] == 'true'
       unless status.success? && copilot_response(output) && File.file?(ledger_path)
         @copilot_failure_reason = "Copilot unavailable (exit #{status.exitstatus}; " \
                                   "evidence calls #{@tool_ledger&.fetch('calls', 0) || 0}; " \
@@ -496,7 +496,7 @@ class IssueAssessment # :nodoc:
     events.reverse.find { |event| event['type'] == 'assistant.message' }&.dig('data', 'content')
   end
 
-  def debug_copilot(output, directory = nil)
+  def debug_copilot(output)
     events = output.lines.reject { |line| line.strip.empty? }.map { |line| JSON.parse(line) }
     tool_events = events.filter_map do |event|
       next unless %w[tool.execution_start tool.execution_complete session.error].include?(event['type'])
@@ -504,17 +504,10 @@ class IssueAssessment # :nodoc:
       event.slice('type').merge('data' => event.fetch('data', {}).slice('toolName', 'success', 'error', 'errorType',
                                                                         'message'))
     end
-    startup = if directory
-                Dir.glob(File.join(directory, 'logs', '*')).flat_map do |path|
-                  File.readlines(path).grep(/\A\S+ \[(?:INFO|WARNING|ERROR)\] \[rust:[^\]]*mcp[^\]]*\]/)
-                end.last(30)
-              else
-                []
-              end
     requested = events.flat_map { |event| event.dig('data', 'toolRequests') || [] }.map { |tool| tool['name'] }
     details = JSON.generate(final_text: copilot_response(output)&.slice(0, 2000), requested_tools: requested,
                             decision: @tool_ledger&.fetch('decision', nil),
-                            tools: @tool_ledger&.fetch('trace', []), runtime_tools: tool_events, startup: startup)
+                            tools: @tool_ledger&.fetch('trace', []), runtime_tools: tool_events)
     %w[GH_TOKEN GITHUB_TOKEN COPILOT_GITHUB_TOKEN].each do |key|
       token = @environment[key]
       details = details.gsub(token, '[REDACTED]') if token && !token.empty?

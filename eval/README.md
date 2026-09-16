@@ -31,6 +31,13 @@ in the run log. Its GitHub permissions are read-only; it never posts to issues.
 The optional `case` input narrows the run. Each case runs one native Copilot
 session; the agent chooses its tool calls. Nothing schedules live evaluations automatically.
 
+Missing or invalid decisions fail the action without posting or marking the
+conversation complete. Live tests have also observed intermittent CLI sessions
+ending without a submitted decision, sometimes with `No response was returned`.
+This remains an unresolved runtime limitation, not intentional silence. Preview
+and evaluation diagnostics include final text, submitted decisions, tool calls,
+and runtime errors, but not hidden reasoning or persisted session transcripts.
+
 Use **Preview real report** to assess an existing Zapfast, Spotifast, or RubyLLM
 issue or discussion with the action's development checkout. It reads the target
 repository's policy and evidence, but cannot publish: dry-run mode is mandatory

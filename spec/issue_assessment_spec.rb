@@ -320,8 +320,8 @@ RSpec.describe IssueAssessment, type: :task do
       expect(arguments).not_to include('--allow-all')
       agent = File.read(File.join(options.fetch(:chdir), 'agents', 'triage.agent.md'))
       expect(agent).to include("tools: ['triage/*']")
-      metadata = YAML.safe_load(agent.split('---', 3)[1])
-      expect(metadata.dig('mcp-servers', 'triage', 'deferTools')).to eq('never')
+      mcp = JSON.parse(arguments[arguments.index('--additional-mcp-config') + 1])
+      expect(mcp.dig('mcpServers', 'triage', 'deferTools')).to eq('never')
       output = [JSON.generate(type: 'assistant.message', data: { content: response }),
                 JSON.generate(type: 'result', exitCode: 0)].join("\n")
       [output, '', status]
