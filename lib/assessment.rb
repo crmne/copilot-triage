@@ -38,6 +38,7 @@ class IssueAssessment # :nodoc:
     @usage = []
     @outcome = 'error'
     @skip_reason = @related_snapshot = @evidence_records = @used_evidence = nil
+    @latest_question_answered = false
     @evidence_reads = 0
     prepared = load_prepared_report || prepare_report
     if @environment['TRIAGE_PREPARE_ONLY'] == 'true'
@@ -249,6 +250,10 @@ class IssueAssessment # :nodoc:
       report('Suppressed a report-only recap outside the initial assessment or a generic next check.')
       decision['comment'] = nil
     end
+    unless clarification_allowed?(item)
+      decision['comment'] = nil if decision['comment'] && clarification?(decision['comment'])
+      decision['reply'] = nil if decision['reply'] && TriageEvent.question?(reply_body(decision))
+    end
     if answered?(item)
       decision['reply'] = nil
       decision['comment'] = nil
@@ -422,6 +427,7 @@ class IssueAssessment # :nodoc:
       Address the latest human update. On follow-ups, do not restate supplied facts.
       Never request answered tests or repeat previous bot questions.
       A reporter must not need to inspect implementation.
+      A clarification is allowed on this update: #{clarification_allowed?(item)}.
 
       Return JSON:
       {"labels":[],"reply":null,"comment":null,"files":[],"related_issue":null,"lookup":null,"question_answered":false}
@@ -446,6 +452,11 @@ class IssueAssessment # :nodoc:
         one final answer. No further searches. A closed issue or code on main does
         not prove a released fix; name a version only with explicit release evidence.
       Otherwise return labels with reply/comment/related_issue/lookup null and files [].
+      Route example: a report says the volume resets on restart, and Open issues
+      lists 17: "Remember playback volume". Select related_issue: 17 to read that
+      report before searching releases. The title describes the desired behavior
+      rather than the bug, but may cover the same problem. This is a request to
+      compare, not a conclusion that the reports are duplicates.
       Images and external links were not opened.
 
       Project policy:

@@ -10,7 +10,7 @@ RSpec.describe 'Comment assessments' do
   let(:kind) { 'issue' }
   let(:assessment) { IssueAssessment.new(environment) }
   let(:comment) do
-    { 'id' => 'comment-id', 'createdAt' => '2026-09-15T12:00:00Z', 'body' => 'Version 1.2.3',
+    { 'id' => 'comment-id', 'createdAt' => '2026-09-15T12:00:00Z', 'body' => 'Version 1.2.3 now crashes.',
       'author' => { '__typename' => 'User', 'login' => 'reporter' }, 'authorAssociation' => 'NONE' }
   end
   let(:event) do
@@ -44,6 +44,27 @@ RSpec.describe 'Comment assessments' do
     expect(assessment).to have_received(:mutate).with(
       'addComment', subjectId: 'report-id', body: start_with("Which provider are you using?\n\n")
     )
+  end
+
+  it 'does not turn fresh measurements into another diagnostic questionnaire' do
+    comment['body'] = 'CPU usage is now 98% focused and 96% unfocused.'
+    allow(assessment).to receive(:ask_copilot).and_return(
+      JSON.generate(labels: [], reply: nil, files: [], comment: 'Which operating system are you using?')
+    )
+
+    assessment.run
+
+    expect(assessment).to have_received(:ask_copilot).once
+    expect(assessment).not_to have_received(:mutate).with('addComment', anything)
+  end
+
+  it 'also suppresses configured clarification replies on measurement-only updates' do
+    comment['body'] = 'CPU usage is now 98% focused and 96% unfocused.'
+
+    assessment.run
+
+    expect(assessment).to have_received(:ask_copilot).once
+    expect(assessment).not_to have_received(:mutate).with('addComment', anything)
   end
 
   {
