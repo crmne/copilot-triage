@@ -337,6 +337,7 @@ class IssueAssessment # :nodoc:
     allowed = @kind == 'discussion' ? {} : @config.fetch('labels').slice(*labels.map { |label| label.fetch('name') })
     <<~PROMPT
       Submit one triage decision for this #{@kind} in #{@repository}, number #{@number}.
+      Complete the task by calling submit_decision, including for silence. A plain-text decision is not a submission.
       This is a #{comment_event? ? 'follow-up: assess the latest_comment, not the original report again' : 'report assessment'}.
       Initial issue recap permitted: #{@initial_recap_allowed}.
       Duplicate policy: #{duplicate_mode}.
@@ -481,9 +482,15 @@ class IssueAssessment # :nodoc:
   end
 
   def debug_copilot(output)
+    events = output.lines.reject { |line| line.strip.empty? }.map { |line| JSON.parse(line) }
+    tool_events = events.filter_map do |event|
+      next unless %w[tool.execution_start tool.execution_complete session.error].include?(event['type'])
+
+      event.slice('type').merge('data' => event.fetch('data', {}).slice('toolName', 'success', 'error'))
+    end
     details = JSON.generate(final_text: copilot_response(output)&.slice(0, 2000),
                             decision: @tool_ledger&.fetch('decision', nil),
-                            tools: @tool_ledger&.fetch('trace', []))
+                            tools: @tool_ledger&.fetch('trace', []), runtime_tools: tool_events)
     %w[GH_TOKEN GITHUB_TOKEN COPILOT_GITHUB_TOKEN].each do |key|
       token = @environment[key]
       details = details.gsub(token, '[REDACTED]') if token && !token.empty?
