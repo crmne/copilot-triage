@@ -1,0 +1,10 @@
+AllCops:
+  TargetRubyVersion: 3.3
+  NewCops: enable
+  SuggestExtensions: false
+
+  Exclude:
+    - 'spec/fixtures/**/*'
+
+Metrics:
+  Enabled: false

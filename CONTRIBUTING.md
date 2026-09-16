@@ -10,6 +10,7 @@ Run the offline tests:
 ```sh
 bundle install
 npm install --global @github/copilot@1.0.83
+bundle exec rubocop
 bundle exec rspec
 ```
 

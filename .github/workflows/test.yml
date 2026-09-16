@@ -17,4 +17,5 @@ jobs:
           ruby-version: '3.3'
           bundler-cache: true
       - run: npm install --global @github/copilot@1.0.83
+      - run: bundle exec rubocop
       - run: bundle exec rspec

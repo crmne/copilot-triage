@@ -10,6 +10,7 @@ require_relative 'related_issues'
 
 class IssueAssessment # :nodoc:
   include RelatedIssues
+
   class Skipped < StandardError; end
 
   def initialize(environment = ENV)
@@ -132,7 +133,9 @@ class IssueAssessment # :nodoc:
     return unless comment_event?
 
     latest = item.fetch('comments').fetch('nodes').last
-    return 'a newer comment superseded this event' unless latest && latest['id'] == event.fetch('comment').fetch('node_id')
+    unless latest && latest['id'] == event.fetch('comment').fetch('node_id')
+      return 'a newer comment superseded this event'
+    end
     return 'a maintainer or bot has already answered' if answered?(item)
 
     nil
@@ -146,7 +149,7 @@ class IssueAssessment # :nodoc:
           labels(first: 100) { nodes { id name } }
           #{@kind}(number: $number) {
             id title body closed authorAssociation author { __typename login }
-            #{@kind == 'issue' ? 'stateReason' : ''}
+            #{'stateReason' if @kind == 'issue'}
             comments(last: 5) { nodes { #{comment_fields} } }
           }
         }
@@ -186,7 +189,7 @@ class IssueAssessment # :nodoc:
     parent = comment['replyTo'] || comment
     replies = parent.fetch('replies').fetch('nodes')
     item['reply_to'] = parent.fetch('id')
-    item['comments']['nodes'] = [parent.reject { |key, _| %w[replies replyTo discussion].include?(key) }, *replies]
+    item['comments']['nodes'] = [parent.except('replies', 'replyTo', 'discussion'), *replies]
   end
 
   def build_prompt(item, labels)
@@ -425,7 +428,8 @@ class IssueAssessment # :nodoc:
   def validate(response, labels)
     decision = JSON.parse(response)
     allowed = @config.fetch('labels').keys & labels.map { |label| label.fetch('name') }
-    raise ArgumentError unless decision.is_a?(Hash) && (decision.keys - %w[comment files labels related_issue reply]).empty?
+    raise ArgumentError unless decision.is_a?(Hash) && (decision.keys - %w[comment files labels related_issue
+                                                                           reply]).empty?
     raise ArgumentError unless (%w[files labels reply] - decision.keys).empty?
 
     validate_labels(decision['labels'], allowed)
@@ -433,7 +437,9 @@ class IssueAssessment # :nodoc:
 
     validate_files(decision['files'], decision['reply'])
     if decision['related_issue']
-      raise ArgumentError unless decision['related_issue'].is_a?(Integer) && related_issues.key?(decision['related_issue'])
+      unless decision['related_issue'].is_a?(Integer) && related_issues.key?(decision['related_issue'])
+        raise ArgumentError
+      end
       raise ArgumentError if decision['reply'] || decision['comment'] || decision['files'].any?
     elsif !decision['related_issue'].nil?
       raise ArgumentError

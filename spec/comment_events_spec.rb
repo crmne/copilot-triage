@@ -41,8 +41,9 @@ RSpec.describe 'Comment assessments' do
 
     assessment.run
 
-    expect(assessment).to have_received(:mutate).with('addComment', subjectId: 'report-id',
-                                                                   body: start_with('Which provider are you using?' + "\n\n"))
+    expect(assessment).to have_received(:mutate).with(
+      'addComment', subjectId: 'report-id', body: start_with("Which provider are you using?\n\n")
+    )
   end
 
   {
@@ -96,7 +97,7 @@ RSpec.describe 'Comment assessments' do
 
   it 'does not repost a clarification already present in the recent conversation' do
     item['comments']['nodes'].unshift(comment.merge('id' => 'bot-comment',
-                                                  'body' => 'Which provider are you using?'))
+                                                    'body' => 'Which provider are you using?'))
 
     assessment.run
 
@@ -115,7 +116,9 @@ RSpec.describe 'Comment assessments' do
 
   context 'with a reply to an older discussion comment' do
     let(:kind) { 'discussion' }
-    let(:parent) { comment.merge('id' => 'parent-id', 'body' => 'Which version?', 'replies' => { 'nodes' => [comment] }) }
+    let(:parent) do
+      comment.merge('id' => 'parent-id', 'body' => 'Which version?', 'replies' => { 'nodes' => [comment] })
+    end
 
     before do
       environment['TRIAGE_KIND'] = 'discussion'
@@ -128,7 +131,7 @@ RSpec.describe 'Comment assessments' do
           { 'data' => { 'node' => comment.merge('discussion' => { 'id' => 'report-id' }, 'replyTo' => parent) } }
         else
           { 'data' => { 'repository' => { 'discussion' => Marshal.load(Marshal.dump(item)),
-                                         'labels' => { 'nodes' => [] } } } }
+                                          'labels' => { 'nodes' => [] } } } }
         end
       end
     end
@@ -140,9 +143,10 @@ RSpec.describe 'Comment assessments' do
 
       expect(assessment).to have_received(:ask_copilot).with(include('Which version?', 'Version 1.2.3'))
       expect(assessment).not_to have_received(:ask_copilot).with(include('An unrelated thread'))
-      expect(assessment).to have_received(:mutate).with('addDiscussionComment', discussionId: 'report-id',
-                                                                              replyToId: 'parent-id',
-                                                                              body: start_with('Which provider are you using?' + "\n\n"))
+      expect(assessment).to have_received(:mutate).with(
+        'addDiscussionComment', discussionId: 'report-id', replyToId: 'parent-id',
+                                body: start_with("Which provider are you using?\n\n")
+      )
     end
 
     it 'skips superseded replies without spending credits' do
@@ -168,7 +172,7 @@ RSpec.describe 'Comment assessments' do
 
     it 'skips a deleted discussion comment' do
       allow(assessment).to receive(:github).with('graphql', query: anything, variables: { id: 'comment-id' })
-                                         .and_return('data' => { 'node' => nil })
+                                           .and_return('data' => { 'node' => nil })
 
       assessment.run
 
@@ -177,16 +181,17 @@ RSpec.describe 'Comment assessments' do
 
     it 'replies within the thread when the event is a top-level discussion comment' do
       allow(assessment).to receive(:github).with('graphql', query: anything, variables: { id: 'comment-id' })
-                                         .and_return('data' => { 'node' => comment.merge(
-                                           'discussion' => { 'id' => 'report-id' }, 'replyTo' => nil,
-                                           'replies' => { 'nodes' => [] }
-                                         ) })
+                                           .and_return('data' => { 'node' => comment.merge(
+                                             'discussion' => { 'id' => 'report-id' }, 'replyTo' => nil,
+                                             'replies' => { 'nodes' => [] }
+                                           ) })
 
       assessment.run
 
-      expect(assessment).to have_received(:mutate).with('addDiscussionComment', discussionId: 'report-id',
-                                                                              replyToId: 'comment-id',
-                                                                              body: start_with('Which provider are you using?' + "\n\n"))
+      expect(assessment).to have_received(:mutate).with(
+        'addDiscussionComment', discussionId: 'report-id', replyToId: 'comment-id',
+                                body: start_with("Which provider are you using?\n\n")
+      )
     end
   end
 end

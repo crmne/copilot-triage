@@ -100,6 +100,7 @@ module RelatedIssues # :nodoc:
 
     validate_comment(value['comment'])
     raise ArgumentError if value['comment'].split.size >= 45 || value['comment'].match?(/#\d+|\[\[/)
+
     prose = value['comment'].gsub(/```.*?```|`[^`]*`/m, '')
     raise ArgumentError if prose.scan(/[.!?]+(?:\s|$)/).size > 2
   end
@@ -127,7 +128,7 @@ module RelatedIssues # :nodoc:
       mutate('closeDiscussion', discussionId: item.fetch('id'), reason: 'DUPLICATE')
     else
       mutate('closeIssue', issueId: item.fetch('id'), stateReason: 'DUPLICATE',
-                          duplicateIssueId: @related_snapshot.fetch('id'))
+                           duplicateIssueId: @related_snapshot.fetch('id'))
     end
   end
 end

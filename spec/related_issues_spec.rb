@@ -21,7 +21,10 @@ RSpec.describe 'Related issue assessment' do
   end
   let(:catalog) { [{ 'number' => 42, 'title' => candidate['title'] }, { 'number' => 123, 'title' => item['title'] }] }
   let(:selection) { { 'labels' => [], 'reply' => nil, 'files' => [], 'related_issue' => 42 } }
-  let(:comparison) { { 'relationship' => 'duplicate', 'comment' => 'Both reports describe the selected theme resetting after a restart.' } }
+  let(:comparison) do
+    { 'relationship' => 'duplicate',
+      'comment' => 'Both reports describe the selected theme resetting after a restart.' }
+  end
   let(:prompts) { [] }
   let(:mutations) { [] }
 
@@ -70,7 +73,7 @@ RSpec.describe 'Related issue assessment' do
     expect(prompts.first).to include('Open issues: {"42":"Persist theme across restarts"}')
     expect(prompts.last).to include(candidate['body'], 'Also reproduced with a light theme.')
     expect(assessment).to have_received(:github).with('graphql', query: include('states: OPEN', 'first: 100'),
-                                                               variables: { owner: 'owner', name: 'project' }).once
+                                                                 variables: { owner: 'owner', name: 'project' }).once
     expect(comment).to start_with('See also #42. Both reports')
     expect(operations).to eq(%w[addComment addReaction])
   end
@@ -92,7 +95,8 @@ RSpec.describe 'Related issue assessment' do
       selection['related_issue'] = nil
       assessment.run
       expect(prompts.size).to eq(1)
-      expect(assessment).not_to have_received(:github).with('graphql', query: include('issues(first:'), variables: anything)
+      expect(assessment).not_to have_received(:github).with('graphql', query: include('issues(first:'),
+                                                                       variables: anything)
     end
   end
 
@@ -125,7 +129,11 @@ RSpec.describe 'Related issue assessment' do
     end
 
     it 'leaves related reports open and explains their difference' do
-      comparison.replace('relationship' => 'related', 'comment' => 'Both concern theme settings, but this report concerns restarting rather than switching themes.')
+      comparison.replace(
+        'relationship' => 'related',
+        'comment' => ['Both concern theme settings, but this report concerns restarting',
+                      'rather than switching themes.'].join(' ')
+      )
       assessment.run
       expect(comment).to start_with('See also #42.')
       expect(operations).to eq(%w[addComment addReaction])
@@ -171,7 +179,7 @@ RSpec.describe 'Related issue assessment' do
 
     it 'does not mark the assessment complete when closure fails' do
       allow(assessment).to receive(:github).with('graphql', query: include('closeIssue(input:'), variables: anything)
-                                         .and_raise('GitHub request failed')
+                                           .and_raise('GitHub request failed')
       expect { assessment.run }.to raise_error('GitHub request failed')
       expect(comment).to start_with('Duplicate of #42.')
       expect(operations).not_to include('addReaction')
@@ -249,8 +257,9 @@ RSpec.describe 'Related issue assessment' do
   end
 
   it 'skips a candidate that is no longer accessible' do
-    allow(assessment).to receive(:github).with('graphql', query: anything, variables: { owner: 'owner', name: 'project', number: 42 })
-                                       .and_return({ 'data' => { 'repository' => { 'issue' => nil } } })
+    allow(assessment).to receive(:github).with('graphql', query: anything,
+                                                          variables: { owner: 'owner', name: 'project', number: 42 })
+                                         .and_return({ 'data' => { 'repository' => { 'issue' => nil } } })
     assessment.run
     expect(prompts.size).to eq(1)
     expect(mutations).to be_empty
@@ -291,7 +300,8 @@ RSpec.describe 'Related issue assessment' do
     second.run
     expect(prompts).to be_empty
     expect(comment).to include('cached response; 0 new model tokens')
-    expect(assessment).to have_received(:github).with('graphql', query: anything,
-                                                              variables: { owner: 'owner', name: 'project', number: 42 }).exactly(4).times
+    expect(assessment).to have_received(:github).with(
+      'graphql', query: anything, variables: { owner: 'owner', name: 'project', number: 42 }
+    ).exactly(4).times
   end
 end

@@ -42,8 +42,9 @@ RSpec.describe IssueAssessment, type: :task do
                                                                         files: []))
 
     assessment.run
-    expect(assessment).to have_received(:mutate).with('addComment', subjectId: 'report-id',
-                                                                    body: start_with('Which RubyLLM version are you using?' + "\n\n"))
+    expect(assessment).to have_received(:mutate).with(
+      'addComment', subjectId: 'report-id', body: start_with("Which RubyLLM version are you using?\n\n")
+    )
   end
 
   context 'with a discussion' do
@@ -55,8 +56,9 @@ RSpec.describe IssueAssessment, type: :task do
       allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: 'provider', files: []))
 
       assessment.run
-      expect(assessment).to have_received(:mutate).with('addDiscussionComment', discussionId: 'report-id',
-                                                                                body: start_with('Which provider are you using?' + "\n\n"))
+      expect(assessment).to have_received(:mutate).with(
+        'addDiscussionComment', discussionId: 'report-id', body: start_with("Which provider are you using?\n\n")
+      )
     end
 
     it 'rejects labels' do
@@ -245,7 +247,7 @@ RSpec.describe IssueAssessment, type: :task do
 
       expect(assessment).to have_received(:mutate).with(
         'addComment', subjectId: 'report-id',
-                      body: start_with('Define execute on your tool class. See [the guide](https://rubyllm.com/tools/).' + "\n\n")
+                      body: start_with("Define execute on your tool class. See [the guide](https://rubyllm.com/tools/).\n\n")
       )
     end
 

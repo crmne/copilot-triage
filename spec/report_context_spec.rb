@@ -4,7 +4,9 @@ require_relative '../lib/assessment'
 
 RSpec.describe 'Report context' do
   let(:config) { YAML.safe_load_file('triage.yml') }
-  let(:environment) { { 'GITHUB_REPOSITORY' => 'crmne/example', 'TRIAGE_NUMBER' => '1', 'TRIAGE_CONFIG' => 'triage.yml' } }
+  let(:environment) do
+    { 'GITHUB_REPOSITORY' => 'crmne/example', 'TRIAGE_NUMBER' => '1', 'TRIAGE_CONFIG' => 'triage.yml' }
+  end
   let(:assessment) { IssueAssessment.new(environment) }
   let(:item) do
     { 'id' => 'report-id', 'title' => 'Follow system does not update', 'body' => 'A complete report.',
@@ -21,13 +23,13 @@ RSpec.describe 'Report context' do
   end
 
   it 'compacts escaped NUL padding while preserving the surrounding report and log messages' do
-    item['body'] = "Fedora Silverblue, GNOME, Flatpak.\n#{"\\00" * 6000}\nA meaningful error after the padding."
+    item['body'] = "Fedora Silverblue, GNOME, Flatpak.\n#{'\\00' * 6000}\nA meaningful error after the padding."
     original = Marshal.load(Marshal.dump(item))
 
     assessment.run
 
     expect(assessment).to have_received(:ask_copilot).with(include('Fedora Silverblue', '[6000 repeated NUL bytes]',
-                                                                'A meaningful error after the padding.'))
+                                                                   'A meaningful error after the padding.'))
     expect(item).to eq(original)
     expect(assessment).to have_received(:mutate).with('addReaction', anything)
   end
@@ -69,18 +71,21 @@ RSpec.describe 'Report context' do
 
   it 'posts a report-based initial assessment with a single model call' do
     comment = 'The report describes a theme change that does not reach Spotifast. Does restarting the app pick it up?'
-    allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: nil, files: [], comment: comment))
+    allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: nil, files: [],
+                                                                        comment: comment))
 
     assessment.run
 
     expect(assessment).to have_received(:ask_copilot).once
-    expect(assessment).to have_received(:mutate).with('addComment', subjectId: 'report-id', body: start_with(comment + "\n\n"))
+    expect(assessment).to have_received(:mutate).with('addComment', subjectId: 'report-id',
+                                                                    body: start_with("#{comment}\n\n"))
   end
 
   it 'previews an initial assessment without publishing it' do
     environment['TRIAGE_DRY_RUN'] = 'true'
-    allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: nil, files: [],
-                                                                     comment: 'Does restarting the app pick up the theme?'))
+    allow(assessment).to receive(:ask_copilot).and_return(
+      JSON.generate(labels: [], reply: nil, files: [], comment: 'Does restarting the app pick up the theme?')
+    )
 
     assessment.run
 
@@ -91,8 +96,9 @@ RSpec.describe 'Report context' do
   it 'suppresses a generated assessment after a maintainer has answered' do
     item['comments']['nodes'] << { 'body' => 'I found the cause.', 'author' => { 'login' => 'owner' },
                                    'authorAssociation' => 'OWNER' }
-    allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: nil, files: [],
-                                                                     comment: 'Does restarting the app pick up the theme?'))
+    allow(assessment).to receive(:ask_copilot).and_return(
+      JSON.generate(labels: [], reply: nil, files: [], comment: 'Does restarting the app pick up the theme?')
+    )
 
     assessment.run
 
@@ -101,7 +107,8 @@ RSpec.describe 'Report context' do
 
   [false, ['A reply'], 'Read https://example.com', 'See [[lib/ruby_llm/tool.rb]].'].each do |comment|
     it "rejects an invalid report-based assessment: #{comment.inspect}" do
-      allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: nil, files: [], comment: comment))
+      allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: nil, files: [],
+                                                                          comment: comment))
 
       assessment.run
 
@@ -111,7 +118,7 @@ RSpec.describe 'Report context' do
 
   it 'rejects competing reply routes' do
     allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: 'version', files: [],
-                                                                     comment: 'Does restarting pick up the theme?'))
+                                                                        comment: 'Does restarting pick up the theme?'))
 
     assessment.run
 
@@ -146,8 +153,8 @@ RSpec.describe 'Report context' do
       item['author'] = { '__typename' => 'Bot', 'login' => 'honeybadger' }
       environment.merge!('GITHUB_EVENT_NAME' => 'issue_comment', 'GITHUB_EVENT_PATH' => 'event.json')
       File.write('event.json', JSON.generate(action: 'created', issue: { number: 1, state: 'open' },
-                                           sender: { type: 'Bot', login: 'honeybadger[bot]' },
-                                           comment: { user: { type: 'Bot', login: 'honeybadger[bot]' } }))
+                                             sender: { type: 'Bot', login: 'honeybadger[bot]' },
+                                             comment: { user: { type: 'Bot', login: 'honeybadger[bot]' } }))
 
       assessment.run
 
