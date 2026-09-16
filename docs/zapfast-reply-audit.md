@@ -40,7 +40,7 @@ prompt still allowed report-based assessments. Exact-text deduplication missed
 rephrased repeats, and the latest-human-comment check allowed another reply after
 every human update.
 
-## Changes implemented locally in Copilot Triage
+## Changes in Copilot Triage v0.5.0
 
 - Preserve one useful initial recap of a long or scattered newly opened issue.
   Short clear requests may need only labels; no forced next check or question.
@@ -72,9 +72,8 @@ every human update.
 
 ## Adoption and remaining limits
 
-The changes are local to Copilot Triage. ZapFast's workflow and live issues were
-not changed. To adopt them, publish the action changes and update ZapFast's pinned
-SHA and project policy together. Allow one useful initial recap, remove the mandatory next-check text
+Adopt the action and project policy together by updating the pinned SHA. Allow
+one useful initial recap, remove the mandatory next-check text
 and the old instruction to leave all duplicate handling to the maintainer. Set
 `duplicates: close` to enable closure of confirmed duplicates under the existing
 safeguards. Preview representative reports before enabling posting with the new
@@ -92,5 +91,10 @@ lookups cover the latest 20 releases and 30 recently updated closed issues, not
 the entire project history. Necessary versus unnecessary questions and the
 accuracy of source-based claims still depend on model judgment. Offline replay
 checks the controls and positive reply paths, not fresh model quality or latency.
-The live evaluation runner needs a dedicated Copilot token; it was not run during
-this implementation. No measured model-quality or speed improvement is claimed.
+Live fixture evaluations were run through Actions with the repository's dedicated
+Copilot token, without publishing comments or closing issues. They exposed missed
+helpful replies as well as unnecessary questions. The fixes include structured
+CLI output, preserving sentence context in source hints, clearer duplicate routing,
+and enforcing clarification eligibility outside the prompt. Low reasoning is now
+the default; none remains configurable. These small synthetic evaluations are
+regression checks, not a broad quality guarantee or a production speed benchmark.

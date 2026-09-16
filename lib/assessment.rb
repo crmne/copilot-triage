@@ -289,7 +289,9 @@ class IssueAssessment # :nodoc:
       is welcome when it condenses a long or scattered report into the problem,
       relevant environment, and key evidence. Summarize only what the report says;
       preserve the key measurements and versions that distinguish the behavior.
-      do not fetch sources merely to summarize. Do not invent a next check.
+      Prefer this recap for a long new report unless a catalog already points to
+      useful help or a duplicate. Do not search merely because it mentions a version.
+      Do not fetch sources merely to summarize. Do not invent a next check.
       A short clear request may need only labels.
     POLICY
   end
@@ -412,14 +414,14 @@ class IssueAssessment # :nodoc:
       fix, or useful issue link. No follow-up recaps, acknowledgements, speculative next checks,
       implementation tasks, promises, or claims of reproduction. Progress updates,
       thanks, and complaints about the bot normally need no reply.
-      Before choosing silence or a recap, check whether useful help is available:
+      Before choosing silence, check whether useful help is available:
       - First, a plausible open issue: request a comparison before a release search;
         titles alone are not proof, which is why you should compare the reports.
       - A feature or platform request: inspect relevant docs for existing support
         or product policy before leaving an unanswered product decision to a maintainer.
       - An essential missing diagnostic detail: ask one focused question, including
         when a new error or regression is reported without a question mark.
-      - Otherwise, a bug on a specific version: search release notes for a matching fix.
+      - A short bug report on a specific version: search release notes for a matching fix.
       Do not search merely because a version was supplied in answer to your own
       question, or for repeated measurements without a new problem. Useful help
       takes priority over a recap. Short clear reports can still deserve answers.
@@ -439,11 +441,14 @@ class IssueAssessment # :nodoc:
       - reply: a relevant configured reply key.
       - comment: one essential missing-information question, ending in ?, no recap.
         On the first issue assessment only, it may instead be a useful initial recap.
+        A recap contains only report facts, never answers inferred from source hints.
         Under 60 words; no URLs, citations, mentions, HTML, headings, or em dashes.
       - related_issue: a listed number worth comparing, even after an old bot reply.
         This reads and compares that OPEN issue. Do not use resolved_issues to
         compare numbers in Open issues. Titles never prove duplication. Skip already-linked reports.
       - files: at most two listed paths (48 KB total) for an evidence-based answer.
+        Source hints help select files; policy and technical answers must use this
+        route or lookup for a verified citation, not the report-only comment route.
       - lookup: up to two read-only tool requests in an array, for example
         [{"tool":"releases","query":"Windows inline images"}] (query at most 200 bytes).
         Allowed tools: docs, releases, resolved_issues. Use docs to search
