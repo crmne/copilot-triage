@@ -43,7 +43,8 @@ stop request, Zapfast #46's already-implemented forwarding, a useful initial rec
 updates, an already answered question, a clear feature
 request, an essential missing error, documented policy, a technical answer,
 release evidence, a new regression without a question mark, and a confirmed
-duplicate. Release and documentation details are synthetic fixtures, not claims
+duplicate, including a closed canonical request inspired by Spotifast #500.
+Release and documentation details are synthetic fixtures, not claims
 about actual ZapFast releases.
 
 The new-regression case requires assessment, not a manufactured question: either

@@ -336,3 +336,38 @@
     related_issue:
     relationship:
     mute: false
+- id: spotifast-500-closed-duplicate
+  title: Smart Shuffle recommendations
+  body: Please add Smart Shuffle recommendations, which mix suggested songs into a playlist.
+  candidate:
+    node_id: candidate-42
+    number: 42
+    title: Smart shuffle
+    body: Please add Smart Shuffle recommendations, which mix suggested songs into a playlist.
+    state: closed
+    state_reason: not_planned
+    comments: 0
+    html_url: https://github.com/example/project/issues/42
+  expected:
+    action: duplicate
+    allowed_actions:
+    - duplicate
+    - reply
+    contains:
+    - shuffle
+    max_calls: 8
+    min_calls: 1
+    min_evidence_reads: 1
+  tools:
+  - name: read_evidence
+    arguments:
+      reference: issue:42
+  decision:
+    labels:
+    - enhancement
+    reply:
+    comment: Both requests ask for Smart Shuffle recommendations mixed into a playlist.
+    sources: []
+    related_issue: 42
+    relationship: duplicate
+    mute: false

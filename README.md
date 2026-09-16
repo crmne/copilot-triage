@@ -223,11 +223,12 @@ components, platforms, and requirements remain separate unless the evidence
 establishes a duplicate. Model judgments can still be wrong; use `suggest` when
 you want to review every closure yourself.
 
-Issue duplicates close only against an older open issue, preventing reciprocal
-closures. Discussions can close in favor of an open issue. Maintainer-authored
+Issue duplicates close only against an older issue, preventing reciprocal
+closures. Open and closed issues can be targets; a closed issue alone does not
+prove that a fix shipped. Discussions can close in favor of an issue. Maintainer-authored
 reports, reopened issues, and reports with a maintainer among the recent comments
 are linked without automatic closure. Both reports are fetched again before any
-changes; changed or closed candidates invalidate the assessment.
+changes; changed candidates invalidate the assessment.
 
 ### Tools
 

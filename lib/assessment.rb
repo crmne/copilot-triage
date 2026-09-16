@@ -561,7 +561,7 @@ class IssueAssessment # :nodoc:
       entry = @tool_ledger.fetch('evidence')["issue:#{number}"]
       raise ArgumentError unless number.is_a?(Integer) && number.positive? && duplicate_mode != 'off' &&
                                  %w[related duplicate].include?(decision['relationship']) && decision['comment'] &&
-                                 entry && entry['complete'] && entry.dig('snapshot', 'state') == 'open'
+                                 entry && entry['complete']
       raise ArgumentError if @kind == 'issue' && number == @number
     elsif decision['relationship']
       raise ArgumentError

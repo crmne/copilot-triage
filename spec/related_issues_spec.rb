@@ -102,9 +102,46 @@ RSpec.describe 'Agent-selected related issues and guarded publishing' do
     expect(assessment).not_to have_received(:mutate)
   end
 
-  it 'rejects closing against itself, a closed candidate, or disabled duplicate policy' do
+  it 'closes an exact duplicate of an older closed issue, including a previously declined feature' do
+    item['title'] = 'Smart Shuffle recommendations'
+    item['body'] = 'Please add Spotify Smart Shuffle recommendations.'
+    candidate['title'] = 'Smart shuffle'
+    candidate['body'] = 'Please add Spotify Smart Shuffle recommendations. Declined: plain shuffle only.'
     candidate['state'] = 'closed'
+    decision[:comment] = 'Both requests ask for Spotify Smart Shuffle recommendations, previously declined.'
+
     assessment.run
+
+    expect(assessment).to have_received(:mutate).with('addComment',
+                                                      hash_including(body: start_with('Duplicate of #42.')))
+    expect(assessment).to have_received(:mutate).with(
+      'closeIssue', issueId: 'current-id', stateReason: 'DUPLICATE', duplicateIssueId: 'candidate-id'
+    )
+  end
+
+  it 'can link a closed related issue without closing the current report' do
+    candidate['state'] = 'closed'
+    decision[:relationship] = 'related'
+
+    assessment.run
+
+    expect(assessment).to have_received(:mutate).with('addComment', hash_including(body: start_with('See also #42.')))
+    expect(assessment).not_to have_received(:mutate).with('closeIssue', anything)
+  end
+
+  it 'still rejects itself as the target' do
+    assessment.instance_variable_set(:@number, 42)
+
+    assessment.run
+
+    expect(assessment).not_to have_received(:mutate)
+  end
+
+  it 'still respects disabled duplicate actions' do
+    assessment.instance_variable_get(:@config)['duplicates'] = 'off'
+
+    assessment.run
+
     expect(assessment).not_to have_received(:mutate)
   end
 
