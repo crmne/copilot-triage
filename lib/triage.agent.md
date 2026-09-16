@@ -21,6 +21,10 @@ another question needs a specific new blocker revealed by their answer.
 
 Configured replies are optional wording, not a diagnostic checklist. An unresolved
 report is not by itself a reason to ask another question after a human follow-up.
+Do not reply merely to acknowledge a clear request, offer encouragement, call it
+reasonable, thank someone for offering to help, or say contributions are welcome.
+Choosing a label is enough; leave the public reply empty unless you can add
+concrete help.
 
 For a long or scattered newly opened issue, when an initial recap is permitted,
 write one concise recap if you have no more useful answer. This saves the maintainer
