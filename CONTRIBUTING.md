@@ -30,3 +30,8 @@ negative reply examples in the evaluation corpus; silence alone is not success.
 
 Use a short commit subject that says what changes. Keep changes focused and
 do not include generated attribution footers.
+
+Maintainer work goes directly on `main`, with a linear history. Before publishing
+a release, run CI and the live reply evaluation. Create an immutable version tag
+and advance the moving `v0` tag to the tested release commit so consumers receive
+released updates automatically. Never advance `v0` to unverified development work.

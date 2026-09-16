@@ -89,6 +89,7 @@ class TriageTools
 
     @ledger['calls'] += 1 unless name == 'submit_decision'
     validate_arguments(name, arguments)
+    (@ledger['trace'] ||= []) << { 'tool' => name, 'arguments' => arguments } unless name == 'submit_decision'
     result = public_send(name, **arguments.transform_keys(&:to_sym))
     text = JSON.generate(result)
     raise ArgumentError, 'Result too large; narrow the request.' if text.bytesize > MAX_RESULT_BYTES

@@ -87,7 +87,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: crmne/copilot-triage@v0.6.0
+      - uses: crmne/copilot-triage@v0
         with:
           copilot-token: ${{ secrets.COPILOT_GITHUB_TOKEN }}
 ```
@@ -98,8 +98,9 @@ to that branch before enabling the workflow. It requires the Ruby, Node.js,
 GitHub CLI, Git, and `timeout` commands provided by GitHub's Ubuntu runners.
 There is no runtime gem dependency or provider API key.
 
-Pin the action to a full commit SHA for an immutable version. Update that
-reference to adopt a release; the implementation stays in this repository.
+The `v0` tag tracks tested v0 releases, so consuming repositories update
+automatically. Use a full commit SHA instead when you need an immutable version.
+The `main` branch contains development work, not just released versions.
 Keep project-specific policy in your repository.
 
 ### Preview a report

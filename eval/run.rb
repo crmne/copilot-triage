@@ -6,7 +6,7 @@ require_relative 'tool_server'
 
 # Uses fixture GitHub data and never publishes. Only --live contacts the model.
 class TriageEvaluation < IssueAssessment
-  attr_reader :metrics, :decision, :model_responses
+  attr_reader :metrics, :decision, :model_responses, :tool_ledger
 
   def initialize(environment, example, replay:)
     super(environment)
@@ -138,7 +138,8 @@ results = cases.map do |example|
                end) &&
                (alternatives.empty? || alternatives.any? { |text| content.include?(text.to_s.downcase) })
       { id: example.fetch('id'), passed: passed, expected: expected['action'], allowed_actions: actions, actual: action,
-        reply: body, metrics: metrics, model_responses: runner.model_responses }
+        reply: body, metrics: metrics, model_responses: runner.model_responses,
+        tool_calls: runner.tool_ledger.fetch('trace', []) }
     end
   end
 end
