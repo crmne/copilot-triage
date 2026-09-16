@@ -432,7 +432,7 @@ class IssueAssessment # :nodoc:
         'COPILOT_GITHUB_TOKEN' => @environment.fetch('COPILOT_GITHUB_TOKEN'),
         'COPILOT_HOME' => directory, 'GH_TOKEN' => nil, 'GITHUB_TOKEN' => nil
       }
-      output, _errors, status = Open3.capture3(
+      output, errors, status = Open3.capture3(
         environment, 'timeout', '--kill-after=5s', '90s', 'copilot',
         '--model', @environment.fetch('TRIAGE_MODEL', 'gpt-5.6-luna'),
         "--reasoning-effort=#{reasoning_effort}", '--agent=triage', '--excluded-tools=skill,sql',
@@ -450,6 +450,12 @@ class IssueAssessment # :nodoc:
         @copilot_failure_reason = "Copilot unavailable (exit #{status.exitstatus}; " \
                                   "evidence calls #{@tool_ledger&.fetch('calls', 0) || 0}; " \
                                   "ledger present #{File.file?(ledger_path)})"
+        details = errors.strip
+        %w[GH_TOKEN GITHUB_TOKEN COPILOT_GITHUB_TOKEN].each do |key|
+          token = @environment[key]
+          details = details.gsub(token, '[REDACTED]') if token && !token.empty?
+        end
+        @copilot_failure_reason += "; #{details[0, 500]}" unless details.empty?
         report("Copilot produced no submitted decision: #{@copilot_failure_reason}.")
         next
       end

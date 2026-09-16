@@ -143,6 +143,23 @@ RSpec.describe TriageTools do
     expect(tools.ledger).not_to have_key('decision')
   end
 
+  it 'explains rejected arguments so the agent can correct a read' do
+    result = tools.call('read_evidence', { 'reference' => 'file:docs/tools.md', 'maxLength' => 6000 })
+    expect(result).to include(isError: true)
+    expect(result[:content].first[:text]).to include('Unknown arguments: maxLength',
+                                                     'Allowed arguments: reference, offset')
+    expect(call('read_evidence', reference: 'file:docs/tools.md')['content']).to include('Define `execute`')
+  end
+
+  it 'keeps submission open when the proposed duplicate has not been read' do
+    decision = { 'labels' => [], 'reply' => nil, 'comment' => 'Both reports describe the same failure.',
+                 'sources' => [], 'related_issue' => 42, 'relationship' => 'duplicate', 'mute' => false }
+    result = tools.call('submit_decision', decision)
+    expect(result).to include(isError: true)
+    expect(result[:content].first[:text]).to include('Read issue:42 completely')
+    expect(tools.ledger).not_to have_key('decision')
+  end
+
   it 'uses standard MCP initialization, listing, and tool calls over stdio' do
     requests = [
       { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05' } },

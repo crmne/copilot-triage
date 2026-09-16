@@ -38,6 +38,7 @@ class TriageTools
                    'Use the exact reference returned by a search, e.g. file:docs/guide.md, issue:42, release:123. ' \
                    'Returns at most 6 KB of text, a citation reference, and next_offset when more remains. ' \
                    'offset is a byte offset; repository search supplies offsets near matches. ' \
+                   'Page size is fixed: pass only reference and optional offset, not a length or limit. ' \
                    'Only references read with this tool may be cited in the final decision.',
       properties: { reference: { type: 'string', maxLength: 400 }, offset: { type: 'integer', minimum: 0 } },
       required: ['reference']
@@ -187,6 +188,14 @@ class TriageTools
     sources = decision.fetch(:sources)
     raise ArgumentError, 'Read the cited references first.' unless (sources - @ledger['evidence'].keys).empty?
 
+    if decision[:related_issue]
+      reference = "issue:#{decision[:related_issue]}"
+      entry = @ledger['evidence'][reference]
+      unless entry && entry['complete']
+        raise ArgumentError, "Read #{reference} completely with read_evidence before submitting an issue relationship."
+      end
+    end
+
     references = decision[:comment].to_s.scan(/\[\[([^\]]+)\]\]/).flatten
     raise ArgumentError, 'Citations must match sources.' unless references.uniq.sort == sources.uniq.sort
 
@@ -243,14 +252,22 @@ class TriageTools
   def validate_arguments(name, arguments)
     schema = SCHEMAS.fetch(name) { raise ArgumentError, 'Unknown tool.' }
     properties = schema.fetch(:properties).transform_keys(&:to_s)
-    raise ArgumentError, 'Invalid tool arguments.' unless arguments.is_a?(Hash) &&
-                                                          (arguments.keys - properties.keys).empty? &&
-                                                          (schema.fetch(:required) - arguments.keys).empty?
+    raise ArgumentError, 'Tool arguments must be an object.' unless arguments.is_a?(Hash)
+
+    unknown = arguments.keys - properties.keys
+    unless unknown.empty?
+      raise ArgumentError, "Unknown arguments: #{unknown.join(', ')}. Allowed arguments: #{properties.keys.join(', ')}."
+    end
+
+    missing = schema.fetch(:required) - arguments.keys
+    raise ArgumentError, "Missing required arguments: #{missing.join(', ')}." unless missing.empty?
 
     arguments.each do |key, value|
       type = properties.fetch(key)
       valid = Array(type[:type]).any? { |name| valid_type?(name, value, type) }
-      raise ArgumentError, "Invalid #{key}." unless valid && (!type[:enum] || type[:enum].include?(value))
+      next if valid && (!type[:enum] || type[:enum].include?(value))
+
+      raise ArgumentError, "Invalid #{key}; expected #{JSON.generate(type)}."
     end
   end
 
