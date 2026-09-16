@@ -61,6 +61,26 @@ RSpec.describe 'Issue assessment Copilot integration', type: :task do
     expect(assessment.instance_variable_get(:@tool_ledger).fetch('evidence')).to have_key('file:docs/forwarding.md')
   end
 
+  context 'when the tool server starts slowly' do
+    let(:steps) { [] }
+
+    it 'provides the tools on the first model request' do
+      assessment = IssueAssessment.new('GITHUB_REPOSITORY' => 'crmne/zapfast', 'TRIAGE_NUMBER' => '46',
+                                       'COPILOT_GITHUB_TOKEN' => 'offline-test', 'TRIAGE_CONFIG' => 'triage.yml')
+      allow(assessment).to receive(:puts)
+      allow(assessment).to receive(:tools_command).and_wrap_original do |method, path|
+        ruby, script, settings = method.call(path)
+        [ruby, '-e', 'sleep 2; $0 = ARGV.shift; load $0', script, settings]
+      end
+
+      assessment.send(:ask_copilot, 'Assess the report and submit your decision.')
+
+      names = requests.first.fetch('tools', []).map { |tool| tool.dig('function', 'name') }
+      expect(names.size).to eq(5)
+      expect(names.join(' ')).to include('submit_decision')
+    end
+  end
+
   context 'when the model emits JSON as final text instead of calling submit_decision' do
     let(:steps) { [] }
     let(:final_text) { JSON.generate(decision) }

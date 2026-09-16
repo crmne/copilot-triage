@@ -448,7 +448,8 @@ class IssueAssessment # :nodoc:
       settings_path = File.join(directory, 'tools.json')
       File.write(settings_path, JSON.generate(tools_settings(directory)), perm: 0o600)
       command, *args = tools_command(settings_path)
-      mcp = { mcpServers: { triage: { type: 'stdio', command: command, args: args, tools: ['*'] } } }
+      mcp = { mcpServers: { triage: { type: 'stdio', command: command, args: args, tools: ['*'],
+                                      deferTools: 'never' } } }
       environment = {
         'COPILOT_GITHUB_TOKEN' => @environment.fetch('COPILOT_GITHUB_TOKEN'),
         'COPILOT_HOME' => directory, 'GH_TOKEN' => nil, 'GITHUB_TOKEN' => nil
