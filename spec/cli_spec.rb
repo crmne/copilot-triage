@@ -40,6 +40,8 @@ RSpec.describe 'Issue assessment Copilot integration', type: :task do
     expect(names.size).to eq(5)
     expect(names.join(' ')).to include('search_repository', 'search_issues', 'list_releases', 'read_evidence',
                                        'submit_decision')
+    instructions = requests.first.fetch('messages').find { |message| message['role'] == 'system' }.to_json
+    expect(instructions).to include('Your task is to submit a publishing decision', 'Project policy:')
   end
 
   it 'lets the agent search, refine its query, read evidence, and answer in one native session' do

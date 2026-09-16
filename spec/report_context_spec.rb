@@ -50,6 +50,29 @@ RSpec.describe 'Report context' do
     expect(assessment).to have_received(:ask_copilot).with(include(JSON.generate(item['body'])))
   end
 
+  it 'separates the triggering comment from the original report and earlier conversation' do
+    earlier = { 'body' => 'Which OS?', 'author' => { 'login' => 'github-actions' } }
+    latest = { 'body' => 'Fedora 43', 'author' => { 'login' => 'reporter' } }
+    item['comments']['nodes'] = [earlier, latest]
+    original = Marshal.load(Marshal.dump(item))
+
+    context = JSON.parse(assessment.send(:report_context, item))
+
+    expect(context['latest_comment']).to eq(latest)
+    expect(context['earlier_comments']).to eq([earlier])
+    expect(context['body']).to eq(item['body'])
+    expect(item).to eq(original)
+  end
+
+  it 'identifies follow-up assessments by event metadata, not comment wording' do
+    environment['GITHUB_EVENT_NAME'] = 'issue_comment'
+    assessment.instance_variable_set(:@state, ConversationState.new(nil, 'test'))
+
+    prompt = assessment.send(:build_prompt, item, [])
+
+    expect(prompt).to include('follow-up: assess the latest_comment, not the original report again')
+  end
+
   it 'keeps the input budget for large reports without repeated padding' do
     item['body'] = 'Important log data. ' * 2000
 
@@ -133,7 +156,7 @@ RSpec.describe 'Report context' do
 
   it 'puts conversational judgment in the system prompt, not keyword filters' do
     prompt = assessment.send(:system_prompt)
-    expect(prompt).to include('Do not recap every comment', 'use judgment', 'check the docs',
+    expect(prompt).to include('Do not recap every comment', 'Use judgment', 'check the docs',
                               'submit_decision', 'untrusted evidence')
   end
 
