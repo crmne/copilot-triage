@@ -5,7 +5,7 @@
 Copilot Triage is a small alternative to **GitHub Agentic Workflows** for issues
 and discussions, built for [RubyLLM](https://github.com/crmne/ruby_llm) and
 [Spotifast](https://github.com/crmne/spotifast). A small Ruby program, a cheap model,
-and cached answers. Read the report, help the person, get out of the way.
+a system prompt, and scoped tools. Read the report, help the person, get out of the way.
 
 ## Why this exists
 
@@ -31,51 +31,24 @@ So we removed the platform and kept the job.
 
 ## Small on purpose
 
-One prompt chooses labels and whether a reply would help. A technical
-question or possible duplicate can use one more prompt with the relevant evidence.
-Ruby validates the result and calls GitHub's API. That's the whole approach.
+One agent, a [system prompt](lib/triage.agent.md), and
+[small read-only tools](lib/triage_tools.rb). Copilot chooses what to search,
+reads evidence, and decides whether to help. There are no separate classifier,
+answer, or duplicate-comparison model calls, and no keyword-based conversation
+gates. Ruby validates and publishes the agent's structured decision.
 
-```ruby
-item, labels = read_report
-decision = assess(item, labels)
-publish(item, labels, decision)
-```
+- Use your existing Copilot subscription. The default model remains `gpt-5.6-luna`.
+- Let the agent investigate with repository search, issue search, releases, and
+  paged evidence reads. Results are bounded; the model can refine its own query.
+- Keep replies useful: answers, essential questions, policy, released fixes,
+  duplicates, and one helpful initial recap. Do not recap every follow-up.
+- Keep failures in job summaries, never new failure tickets or bot apologies.
+- Keep the runtime Ruby standard-library only. Copilot owns the agent loop;
+  the small MCP server exposes tools, not another orchestration framework.
 
-- **Use the Copilot subscription you already pay for.** The default is
-  `gpt-5.6-luna`. Change the model if you want. Keep one billing account.
-- **Spend tokens on the report.** One prompt for triage, one optional prompt for
-  a technical answer or duplicate comparison. The model can request bounded
-  documentation, release, and resolved-issue searches through its JSON decision.
-  Ruby performs those reads; there is no open-ended agent loop.
-- **Reuse the answer.** An identical validated prompt comes from cache with
-  zero model calls. New comments and changed source material are considered.
-- **Give people useful replies.** A missing detail gets one short question.
-  A long new issue can get one concise recap. Follow-ups bring supported answers,
-  workarounds, released fixes, policies, or useful issue links, not more recaps.
-  Short clear requests can be labeled silently.
-- **Keep the bot's problems out of your issues.** Model failures go in the job
-  summary. They don't become a new ticket or a string of failure comments.
-- **Read the code yourself.** [Assessment](lib/assessment.rb) and
-  [issue comparison](lib/related_issues.rb), using the
-  standard library. Your repository keeps a small policy file and calls a
-  shared action. Fix it once, reuse it everywhere.
-
-Here is what we replaced in RubyLLM:
-
-| | Our GitHub Agentic Workflows setup | Copilot Triage |
-| --- | --- | --- |
-| Workflow | 2,035 generated YAML lines plus a Markdown definition | A small caller and shared Ruby code |
-| Model work | Sonnet 5 assessment plus Haiku 4.5 detection | Luna triage plus one optional evidence prompt |
-| GitHub access | Agent tools behind a gateway, followed by safe-output jobs | Ruby validates the decision and makes the API calls |
-| Reassessment | Agent-driven investigation | Cached responses when the prompt is unchanged |
-| Model failures | Bot-created issues and detector comments | Job summary |
-
-Those are differences in scope and machinery, not a claim of identical answer
-quality. This supplies five recent comments, remembered questions, and bounded
-evidence excerpts or one candidate issue. Uncertain answers stay with a maintainer. We have not yet
-benchmarked live answer quality or end-to-end cost against the old workflow.
-
-**Issue triage can be this simple.**
+Unit tests cover boundaries and publishing. Offline tool integration tests use
+the real Copilot CLI with a fake provider; they do not establish model quality.
+The [evaluation corpus](eval/README.md) covers both required help and silence.
 
 ## Use it
 
@@ -114,13 +87,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: crmne/copilot-triage@v0.5.0
+      - uses: crmne/copilot-triage@v0.6.0
         with:
           copilot-token: ${{ secrets.COPILOT_GITHUB_TOKEN }}
 ```
 
-The action checks out your repository's **default branch**, restores cached
-responses, installs Copilot CLI, and runs the assessment. Commit the configuration
+The action checks out your repository's **default branch**, restores conversation
+state, installs Copilot CLI, and runs the assessment. Commit the configuration
 to that branch before enabling the workflow. It requires the Ruby, Node.js,
 GitHub CLI, Git, and `timeout` commands provided by GitHub's Ubuntu runners.
 There is no runtime gem dependency or provider API key.
@@ -156,7 +129,7 @@ Then add these inputs alongside `copilot-token` on the action step:
 Also add `|| inputs.number` to the concurrency group's number expression and
 `inputs.kind ||` before its kind expression. A manual run shows its decision
 in the job summary without changing GitHub. It can preview closed reports.
-Uncached prompts still consume Copilot credits.
+Previews consume Copilot credits.
 
 ## Replies
 
@@ -167,17 +140,16 @@ invented next check or a question to justify posting it.
 
 After that, replies must add new help, not summarize each comment. One essential
 missing fact can get one direct question, without an introductory summary.
-Ruby permits report-only summaries only on the first assessment of an opened
-issue; other generated report-only comments must be a single question. It also
-suppresses common recap and generic next-check wording in sourced answers.
-Answers, workarounds, and project policies use configured replies or supplied docs
-and source. A claim that something was fixed in a particular release requires
-explicit release documentation; code on the default branch does not establish it.
-Include your changelog in `sources` when it records published fixes. Technical
-answers use the supplied docs or source,
-with a short example when useful and verified links placed inside the reply.
-The answer stays under 60 words and at most three sentences, with no headings,
-tables, em dashes, or generic status summaries.
+The agent decides whether a recap, question, answer, or silence is appropriate.
+These are prompt policies, not regular expressions that classify human wording.
+A feature request may already be implemented; the agent should check rather than
+automatically assume that it needs development. For example:
+
+> Forwarding is already available: right-click the message or picture, choose Forward, then select the destination chat.
+
+Answers should be concise, normally under 60 words. Learned facts use citations
+to evidence the agent actually read. A released-fix claim needs release evidence,
+not just code on the default branch or a closed issue.
 
 For example, a reply might be:
 
@@ -188,8 +160,7 @@ For example, a reply might be:
 The figures above are illustrative. Every posted comment includes this compact
 footer, added by Ruby, with the model, measured input/output tokens, and a link
 to the exact run attempt. Counts cover fresh calls in that run, including
-provider-cached input. Cache-only runs say **0 new model tokens**; missing CLI
-usage is reported as unavailable. The footer links the Marketplace listing so
+provider-cached input. Missing CLI usage is reported as unavailable. The footer links the Marketplace listing so
 readers can reuse the action. It does not spend model tokens to write itself.
 
 Or, when the configured documentation establishes it:
@@ -205,31 +176,26 @@ documentation:
 
 `%{name}` is the filename without its extension. The maintainer supplies this
 mapping; the action does not crawl the site. Other citations link to the exact
-Git revision read. Models choose source paths from a catalog and cannot invent
+Git revision read. Only references read through tools can become citations; the wrapper supplies
 links. Source files outside the checkout are excluded.
 
 Each run reads the current report and its latest five comments. A discussion
 comment event reads that thread's parent and latest five replies, including
 threads older than the latest top-level comments. Answers stay in that thread.
-Technical answers can select at most two source files, up to 48 KB combined.
-Files are selected from eight ranked paths with short documentation hints, with at most 6 KB of relevant text
-per file sent to the answer prompt. Long excerpts are marked as incomplete.
-Uncertain answers and product decisions stay with the maintainer. This bounds
-the work; it does not reproduce a full repository
-investigation or guarantee the same answer as a larger agent.
+The model can inspect configured sources on demand, with up to 6 KB of text per
+read and explicit pagination. Search results are previews, not citation evidence.
+Tools never receive an entire repository dump.
 
 The action suppresses ordinary replies when a maintainer or bot commented most
-recently. A manual assessment may add a new related-issue link after a bot reply.
-It checks the report again before publishing and skips if it changed. Successful
+recently. It checks the report again before publishing and skips if it changed. Successful
 assessments get a bot 🎉 reaction. PRs are outside its scope; GitHub's built-in
 Copilot code review is a separate product.
 
 ### Related issues and duplicates
 
-The bot can connect an issue or discussion to an existing open issue. It gets a
-compact catalog of titles first, then reads one candidate's body and latest five
-comments in the optional second call. A title match alone cannot close anything.
-There are still at most two model calls, with no agent search loop.
+The agent can search this repository's open and closed issues and read candidates
+it selects. A duplicate proposal requires reading the full candidate; a search
+title or incomplete preview cannot authorize closure.
 
 Choose the behavior in `.github/triage.yml`:
 
@@ -239,7 +205,7 @@ duplicates: suggest
 
 - `suggest` (default): post a useful issue link and keep the report open.
 - `close`: also close clear duplicates with GitHub's native duplicate reason.
-- `'off'`: do not fetch other issues or compare reports. Keep the quotes in YAML.
+- `'off'`: do not propose duplicate/related-issue actions. Keep the quotes in YAML.
 
 For a clear duplicate with closure enabled:
 
@@ -259,35 +225,37 @@ you want to review every closure yourself.
 Issue duplicates close only against an older open issue, preventing reciprocal
 closures. Discussions can close in favor of an open issue. Maintainer-authored
 reports, reopened issues, and reports with a maintainer among the recent comments
-are linked without automatic closure. A previous bot duplicate comment also
-prevents another automatic closure. Both reports are fetched again before any
+are linked without automatic closure. Both reports are fetched again before any
 changes; changed or closed candidates invalidate the assessment.
 
-The script ranks up to 100 recently created open issues in the same repository
-and supplies at most eight titles, capped at 160 characters and 2 KB combined.
-Duplicate closure still compares one full candidate. It does not search PRs,
-other repositories, or other discussions. Older issues outside that catalog
-are not duplicate candidates.
-These bounds keep duplicate detection useful without making triage an agent loop.
+### Tools
 
-### Evidence requests
+The agent has four retrieval tools and a structured decision tool:
 
-The first decision can request up to two scoped, read-only searches in `lookup`:
+| Tool | What it returns |
+| --- | --- |
+| `search_repository` | Up to ten literal matches with paths, lines, and nearby byte offsets; an empty query lists files |
+| `search_issues` | Up to five same-repository GitHub search results with short body previews |
+| `list_releases` | Five published releases with version, prerelease status, and short notes |
+| `read_evidence` | A paged file, issue with recent comments, or release; up to 6 KB of content |
+| `submit_decision` | A schema-validated proposal for labels, a reply, a related issue, or mute; no GitHub mutation |
 
-```json
-{"lookup":[{"tool":"releases","query":"Windows inline images"}]}
-```
+Tool results are at most 8 KB of serialized JSON, with explicit continuation
+offsets/pages rather than hidden truncation. Files must match configured source
+patterns, resolve inside the checkout, and be no larger than 1 MB. No shell,
+arbitrary URLs, other repositories, or contributor code execution is exposed.
+The agent can make up to 12 evidence calls; submission remains available after
+that budget. Remote reads time out after 15 seconds.
 
-`docs` searches configured source files and returns at most two excerpts.
-`releases` ranks the latest 20 release records; `resolved_issues` ranks the latest
-30 updated closed issues. Each returns at most two records with bounded bodies.
-These requests share the single optional evidence call; they cannot be combined
-with a duplicate comparison or extended into another round of searches.
-If a search is inconclusive, the final call may ask one essential missing-information
-question instead of claiming an answer. Factual answers cite only supplied evidence. Release and resolved-issue records
-are fetched again before publishing; changes invalidate the answer. A closed
-issue is not proof that a fix shipped, and prereleases must not be described as
-stable releases.
+Search uses literal text or GitHub's issue search, not our own relevance ranker.
+The agent chooses search terms and can try again. Read results carry references;
+the wrapper checks cited content again before publishing.
+
+Copilot CLI's JSON output is an event stream, not schema-constrained final
+generation. The agent therefore submits typed arguments through
+`submit_decision`; final assistant prose is never used as a decision.
+This is validated tool output, not a claim of provider-native strict structured
+generation. Invalid tool arguments produce an error the agent can correct.
 
 ### Reports from Honeybadger
 
@@ -306,20 +274,15 @@ source files it may read; keep credentials and customer data out of that input.
 
 ### Follow-up comments
 
-New reports are assessed. Follow-ups use `followups: selective` by default:
-new questions, answers to pending clarifications, and substantive new evidence
-are eligible. New versions, platforms, measurements, errors, regression reports,
-and reproduction steps can qualify without a question mark. Repeated updates
-and simple acknowledgements need no model call. The evidence check uses bounded
-text patterns, so use `/triage` when it misses a useful update, or set
-`followups: all` to assess every eligible human comment. `followups: off` leaves
-only explicit reassessment commands and manual runs.
+Every eligible human update reaches the agent. `followups: selective` and the
+legacy `all` setting both let the agent decide whether a reply helps.
+`followups: off` leaves only explicit reassessment commands and manual runs.
+There are no regexes deciding whether a comment contains a question, an error,
+new evidence, or an acknowledgement.
 
-Bot comments, ordinary maintainer comments, and unmistakable acknowledgements
-are skipped before checkout or CLI installation. A second preflight checks live
-conversation state before installing or restoring Copilot. Anyone can request
-reassessment with `/triage` or `/triage reassess`. These commands still respect
-closed reports and a muted conversation.
+Bot comments and ordinary maintainer comments are skipped before checkout or
+CLI installation. Anyone can request reassessment with `/triage` or
+`/triage reassess`; these commands still respect closed reports and mute state.
 
 Comment runs wait 10 seconds before reading GitHub; set the action input
 `debounce-seconds` between 0 and 60 to change this. If a newer comment exists,
@@ -330,27 +293,21 @@ arriving during inference invalidates that answer; the next run assesses the
 updated conversation.
 Active runs are allowed to finish so publishing cannot be interrupted halfway.
 
-A qualifying human comment usually changes the prompt and costs a model call.
-Processed events are remembered; manual reassessment bypasses that check. Cache
-hits help repeated assessments of unchanged input. Reassessment does not mean
-another public reply: the same response rules apply, and an exact reply already
-present in the recent conversation is not posted again. Ruby also suppresses
-replies with strongly overlapping wording, ignoring attribution changes while
-keeping different versions, commands, source links, and issue numbers distinct.
-This is a wording check, not a guarantee of semantic deduplication.
+Human updates can consume model calls even when the agent correctly stays silent.
+Already-processed events are skipped; explicit reassessment bypasses that check.
+Exact duplicate replies are blocked by code; the agent handles semantic repetition.
 
-An explicit request to stop Copilot or the triage bot, or `/triage mute`, mutes
-that issue or discussion thread without a public acknowledgement. Only a
-maintainer can use `/triage unmute`. Questions, previous replies, pending
-clarifications, maintainer participation, processed updates, and mute state are
-saved between runs. Previews do not change this state.
+`/triage mute` takes effect without inference. The agent recognizes natural-language
+stop requests and records a mute decision without a public acknowledgement. Only
+a maintainer can use `/triage unmute`. Mute state, processed event fingerprints,
+prior replies, and maintainer participation persist in a small Actions cache.
+Previews do not change this state.
 
-State is restored from Actions cache. If evicted, or if comments were missed
-between runs, the script recovers public bot questions and stop/unmute requests
-from up to 500 older comments without sending that history to the model.
-Automatic selective follow-ups pause when that bound leaves history incomplete;
-`/triage` requests an explicit reassessment. Completion of a silent assessment
-cannot be reconstructed after cache eviction, so it may be assessed again.
+When state is evicted or comments were missed, up to 500 older comments can be
+recovered. Unseen history is supplied to the agent, not interpreted with regexes.
+Incomplete or oversized history pauses automatic follow-ups; `/triage` requests
+reassessment but does not bypass the context-size limit. Silent completion cannot
+be recovered after cache eviction, so an unchanged issue may be assessed again.
 
 Existing issues and discussions are not automatically backfilled when you
 install or upgrade the action. Use a manual preview for older reports. If a
@@ -359,45 +316,27 @@ output from a valid decision to stay silent.
 
 ## Cost and caching
 
-The default model is `gpt-5.6-luna` with `reasoning-effort: low`; set `model` to
-change it. `reasoning-effort: none` is available for comparison, but live checks
-found it missed useful initial summaries and duplicate comparisons. These are
-small fixture evaluations, not a general model benchmark. The first prompt
-is limited to 24 KB and the answer or comparison prompt to 64 KB. Long runs of
-repeated NUL bytes in pasted logs become a compact count; surrounding messages
-remain intact.
-Other oversized input is left for a maintainer rather than silently truncated. Copilot adds its own system
-context, so billed input exceeds the text supplied by the script.
+The model remains `gpt-5.6-luna` with `reasoning-effort: low`. Each assessment uses
+one native Copilot session, which may contain multiple model/tool turns. The
+initial task, system prompt, and tool definitions are bounded to 24 KB; tool
+results are bounded separately. Repeated NUL padding in logs is compacted without
+discarding surrounding evidence. Other oversized input is left for a maintainer.
 
-Validated responses are cached through GitHub Actions. The key includes the
-complete prompt, model, reasoning effort, and script version. An unchanged prompt costs **zero
-model calls**. New report text, recent comments, policy, or models change the key.
-Answer keys include source contents, so documentation changes refresh the answer
-while source selection can still be reused. Comparison keys include both reports
-and their recent comments; the first prompt also includes the open-issue catalog.
-A changed catalog may require a new selection call. Cached output is validated again.
+There is one 90-second CLI timeout and no wrapper retry loop. Copilot may retry
+internally. Its 30-AI-credit session limit is a soft fallback ceiling, not an
+expected price; an in-flight response may exceed it.
 
-Response and conversation-state caches are scoped to the issue or discussion
-thread. Reusable evidence has a separate cache: source excerpts are keyed by
-content, while remote catalogs expire after five minutes and cited records are
-revalidated. The pinned CLI installation is also cached. Eligible runs fetch
-the report again. GitHub may evict cache entries, causing a fresh call. A new
-bot reply also changes the next assessment's input. Stable policy and sources
-precede report text to help provider prompt caching; Copilot determines any
-provider-side discount.
+Only conversation state and the pinned CLI installation are cached. Isolated
+model answers and local excerpts are no longer cached. State is small, disposable,
+and scoped to each issue/discussion thread. This is not yet native session resume:
+a new assessment starts a fresh Copilot session. Provider prompt caching is
+separate and any discount depends on Copilot.
 
-There are at most two prompt invocations, each with a 90-second timeout and no
-workflow retry loop. The CLI may retry service requests internally. Its minimum
-session limit is 30 AI credits; this is a soft fallback limit, not an expected
-price, and an in-flight response can exceed it. Actual usage JSON appears in
-the job summary when available.
-
-Each assessment also emits a `Triage metrics` JSON record with its outcome,
-skip reason, model calls, cache hits, input bytes, evidence catalog reads, elapsed
-time, and token counts when available. An early event-only skip is logged before
-assessment setup. Use [the evaluation runner](eval/README.md) to compare actual
-reply quality, unnecessary replies, missed helpful replies, cost, and latency
-across models. Offline replay is part of CI; fresh-model evaluations consume credits.
+Metrics include model turns, initial prompt bytes, evidence tool calls/result
+bytes, wall time, outcome, and tokens when Copilot reports them. Model input also
+includes Copilot's own system context and previous tool turns. Use the
+[evaluation runner](eval/README.md) to measure help, unwanted replies, tokens,
+and latency together. Offline replay verifies plumbing, not fresh model judgment.
 
 ## Failures and permissions
 
@@ -406,16 +345,17 @@ report unchanged. They do not create failure issues or comments. GitHub write
 failures fail the job without marking the assessment complete. The action does
 not change your billing settings; exhausted credits require a reset or budget.
 
-The model has no CLI tools, MCP servers, GitHub write token, or repository custom
-instructions. It can request only the scoped evidence reads described above,
-which Ruby validates and executes. It runs with isolated settings. The script controls labels and
-comments, and only closes duplicates when you opt in with `duplicates: close`.
-It never modifies code. Keep secrets out of report text and the configured
-source files, which are sent to Copilot.
+The model has no shell, general filesystem tools, arbitrary network access, or
+GitHub write tools. Its only MCP server is the scoped tool server above. The
+GitHub credential is available to that server, not the model's environment.
+Copilot runs with isolated settings and repository instructions disabled.
+The wrapper controls labels/comments and closes duplicates only with explicit
+configuration and the safeguards above. It never edits project code.
 
-The CLI is pinned to `1.0.83`. An empty custom-agent tool list still retains
-skill and SQL tools in that version, so they are excluded explicitly. The
-offline integration test verifies that the actual model request has zero tools.
+The CLI is pinned to `1.0.83`. Skill and SQL tools are excluded explicitly.
+The offline integration test verifies the actual provider request exposes only
+the five triage tools, and exercises native search, query refinement, reads, and
+structured decision submission.
 
 ## Development
 

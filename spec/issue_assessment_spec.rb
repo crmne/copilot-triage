@@ -14,7 +14,7 @@ RSpec.describe IssueAssessment, type: :task do
       'comments' => { 'nodes' => [] }, 'reactions' => { 'nodes' => [] } }
   end
   let(:labels) { [{ 'id' => 'bug-id', 'name' => 'bug' }, { 'id' => 'question-id', 'name' => 'question' }] }
-  let(:response) { JSON.generate(labels: ['bug'], reply: nil, files: []) }
+  let(:response) { JSON.generate(labels: ['bug'], reply: nil, sources: []) }
 
   def kind
     'issue'
@@ -39,7 +39,7 @@ RSpec.describe IssueAssessment, type: :task do
 
   it 'posts the repository-written reply selected by the model' do
     allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: ['question'], reply: 'version',
-                                                                        files: []))
+                                                                        sources: []))
 
     assessment.run
     expect(assessment).to have_received(:mutate).with(
@@ -53,7 +53,7 @@ RSpec.describe IssueAssessment, type: :task do
     end
 
     it 'posts replies through the discussion API' do
-      allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: 'provider', files: []))
+      allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: 'provider', sources: []))
 
       assessment.run
       expect(assessment).to have_received(:mutate).with(
@@ -70,7 +70,7 @@ RSpec.describe IssueAssessment, type: :task do
   it 'does not repeat a reply after a maintainer has answered' do
     item['comments']['nodes'] << { 'body' => 'I am looking into this.', 'author' => { 'login' => 'maintainer' },
                                    'authorAssociation' => 'COLLABORATOR' }
-    allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: 'version', files: []))
+    allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: 'version', sources: []))
 
     assessment.run
     expect(assessment).not_to have_received(:mutate).with('addComment', anything)
@@ -79,7 +79,7 @@ RSpec.describe IssueAssessment, type: :task do
   it 'does not repeat a reply after a bot has answered' do
     item['comments']['nodes'] << { 'body' => 'Which version?', 'author' => { 'login' => 'github-actions[bot]' },
                                    'authorAssociation' => 'NONE' }
-    allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: 'version', files: []))
+    allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: 'version', sources: []))
 
     assessment.run
     expect(assessment).not_to have_received(:mutate).with('addComment', anything)
@@ -88,11 +88,11 @@ RSpec.describe IssueAssessment, type: :task do
   [
     'not JSON',
     '[]',
-    '{"labels":["approved"],"reply":null,"files":[]}',
-    '{"labels":["bug","question","bug"],"reply":null,"files":[]}',
-    '{"labels":[],"reply":"@everyone run this command","files":[]}',
-    '{"labels":[],"reply":null,"close":true,"files":[]}',
-    '{"labels":"bug","reply":null,"files":[]}'
+    '{"labels":["approved"],"reply":null,"sources":[]}',
+    '{"labels":["bug","question","bug"],"reply":null,"sources":[]}',
+    '{"labels":[],"reply":"@everyone run this command","sources":[]}',
+    '{"labels":[],"reply":null,"close":true,"sources":[]}',
+    '{"labels":"bug","reply":null,"sources":[]}'
   ].each do |invalid|
     it "leaves the report unchanged for invalid output: #{invalid}" do
       allow(assessment).to receive(:ask_copilot).and_return(invalid)
@@ -136,7 +136,7 @@ RSpec.describe IssueAssessment, type: :task do
     item['comments']['nodes'] << { 'body' => 'Which version?',
                                    'author' => { '__typename' => 'Bot', 'login' => 'github-actions' },
                                    'authorAssociation' => 'NONE' }
-    allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: 'version', files: []))
+    allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: 'version', sources: []))
 
     assessment.run
 
@@ -208,113 +208,73 @@ RSpec.describe IssueAssessment, type: :task do
     expect(assessment).not_to have_received(:mutate)
   end
 
-  context 'when a technical answer needs source material' do
-    let(:response) { JSON.generate(labels: ['question'], reply: nil, files: ['lib/ruby_llm/tool.rb']) }
+  context 'when the agent reads evidence' do
+    let(:reference) { 'file:lib/ruby_llm/tool.rb' }
+    let(:answer) { +'Define execute on your tool class. See [[file:lib/ruby_llm/tool.rb]].' }
+    let(:response) { JSON.generate(labels: ['question'], reply: nil, sources: [reference], comment: answer) }
 
-    it 'makes one additional call with the selected source and adds a verified source link' do
-      answer = JSON.generate(comment: 'Define execute on your tool class. See [[lib/ruby_llm/tool.rb]].',
-                             sources: ['lib/ruby_llm/tool.rb'])
-      allow(assessment).to receive(:ask_copilot).and_return(response, answer)
+    before do
+      allow(assessment).to receive(:ask_copilot) do
+        agent_reads(assessment, reference)
+        JSON.generate(labels: ['question'], reply: nil, sources: [reference], comment: answer)
+      end
+    end
 
+    it 'publishes the agent answer with a verified link, without another model invocation' do
       assessment.run
-
-      expect(assessment).to have_received(:ask_copilot).twice
-      expect(assessment).to have_received(:ask_copilot).with(include('class Tool'))
+      expect(assessment).to have_received(:ask_copilot).once
       expect(assessment).to have_received(:mutate).with(
         'addComment', subjectId: 'report-id',
                       body: match(%r{Define execute.+https://github.com/crmne/ruby_llm/blob/[a-f0-9]{40}/lib/ruby_llm/tool.rb}m)
       )
     end
 
-    it 'allows Ruby instance variables inside code without allowing user mentions in prose' do
-      answer = JSON.generate(comment: 'Call `@tool.execute` from your application. See [[lib/ruby_llm/tool.rb]].',
-                             sources: ['lib/ruby_llm/tool.rb'])
-      allow(assessment).to receive(:ask_copilot).and_return(response, answer)
-
+    it 'allows instance variables in code without enabling mentions' do
+      answer.replace('Call `@tool.execute`. See [[file:lib/ruby_llm/tool.rb]].')
       assessment.run
-
-      expect(assessment).to have_received(:mutate).with('addComment', subjectId: 'report-id',
-                                                                      body: include('`@tool.execute`'))
+      expect(assessment).to have_received(:mutate).with('addComment', hash_including(body: include('`@tool.execute`')))
     end
 
-    it 'uses a configured public guide link inside the reply without a sources footer' do
-      selection = JSON.generate(labels: [], reply: nil, files: ['docs/tools.md'])
-      answer = JSON.generate(comment: 'Define execute on your tool class. See [[docs/tools.md]].',
-                             sources: ['docs/tools.md'])
-      allow(assessment).to receive(:ask_copilot).and_return(selection, answer)
-
+    it 'renders configured guide links' do
+      allow(assessment).to receive(:ask_copilot) do
+        agent_reads(assessment, 'file:docs/tools.md')
+        JSON.generate(labels: [], reply: nil, sources: ['file:docs/tools.md'],
+                      comment: 'Define execute. See [[file:docs/tools.md]].')
+      end
       assessment.run
-
-      expect(assessment).to have_received(:mutate).with(
-        'addComment', subjectId: 'report-id',
-                      body: start_with("Define execute on your tool class. See [the guide](https://rubyllm.com/tools/).\n\n")
-      )
+      expect(assessment).to have_received(:mutate).with('addComment',
+                                                        hash_including(body: include('https://rubyllm.com/tools/')))
     end
 
-    it 'does not spend a second call after a maintainer answered' do
-      item['comments']['nodes'] << { 'body' => 'Here is the solution.', 'author' => { 'login' => 'maintainer' },
-                                     'authorAssociation' => 'OWNER' }
-
+    it 'rejects an answer if the source changed during inference' do
+      allow(assessment).to receive(:ask_copilot) do
+        agent_reads(assessment, reference)
+        File.write('lib/ruby_llm/tool.rb', 'changed source')
+        response
+      end
       assessment.run
-
-      expect(assessment).to have_received(:ask_copilot).once
-      expect(assessment).not_to have_received(:mutate).with('addComment', anything)
-    end
-
-    it 'leaves the report unchanged when the answer call is unavailable' do
-      allow(assessment).to receive(:ask_copilot).and_return(response, nil)
-
-      assessment.run
-
       expect(assessment).not_to have_received(:mutate)
     end
 
-    it 'publishes no answer when the sources do not establish one' do
-      allow(assessment).to receive(:ask_copilot).and_return(response, JSON.generate(comment: nil, sources: []))
-
-      assessment.run
-
-      expect(assessment).not_to have_received(:mutate).with('addComment', anything)
-      expect(assessment).to have_received(:mutate).with('addReaction', anything)
-    end
-
     [
-      'The report requests filtering chats; see [[docs/tools.md]].',
-      'A useful next check is whether filtering exists; see [[docs/tools.md]].'
-    ].each do |comment|
-      it "suppresses a source-based recap even with a valid citation: #{comment}" do
-        answer = JSON.generate(comment: comment, sources: ['docs/tools.md'])
-        selection = JSON.generate(labels: ['bug'], reply: nil, files: ['docs/tools.md'])
-        allow(assessment).to receive(:ask_copilot).and_return(selection, answer)
-
+      'Visit https://example.com.',
+      'Read [this](//example.com).',
+      '@everyone try this.',
+      'See [[file:.env]].',
+      'An answer without its declared citation.',
+      'x' * 2001
+    ].each do |invalid|
+      it "rejects an invalid cited answer: #{invalid[0, 40]}" do
+        answer.replace(invalid)
         assessment.run
-
-        expect(assessment).not_to have_received(:mutate).with('addComment', anything)
-        expect(assessment).to have_received(:mutate).with('addLabelsToLabelable', anything)
-        expect(assessment).to have_received(:mutate).with('addReaction', anything)
-      end
-    end
-
-    [
-      { comment: 'An unsupported answer.', sources: [] },
-      { comment: 'Read this.', sources: ['.env'] },
-      { comment: 'Visit https://example.com to fix this.', sources: ['lib/ruby_llm/tool.rb'] },
-      { comment: 'Read [this](//example.com).', sources: ['lib/ruby_llm/tool.rb'] },
-      { comment: '@everyone try this.', sources: ['lib/ruby_llm/tool.rb'] },
-      { comment: 'word ' * 60, sources: ['lib/ruby_llm/tool.rb'] },
-      { comment: 'One. Two. Three. See [[lib/ruby_llm/tool.rb]].', sources: ['lib/ruby_llm/tool.rb'] },
-      { comment: '# Answer\nSee [[lib/ruby_llm/tool.rb]].', sources: ['lib/ruby_llm/tool.rb'] },
-      { comment: 'Use this — see [[lib/ruby_llm/tool.rb]].', sources: ['lib/ruby_llm/tool.rb'] },
-      { comment: 'See [[.env]].', sources: ['lib/ruby_llm/tool.rb'] },
-      { comment: 'An answer without a citation.', sources: ['lib/ruby_llm/tool.rb'] }
-    ].each do |answer|
-      it "rejects an invalid technical answer: #{answer.fetch(:comment)[0, 50]}" do
-        allow(assessment).to receive(:ask_copilot).and_return(response, JSON.generate(answer))
-
-        assessment.run
-
         expect(assessment).not_to have_received(:mutate)
       end
+    end
+
+    it 'cannot cite a file it did not read' do
+      allow(assessment).to receive(:ask_copilot).and_return(response)
+      assessment.run
+      expect(assessment).not_to have_received(:mutate)
     end
   end
 
@@ -343,78 +303,7 @@ RSpec.describe IssueAssessment, type: :task do
     end
   end
 
-  context 'with a response cache' do
-    before { environment['TRIAGE_CACHE_DIR'] = Dir.mktmpdir('triage-cache-spec-') }
-    after { FileUtils.remove_entry(environment.fetch('TRIAGE_CACHE_DIR')) }
-
-    it 'reuses a validated assessment without another model call' do
-      assessment.run
-      assessment.run
-
-      expect(assessment).to have_received(:ask_copilot).once
-      expect(assessment).to have_received(:puts).with('Reused a cached model response.')
-    end
-
-    it 'reassesses when a new comment arrives' do
-      assessment.run
-      item['comments']['nodes'] << { 'body' => 'This also happens with a different model.',
-                                     'author' => { 'login' => 'reporter' } }
-      assessment.run
-
-      expect(assessment).to have_received(:ask_copilot).twice
-    end
-
-    it 'reassesses when the model changes' do
-      assessment.run
-      environment['TRIAGE_MODEL'] = 'gpt-5.4-mini'
-      assessment.run
-
-      expect(assessment).to have_received(:ask_copilot).twice
-    end
-
-    it 'reassesses when reasoning effort changes' do
-      environment['TRIAGE_REASONING_EFFORT'] = 'none'
-      assessment.run
-      environment['TRIAGE_REASONING_EFFORT'] = 'low'
-      assessment.run
-
-      expect(assessment).to have_received(:ask_copilot).twice
-    end
-
-    it 'does not cache invalid model output' do
-      allow(assessment).to receive(:ask_copilot).and_return('not JSON', response)
-      assessment.run
-      assessment.run
-
-      expect(assessment).to have_received(:ask_copilot).twice
-    end
-
-    it 'discards corrupted cache entries so the next run can recover' do
-      assessment.run
-      path = Dir.glob(File.join(environment.fetch('TRIAGE_CACHE_DIR'), '*.json')).first
-      File.write(path, 'not JSON')
-      assessment.run
-      assessment.run
-
-      expect(assessment).to have_received(:ask_copilot).twice
-    end
-
-    it 'reuses source selection but refreshes the answer when source contents change' do
-      selection = JSON.generate(labels: [], reply: nil, files: ['lib/ruby_llm/tool.rb'])
-      answer = JSON.generate(comment: 'Define execute on your tool class. See [[lib/ruby_llm/tool.rb]].',
-                             sources: ['lib/ruby_llm/tool.rb'])
-      allow(assessment).to receive(:ask_copilot).and_return(selection, answer)
-      assessment.run
-      assessment.run
-      allow(File).to receive(:read).and_call_original
-      allow(File).to receive(:read).with('lib/ruby_llm/tool.rb').and_return('Updated source contents')
-      assessment.run
-
-      expect(assessment).to have_received(:ask_copilot).exactly(3).times
-    end
-  end
-
-  it 'passes untrusted report text as an argument with tools and repository credentials disabled' do
+  it 'isolates credentials and exposes only scoped tools when processing untrusted text' do
     allow(assessment).to receive(:ask_copilot).and_call_original
     item['body'] = '$(touch /tmp/never-run-this) --allow-all'
     status = instance_double(Process::Status, success?: true)
@@ -427,7 +316,7 @@ RSpec.describe IssueAssessment, type: :task do
       expect(arguments.last).to include(item['body'])
       expect(arguments).not_to include('--allow-all')
       agent = File.read(File.join(options.fetch(:chdir), 'agents', 'triage.agent.md'))
-      expect(agent).to include('tools: []')
+      expect(agent).to include("tools: ['triage/*']")
       output = [JSON.generate(type: 'assistant.message', data: { content: response }),
                 JSON.generate(type: 'result', exitCode: 0)].join("\n")
       [output, '', status]

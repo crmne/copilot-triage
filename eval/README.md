@@ -6,9 +6,10 @@ Run the offline control checks:
 bundle exec ruby eval/run.rb --replay
 ```
 
-This runs the real assessment pipeline against fixture GitHub data and supplied
-model responses, including some deliberately unhelpful historical replies. It
-checks suppression, positive replies, evidence lookup, and duplicate decisions.
+This runs the real tools and publisher against fixture GitHub data and supplied
+tool calls/decisions. It checks positive replies, silence, evidence validation,
+and guarded duplicate decisions. Conversational judgment belongs to the model,
+so replay cannot establish that the model follows those policies.
 It spends no model credits and cannot write to GitHub. The reported model calls
 are simulated in replay mode; replay time is not a model-latency benchmark.
 
@@ -27,11 +28,11 @@ status when an expected outcome, required content, or call budget fails.
 Alternatively, manually dispatch the **Evaluate replies** Actions workflow. It
 uses the repository's `COPILOT_GITHUB_TOKEN` secret and prints the full results
 in the run log. Its GitHub permissions are read-only; it never posts to issues.
-The optional `case` input narrows the run, and each case has at most two model
-calls. Nothing schedules live evaluations automatically.
+The optional `case` input narrows the run. Each case runs one native Copilot
+session; the agent chooses its tool calls. Nothing schedules live evaluations automatically.
 
 The corpus includes both expected silence and expected help: the ZapFast #20
-stop request, a useful initial recap, suppressed follow-up recaps, repeated CPU
+stop request, Zapfast #46's already-implemented forwarding, a useful initial recap, follow-up recaps, repeated CPU
 updates, an already answered question, a clear feature
 request, an essential missing error, documented policy, a technical answer,
 release evidence, a new regression without a question mark, and a confirmed

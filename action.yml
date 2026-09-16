@@ -1,5 +1,5 @@
 name: Copilot Triage
-description: Simple issue triage without GitHub Agentic Workflows. Small Ruby code, cached Copilot replies.
+description: A maintainer companion with a system prompt and scoped read-only tools.
 author: Carmine Paolino
 branding:
   icon: message-circle
@@ -28,7 +28,7 @@ inputs:
     description: Copilot reasoning effort (none or low).
     default: low
   dry-run:
-    description: Preview the decision without publishing. Uncached prompts still consume credits.
+    description: Preview the decision without publishing. Model calls still consume credits.
     default: 'false'
   debounce-seconds:
     description: Wait for nearby follow-up comments before assessment (0 to 60 seconds).
@@ -52,9 +52,7 @@ runs:
     - uses: actions/cache@v6
       if: steps.event.outputs.eligible == 'true'
       with:
-        path: |
-          ${{ runner.temp }}/copilot-triage-cache
-          ${{ runner.temp }}/copilot-triage-state
+        path: ${{ runner.temp }}/copilot-triage-state
         key: triage-v2-${{ inputs.kind }}-${{ inputs.number }}-${{ steps.event.outputs.thread }}-${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: triage-v2-${{ inputs.kind }}-${{ inputs.number }}-${{ steps.event.outputs.thread }}-
     - name: Prepare an eligible report
@@ -81,13 +79,6 @@ runs:
       with:
         path: ${{ runner.temp }}/copilot-triage-cli
         key: copilot-cli-${{ runner.os }}-${{ runner.arch }}-1.0.83
-    - name: Restore reusable evidence
-      if: steps.report.outputs.eligible == 'true'
-      uses: actions/cache@v6
-      with:
-        path: ${{ runner.temp }}/copilot-triage-evidence
-        key: triage-evidence-v1-${{ github.run_id }}-${{ github.run_attempt }}
-        restore-keys: triage-evidence-v1-
     - name: Install Copilot
       if: steps.report.outputs.eligible == 'true' && steps.cli.outputs.cache-hit != 'true'
       shell: bash
@@ -108,8 +99,6 @@ runs:
         TRIAGE_MODEL: ${{ inputs.model }}
         TRIAGE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
         TRIAGE_DRY_RUN: ${{ inputs.dry-run }}
-        TRIAGE_CACHE_DIR: ${{ runner.temp }}/copilot-triage-cache
         TRIAGE_STATE_DIR: ${{ runner.temp }}/copilot-triage-state
         TRIAGE_PREPARED_PATH: ${{ runner.temp }}/copilot-triage-prepared.json
         TRIAGE_METRICS_PATH: ${{ runner.temp }}/copilot-triage-metrics.json
-        TRIAGE_EVIDENCE_DIR: ${{ runner.temp }}/copilot-triage-evidence

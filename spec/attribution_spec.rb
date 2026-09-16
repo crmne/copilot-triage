@@ -12,7 +12,7 @@ RSpec.describe 'Comment attribution' do
     { 'id' => 'item', 'title' => 'Question', 'body' => 'A report', 'closed' => false,
       'author' => { 'login' => 'reporter' }, 'comments' => { 'nodes' => [] } }
   end
-  let(:response) { JSON.generate(labels: [], reply: 'version', files: []) }
+  let(:response) { JSON.generate(labels: [], reply: 'version', sources: []) }
 
   before do
     allow(assessment).to receive(:puts)
@@ -50,14 +50,11 @@ RSpec.describe 'Comment attribution' do
                             '[view run](https://github.com/crmne/example/actions/runs/1234/attempts/2)')
   end
 
-  it 'adds usage across both prompts without counting nested or cache totals again' do
+  it 'uses session usage across agent turns without counting cache totals again' do
     allow(assessment).to receive(:ask_copilot) do
-      usage(6000, 50)
-      JSON.generate(labels: [], reply: nil, files: ['lib/ruby_llm/tool.rb'])
-    end.once
-    allow(assessment).to receive(:ask_copilot).with(include('Sources:')) do
-      usage(8000, 100)
-      JSON.generate(comment: nil, sources: [])
+      usage(14_000, 150)
+      assessment.instance_variable_set(:@model_calls, 3)
+      response
     end
 
     assessment.run
@@ -65,15 +62,14 @@ RSpec.describe 'Comment attribution' do
     expect(assessment.send(:attributed, 'An answer.')).to include('14000 input / 150 output tokens this run')
   end
 
-  it 'reports zero new tokens when an earlier preview is applied from cache' do
-    environment.merge!('TRIAGE_CACHE_DIR' => 'cache', 'TRIAGE_DRY_RUN' => 'true')
+  it 'does not reuse a preview as a stale cached answer' do
+    environment['TRIAGE_DRY_RUN'] = 'true'
     assessment.run
     environment['TRIAGE_DRY_RUN'] = 'false'
     cached = IssueAssessment.new(environment)
     allow(cached).to receive_messages(read_report: [item, []], puts: nil, mutate: nil)
-    expect(cached).not_to receive(:ask_copilot)
-    expect(cached).to receive(:mutate).with('addComment',
-                                            hash_including(body: include('cached response; 0 new model tokens')))
+    expect(cached).to receive(:ask_copilot).and_return(response)
+    expect(cached).to receive(:mutate).with('addComment', hash_including(body: include('token usage unavailable')))
 
     cached.run
   end

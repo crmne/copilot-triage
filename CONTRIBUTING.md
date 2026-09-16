@@ -20,9 +20,12 @@ It skips if Copilot CLI is absent. Add a regression test for behavior changes.
 Include example public replies when changing response policy.
 
 The runtime uses Ruby's standard library. Keep GitHub mutations in the script.
-Models can request bounded, read-only evidence through the validated JSON
-interface. Keep CLI execution, arbitrary URLs, and write tools unavailable to the
-model. Do not run contributor code to assess a report. Keep both positive and
+Give the agent scoped, bounded read-only tools and a clear system prompt. Let
+Copilot own tool calling and conversational judgment; do not build another
+retrieval router, keyword ranker, or semantic regex gate. Submit decisions through
+the schema-defined tool, not JSON scraped from final prose. Keep arbitrary CLI
+execution, URLs, and GitHub write tools unavailable to the model. Do not run
+contributor code to assess a report. Keep both positive and
 negative reply examples in the evaluation corpus; silence alone is not success.
 
 Use a short commit subject that says what changes. Keep changes focused and

@@ -7,7 +7,7 @@ RSpec.describe 'Copilot structured output' do
     IssueAssessment.new('GITHUB_REPOSITORY' => 'owner/project', 'TRIAGE_NUMBER' => '1',
                         'TRIAGE_CONFIG' => 'triage.yml')
   end
-  let(:decision) { JSON.generate(labels: [], reply: nil, files: []) }
+  let(:decision) { JSON.generate(labels: [], reply: nil, sources: []) }
   let(:events) do
     [{ type: 'assistant.message', data: { content: 'I will check the evidence.' } },
      { type: 'assistant.message_delta', data: { deltaContent: '{' } },

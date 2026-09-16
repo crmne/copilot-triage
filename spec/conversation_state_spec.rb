@@ -16,7 +16,7 @@ RSpec.describe 'Conversation memory and selective follow-ups' do
     { 'id' => 'issue-1', 'title' => 'High idle CPU', 'body' => 'Idle CPU is 90% on version 1.2.3.',
       'closed' => false, 'author' => { 'login' => 'reporter' }, 'comments' => { 'nodes' => [comment] } }
   end
-  let(:decision) { JSON.generate(labels: [], reply: nil, files: [], question_answered: true) }
+  let(:decision) { JSON.generate(labels: [], reply: nil, sources: []) }
 
   before do
     config = YAML.safe_load_file('triage.yml')
@@ -42,11 +42,11 @@ RSpec.describe 'Conversation memory and selective follow-ups' do
       'author' => { '__typename' => 'Bot', 'login' => 'github-actions' } }
   end
 
-  it 'spends no model calls or mutations on an ordinary update' do
+  it 'lets the agent decide whether an ordinary update needs help' do
     runner = assessment
     runner.run
-    expect(runner).not_to have_received(:ask_copilot)
-    expect(runner).not_to have_received(:mutate)
+    expect(runner).to have_received(:ask_copilot).once
+    expect(runner).not_to have_received(:mutate).with('addComment', anything)
   end
 
   it 'assesses a new question and skips delivery of the same event again' do
@@ -76,22 +76,22 @@ RSpec.describe 'Conversation memory and selective follow-ups' do
     end
   end
 
-  it 'processes an answer once, remembers the question, and skips further status updates' do
+  it 'remembers verbatim bot replies but leaves subsequent updates to the agent' do
     item['comments']['nodes'].unshift(bot_question)
     comment['body'] = 'Version 1.2.3'
     first = assessment
     first.run
     expect(first).to have_received(:ask_copilot).once
     saved = JSON.parse(File.read(Dir['state/*.json'].first))
-    expect(saved['last_answered_question']).to include('Which RubyLLM version')
-    expect(saved['pending_question']).to be_nil
+    expect(saved['replies']).to include('Which RubyLLM version are you using?')
+    expect(saved).not_to have_key('pending_question')
 
     comment['id'] = 'human-2'
     comment['body'] = 'Still happens after another restart.'
     item['comments']['nodes'] = [comment]
     second = assessment
     second.run
-    expect(second).not_to have_received(:ask_copilot)
+    expect(second).to have_received(:ask_copilot).once
   end
 
   it 'suppresses a question remembered beyond the latest five comments' do
@@ -100,7 +100,7 @@ RSpec.describe 'Conversation memory and selective follow-ups' do
     state.save
     comment['body'] = 'Version 1.2.3'
     runner = assessment
-    allow(runner).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: 'version', files: []))
+    allow(runner).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: 'version', sources: []))
     runner.run
     expect(runner).to have_received(:ask_copilot).with(include('Which RubyLLM version are you using?'))
     expect(runner).not_to have_received(:mutate).with('addComment', anything)
@@ -108,7 +108,9 @@ RSpec.describe 'Conversation memory and selective follow-ups' do
 
   it 'keeps a conversation muted after the stop request falls outside recent comments' do
     comment['body'] = 'Please disable the Copilot bot.'
-    assessment.run
+    first = assessment
+    allow(first).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: nil, sources: [], mute: true))
+    first.run
     comment['id'] = 'human-2'
     comment['body'] = 'What can I try next?'
     runner = assessment
@@ -154,7 +156,7 @@ RSpec.describe 'Conversation memory and selective follow-ups' do
 
   it 'recovers an older stop request when the cache is missing' do
     item['comments']['pageInfo'] = { 'hasPreviousPage' => true, 'startCursor' => 'cursor' }
-    old = comment.merge('id' => 'old', 'body' => 'Please disable Copilot.')
+    old = comment.merge('id' => 'old', 'body' => '/triage mute')
     runner = assessment
     allow(runner).to receive(:github).and_return('data' => { 'node' => {
                                                    'comments' => { 'nodes' => [old],

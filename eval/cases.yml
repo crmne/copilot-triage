@@ -1,3 +1,4 @@
+---
 - id: new-long-report-summary
   title: Sustained CPU after connecting
   body: |
@@ -15,120 +16,323 @@
     other operating systems. My earlier report that the problem disappeared
     after startup was based on that single successful launch. The later two
     restarts did not reproduce that improvement.
-  expected: {action: reply, contains: [90%, patched], max_calls: 1}
-  replay:
-    - {labels: [bug], reply: null, files: [], comment: 'On Arch Linux v0.14.0, connected sessions stay near 90% CPU after startup and two restarts. A patched build uses 0-5% on the same copied profile; the official release still reproduces the problem.'}
-
+  expected:
+    action: reply
+    contains:
+    - 90%
+    - patched
+    max_calls: 8
+    min_calls: 1
+  decision:
+    labels:
+    - bug
+    reply:
+    comment: On Arch Linux v0.14.0, connected sessions stay near 90% CPU after startup
+      and two restarts. A patched build uses 0-5% on the same copied profile; the
+      official release still reproduces the problem.
+    sources: []
+    related_issue:
+    relationship:
+    mute: false
+  tools: []
 - id: followup-new-evidence-no-recap
   title: Idle CPU usage high
   body: Version 0.14.0 uses 90% CPU while idle.
   comment: I measured 98% CPU with the window focused and 96% with it unfocused.
-  expected: {action: silent, max_calls: 2, min_calls: 1}
-  replay:
-    - {labels: [bug], reply: null, files: [], comment: 'The latest measurements show 98% CPU focused and 96% unfocused, confirming that the idle CPU problem persists.'}
-
+  expected:
+    action: silent
+    max_calls: 8
+    min_calls: 1
+  decision:
+    labels:
+    - bug
+    reply:
+    comment:
+    sources: []
+    related_issue:
+    relationship:
+    mute: false
+  tools: []
 - id: zapfast-20-stop-request
   title: Idle CPU usage high
   body: Version 0.14.0 uses 90% CPU while idle.
   comment: Can someone please disable this Copilot bot that is spamming the thread?
-  expected: {action: silent, max_calls: 0}
-  replay: []
-
+  expected:
+    action: silent
+    max_calls: 8
+    mute: true
+    min_calls: 1
+  decision:
+    labels: []
+    reply:
+    comment:
+    sources: []
+    related_issue:
+    relationship:
+    mute: true
+  tools: []
 - id: zapfast-20-repeated-update
   title: Idle CPU usage high
   body: Version 0.14.0 uses 90% CPU while idle after a restart.
   comment: After another restart it still uses 90% CPU while idle.
-  expected: {action: silent, max_calls: 0}
-  replay: []
-
+  expected:
+    action: silent
+    max_calls: 8
+    min_calls: 1
+  decision:
+    labels: []
+    reply:
+    comment:
+    sources: []
+    related_issue:
+    relationship:
+    mute: false
+  tools: []
 - id: thanks
   title: Images fail to load
   body: Images do not appear inline.
   comment: Thanks!
-  expected: {action: silent, max_calls: 0}
-  replay: []
-
+  expected:
+    action: silent
+    max_calls: 8
+    min_calls: 1
+  decision:
+    labels: []
+    reply:
+    comment:
+    sources: []
+    related_issue:
+    relationship:
+    mute: false
+  tools: []
 - id: zapfast-34-clear-feature
   title: Packaging for NixOS
   body: It would be nice to package the app for NixOS. I can help with packaging.
-  expected: {action: silent, max_calls: 2}
-  replay:
-    - {labels: [enhancement], reply: null, files: [], comment: 'The report requests NixOS packaging. A useful next check is whether a package exists elsewhere.'}
-
+  expected:
+    action: silent
+    max_calls: 8
+    min_calls: 1
+  decision:
+    labels:
+    - enhancement
+    reply:
+    comment:
+    sources: []
+    related_issue:
+    relationship:
+    mute: false
+  tools: []
 - id: zapfast-26-missing-error-text
   title: Images fail to display
-  body: Images show an error in a screenshot, which has not been opened. Clicking them opens the external viewer. Version 0.14.0 on Windows.
-  expected: {action: reply, contains: [error], max_calls: 1}
-  replay:
-    - {labels: [bug], reply: error, files: []}
-
+  body: Images show an error in a screenshot, which has not been opened. Clicking
+    them opens the external viewer. Version 0.14.0 on Windows.
+  expected:
+    action: reply
+    contains:
+    - error
+    max_calls: 8
+    min_calls: 1
+  decision:
+    labels:
+    - bug
+    reply: error
+    comment:
+    sources: []
+    related_issue:
+    relationship:
+    mute: false
+  tools: []
 - id: answered-version-question
   title: Images fail to display
   body: Images do not appear inline on Windows.
   previous_question: Which version are you using?
   comment: Version 0.14.0.
-  expected: {action: silent, max_calls: 2}
-  replay:
-    - {labels: [bug], reply: version, files: [], question_answered: true}
-
+  expected:
+    action: silent
+    max_calls: 8
+    min_calls: 1
+  decision:
+    labels:
+    - bug
+    reply:
+    comment:
+    sources: []
+    related_issue:
+    relationship:
+    mute: false
+  tools: []
 - id: documented-platform-policy
   title: Android support
   body: Please port the app to Android.
   expected:
     action: reply
-    contains: [guide]
-    contains_any: [desktop, outside, not supported, does not support]
-    max_calls: 2
-  replay:
-    - {labels: [enhancement], reply: null, files: [], lookup: [{tool: docs, query: Android platform policy}]}
-    - {comment: 'The project supports desktop platforms only; see [[docs/guide.md]].', sources: [docs/guide.md]}
-
+    contains:
+    - guide
+    contains_any:
+    - desktop
+    - outside
+    - not supported
+    - does not support
+    max_calls: 8
+    min_calls: 1
+    min_evidence_reads: 1
+  decision:
+    labels:
+    - enhancement
+    reply:
+    comment: The project supports desktop platforms only; see [[file:docs/guide.md]].
+    sources:
+    - file:docs/guide.md
+    related_issue:
+    relationship:
+    mute: false
+  tools:
+  - name: read_evidence
+    arguments:
+      reference: file:docs/guide.md
 - id: documented-technical-answer
   title: How do I implement a tool?
   body: Which method should my tool class define?
-  expected: {action: reply, contains: [execute], max_calls: 2}
-  replay:
-    - {labels: [question], reply: null, files: [docs/guide.md]}
-    - {comment: 'Define `execute` on your tool class; see [[docs/guide.md]].', sources: [docs/guide.md]}
-
+  expected:
+    action: reply
+    contains:
+    - execute
+    max_calls: 8
+    min_calls: 1
+    min_evidence_reads: 1
+  decision:
+    labels:
+    - question
+    reply:
+    comment: Define `execute` on your tool class; see [[file:docs/guide.md]].
+    sources:
+    - file:docs/guide.md
+    related_issue:
+    relationship:
+    mute: false
+  tools:
+  - name: read_evidence
+    arguments:
+      reference: file:docs/guide.md
 - id: verified-released-fix
   title: Images fail on Windows
   body: All inline images fail on Windows in version 1.2.0.
   release:
-    id: release-1
-    tagName: v1.2.1
+    id: 1
+    tag_name: v1.2.1
     name: Windows image fix
-    description: Fixed all inline images failing on Windows. This fix is included in version 1.2.1.
-    url: https://github.com/example/project/releases/tag/v1.2.1
-    publishedAt: '2026-09-16T12:00:00Z'
-    isDraft: false
-    isPrerelease: false
-  expected: {action: reply, contains: [1.2.1, release notes], max_calls: 2}
-  replay:
-    - {labels: [bug], reply: null, files: [], lookup: [{tool: releases, query: Windows inline images}]}
-    - {comment: 'Fixed in v1.2.1; see [[releases:release-1]].', sources: ['releases:release-1']}
-
+    body: Fixed all inline images failing on Windows. This fix is included in version
+      1.2.1.
+    html_url: https://github.com/example/project/releases/tag/v1.2.1
+    published_at: '2026-09-16T12:00:00Z'
+    draft: false
+    prerelease: false
+  expected:
+    action: reply
+    contains:
+    - 1.2.1
+    - release notes
+    max_calls: 8
+    min_calls: 1
+    min_evidence_reads: 1
+  decision:
+    labels:
+    - bug
+    reply:
+    comment: Fixed in v1.2.1; see [[release:1]].
+    sources:
+    - release:1
+    related_issue:
+    relationship:
+    mute: false
+  tools:
+  - name: read_evidence
+    arguments:
+      reference: release:1
 - id: new-regression-without-question
   title: Images fail on Windows
   body: Some inline images fail on Windows in version 1.2.0.
-  comment: 'After upgrading to 1.2.1, I get Error: unsupported image format for every image.'
-  # New evidence must be assessed, but must not force an unnecessary question.
-  expected: {action: reply, allowed_actions: [reply, silent], contains: [format], max_calls: 2, min_calls: 1}
-  replay:
-    - {labels: [bug], reply: null, files: [], comment: 'Which image format triggers that error?'}
-
+  comment: 'After upgrading to 1.2.1, I get Error: unsupported image format for every
+    image.'
+  expected:
+    action: reply
+    allowed_actions:
+    - reply
+    - silent
+    contains:
+    - format
+    max_calls: 8
+    min_calls: 1
+  decision:
+    labels:
+    - bug
+    reply:
+    comment: Which image format triggers that error?
+    sources: []
+    related_issue:
+    relationship:
+    mute: false
+  tools: []
 - id: confirmed-duplicate
   title: Theme resets after restart
   body: My selected theme resets whenever I restart the app on Linux version 1.2.0.
   candidate:
-    id: candidate-42
+    node_id: candidate-42
     number: 42
     title: Remember selected theme
     body: On Linux version 1.2.0 the selected theme resets on every app restart.
-    closed: false
-    author: {login: another-reporter}
-    comments: {nodes: []}
-  expected: {action: duplicate, contains: ['Duplicate of #42'], max_calls: 2}
-  replay:
-    - {labels: [bug], reply: null, files: [], related_issue: 42}
-    - {relationship: duplicate, comment: Both reports describe the selected theme resetting after restarting on Linux.}
+    state: open
+    comments: 0
+    html_url: https://github.com/example/project/issues/42
+  expected:
+    action: duplicate
+    contains:
+    - 'Duplicate of #42'
+    max_calls: 8
+    min_calls: 1
+    min_evidence_reads: 1
+  decision:
+    labels:
+    - bug
+    reply:
+    comment: Both reports describe the selected theme resetting after restarting on
+      Linux.
+    sources: []
+    related_issue: 42
+    relationship: duplicate
+    mute: false
+  tools:
+  - name: read_evidence
+    arguments:
+      reference: issue:42
+- id: zapfast-46-existing-forwarding
+  title: Message/Picture Forwarding
+  body: Does not appear to be a feature or something that works, would be highly appreciated
+    if it was added!
+  expected:
+    action: reply
+    contains:
+    - right-click
+    - Forward
+    - destination
+    - guide
+    max_calls: 8
+    min_calls: 1
+    min_evidence_reads: 1
+  tools:
+  - name: search_repository
+    arguments:
+      query: forward
+  - name: read_evidence
+    arguments:
+      reference: file:docs/guide.md
+  decision:
+    labels: []
+    reply:
+    comment: 'Forwarding is already available: right-click the message or picture,
+      choose Forward, then select the destination chat. See [[file:docs/guide.md]].'
+    sources:
+    - file:docs/guide.md
+    related_issue:
+    relationship:
+    mute: false

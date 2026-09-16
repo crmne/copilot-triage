@@ -2,6 +2,7 @@
 
 require 'optparse'
 require_relative '../lib/assessment'
+require_relative 'tool_server'
 
 # Uses fixture GitHub data and never publishes. Only --live contacts the model.
 class TriageEvaluation < IssueAssessment
@@ -11,7 +12,6 @@ class TriageEvaluation < IssueAssessment
     super(environment)
     @example = example
     @replay = replay
-    @responses = example.fetch('replay').map { |value| JSON.generate(value) }
     @model_responses = []
   end
 
@@ -22,9 +22,33 @@ class TriageEvaluation < IssueAssessment
   end
 
   def ask_copilot(prompt)
-    response = @replay ? @responses.shift || raise('Replay exhausted: unexpected model call') : super
+    response = if @replay
+                 @example.fetch('tools', []).each do |call|
+                   result = evidence_tools.call(call.fetch('name'), call.fetch('arguments'))
+                   raise result.inspect if result[:isError]
+                 end
+                 result = evidence_tools.call('submit_decision', @example.fetch('decision'))
+                 raise result.inspect if result[:isError]
+
+                 @tool_ledger = evidence_tools.ledger
+                 JSON.generate(@tool_ledger.fetch('decision'))
+               else
+                 super
+               end
     @model_responses << response
     response
+  end
+
+  def tools_settings(directory)
+    super.merge(example: @example)
+  end
+
+  def tools_command(settings_path)
+    [RbConfig.ruby, File.join(__dir__, 'tool_server.rb'), settings_path]
+  end
+
+  def evidence_tools
+    @evidence_tools ||= EvaluationTools.new(root: Dir.pwd, repository: @repository, config: @config, example: @example)
   end
 
   def read_report
@@ -51,20 +75,8 @@ class TriageEvaluation < IssueAssessment
                      'user' => { 'type' => 'User' }, 'author_association' => 'NONE' } }
   end
 
-  def github(_endpoint, query:, variables:)
-    raise 'Evaluation attempted a GitHub mutation' if query.start_with?('mutation')
-
-    data = if variables.key?(:ids)
-             { 'nodes' => [@example['release']].compact }
-           elsif query.include?('releases(first:')
-             { 'repository' => { 'releases' => { 'nodes' => [@example['release']].compact } } }
-           elsif query.include?('issues(first:')
-             candidates = query.include?('CLOSED') ? [] : [@example['candidate']].compact
-             { 'repository' => { 'issues' => { 'nodes' => candidates } } }
-           else
-             { 'repository' => { 'issue' => @example.fetch('candidate') } }
-           end
-    JSON.parse(JSON.generate({ 'data' => data }))
+  def github(*)
+    raise 'Evaluation attempted a GitHub request'
   end
 
   def source_url(path)
@@ -119,6 +131,8 @@ results = cases.map do |example|
       actions = expected.fetch('allowed_actions', [expected.fetch('action')])
       passed = actions.include?(action) && metrics.fetch('model_calls') <= expected.fetch('max_calls') &&
                metrics.fetch('model_calls') >= expected.fetch('min_calls', 0) &&
+               metrics.fetch('evidence_reads') >= expected.fetch('min_evidence_reads', 0) &&
+               (!expected.key?('mute') || runner.decision&.fetch('mute', false) == expected['mute']) &&
                (action == 'silent' || expected.fetch('contains', []).all? do |text|
                  content.include?(text.to_s.downcase)
                end) &&

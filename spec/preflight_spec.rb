@@ -8,7 +8,7 @@ RSpec.describe TriageEvent do
       'comment' => { 'body' => 'Thanks!', 'user' => { 'type' => 'User' }, 'author_association' => 'NONE' } }
   end
 
-  it 'runs before a repository or configuration exists and writes an ineligible output' do
+  it 'leaves human wording to the agent even before a repository or configuration exists' do
     Dir.mkdir('empty')
     File.write('empty/event.json', JSON.generate(event))
     script = File.expand_path('../lib/triage_event.rb', __dir__)
@@ -17,8 +17,8 @@ RSpec.describe TriageEvent do
       RbConfig.ruby, script, chdir: 'empty'
     )
     expect(status.success?).to be(true), errors
-    expect(output).to include('acknowledgement')
-    expect(File.read('empty/output')).to include('eligible=false')
+    expect(output).to be_empty
+    expect(File.read('empty/output')).to include('eligible=true')
   end
 
   it 'does not discard technical evidence after a thank-you' do
@@ -31,8 +31,8 @@ RSpec.describe TriageEvent do
     expect(described_class.skip_reason('issue_comment', event)).to be_nil
   end
 
-  it 'does not interpret a request to keep the bot as a stop request' do
-    expect(described_class.stop_requested?('Please do not disable Copilot.')).to be(false)
+  it 'does not classify natural-language stop requests in code' do
+    expect(described_class).not_to respond_to(:stop_requested?, :evidence_signals, :question?, :acknowledgement?)
   end
 
   it 'does not mistake code or quote examples for a command' do
