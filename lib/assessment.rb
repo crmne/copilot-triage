@@ -68,7 +68,9 @@ class IssueAssessment # :nodoc:
   rescue Skipped => e
     skip("#{e.message}; left for a maintainer")
   rescue JSON::ParserError, KeyError, ArgumentError => e
-    skip("invalid assessment (#{e.class}); left for a maintainer")
+    location = e.backtrace_locations.first
+    skip("invalid assessment (#{e.class} in #{location.base_label} at " \
+         "#{File.basename(location.path)}:#{location.lineno}); left for a maintainer")
   ensure
     report_metrics unless @outcome == 'prepared'
   end

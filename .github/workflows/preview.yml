@@ -1,0 +1,52 @@
+name: Preview real report
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Repository to assess with this checkout of the action
+        type: choice
+        options: [crmne/zapfast, crmne/spotifast, crmne/ruby_llm]
+        required: true
+      kind:
+        type: choice
+        options: [issue, discussion]
+        default: issue
+      number:
+        description: Issue or discussion number
+        required: true
+
+permissions:
+  contents: read
+  issues: read
+  discussions: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: action
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repository }}
+          path: subject
+          persist-credentials: false
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+      - run: npm install --global --no-audit --no-fund @github/copilot@1.0.83
+      - name: Preview without publishing
+        working-directory: subject
+        shell: bash
+        run: GITHUB_REPOSITORY="$TARGET_REPOSITORY" ruby ../action/lib/assessment.rb
+        env:
+          TARGET_REPOSITORY: ${{ inputs.repository }}
+          TRIAGE_KIND: ${{ inputs.kind }}
+          TRIAGE_NUMBER: ${{ inputs.number }}
+          TRIAGE_DRY_RUN: 'true'
+          GH_TOKEN: ${{ github.token }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}

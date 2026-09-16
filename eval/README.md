@@ -31,6 +31,13 @@ in the run log. Its GitHub permissions are read-only; it never posts to issues.
 The optional `case` input narrows the run. Each case runs one native Copilot
 session; the agent chooses its tool calls. Nothing schedules live evaluations automatically.
 
+Use **Preview real report** to assess an existing Zapfast, Spotifast, or RubyLLM
+issue or discussion with the action's development checkout. It reads the target
+repository's policy and evidence, but cannot publish: dry-run mode is mandatory
+and the workflow token has read-only permissions. Results stay in the run log
+and summary; no artifacts or conversation state are saved. This is a manual
+reassessment, not a simulation of a newly opened issue or comment event.
+
 The corpus includes both expected silence and expected help: the ZapFast #20
 stop request, Zapfast #46's already-implemented forwarding, a useful initial recap, follow-up recaps, repeated CPU
 updates, an already answered question, a clear feature

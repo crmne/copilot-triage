@@ -202,6 +202,9 @@ RSpec.describe 'Report context' do
     assessment.run
 
     expect(assessment).not_to have_received(:mutate)
+    expect(assessment).to have_received(:puts).with(
+      start_with('Skipped: invalid assessment (ArgumentError in validate at')
+    )
   end
 
   context 'with a configured reporting bot' do
