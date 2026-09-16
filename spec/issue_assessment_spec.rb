@@ -372,6 +372,15 @@ RSpec.describe IssueAssessment, type: :task do
       expect(assessment).to have_received(:ask_copilot).twice
     end
 
+    it 'reassesses when reasoning effort changes' do
+      environment['TRIAGE_REASONING_EFFORT'] = 'none'
+      assessment.run
+      environment['TRIAGE_REASONING_EFFORT'] = 'low'
+      assessment.run
+
+      expect(assessment).to have_received(:ask_copilot).twice
+    end
+
     it 'does not cache invalid model output' do
       allow(assessment).to receive(:ask_copilot).and_return('not JSON', response)
       assessment.run

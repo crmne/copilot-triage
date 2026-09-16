@@ -107,6 +107,14 @@ RSpec.describe 'Bounded evidence requests' do
     expect(catalog.fetch('docs/tools.md').fetch(:hint).bytesize).to be < 300
   end
 
+  it 'does not allow an uncited clarification to invent a source reference' do
+    allow(assessment).to receive(:ask_copilot).and_return(
+      selection, JSON.generate(comment: 'Have you tried [[unlisted/file.md]]?', sources: [])
+    )
+    assessment.run
+    expect(assessment).not_to have_received(:mutate)
+  end
+
   it 'keeps closed-issue evidence separate from duplicate closure' do
     resolved = { 'id' => 'resolved-1', 'number' => 42, 'title' => 'Images fail',
                  'body' => 'Use the native image viewer.',
