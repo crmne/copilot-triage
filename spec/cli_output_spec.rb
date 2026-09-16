@@ -42,4 +42,17 @@ RSpec.describe 'Copilot structured output' do
     events.replace([{ type: 'user.message', data: { content: decision } }, { type: 'result', exitCode: 0 }])
     expect(response).to be_nil
   end
+
+  it 'limits preview diagnostics to final text and tool decisions, with tokens redacted' do
+    assessment.instance_variable_get(:@environment)['GH_TOKEN'] = 'private-token'
+    events.insert(-2, { type: 'assistant.reasoning', data: { content: 'Hidden reasoning.' } })
+    events.insert(-2, { type: 'assistant.message', data: { content: 'private-token' } })
+    allow(assessment).to receive(:puts)
+
+    assessment.send(:debug_copilot, events.map { |event| JSON.generate(event) }.join("\n"))
+
+    expect(assessment).to have_received(:puts).with(include('[REDACTED]'))
+    expect(assessment).not_to have_received(:puts).with(include('private-token'))
+    expect(assessment).not_to have_received(:puts).with(include('Hidden reasoning.'))
+  end
 end

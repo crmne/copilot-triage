@@ -452,6 +452,7 @@ class IssueAssessment # :nodoc:
       record_usage(usage_path) if File.file?(usage_path)
       ledger_path = File.join(directory, 'evidence.json')
       @tool_ledger = JSON.parse(File.read(ledger_path)) if File.file?(ledger_path)
+      debug_copilot(output) if dry_run? && @environment['TRIAGE_DEBUG'] == 'true'
       unless status.success? && copilot_response(output) && File.file?(ledger_path)
         @copilot_failure_reason = "Copilot unavailable (exit #{status.exitstatus}; " \
                                   "evidence calls #{@tool_ledger&.fetch('calls', 0) || 0}; " \
@@ -477,6 +478,17 @@ class IssueAssessment # :nodoc:
 
     @model_calls = [events.count { |event| event['type'] == 'assistant.turn_start' }, 1].max
     events.reverse.find { |event| event['type'] == 'assistant.message' }&.dig('data', 'content')
+  end
+
+  def debug_copilot(output)
+    details = JSON.generate(final_text: copilot_response(output)&.slice(0, 2000),
+                            decision: @tool_ledger&.fetch('decision', nil),
+                            tools: @tool_ledger&.fetch('trace', []))
+    %w[GH_TOKEN GITHUB_TOKEN COPILOT_GITHUB_TOKEN].each do |key|
+      token = @environment[key]
+      details = details.gsub(token, '[REDACTED]') if token && !token.empty?
+    end
+    report("Triage debug: #{details}")
   end
 
   def reasoning_effort

@@ -48,5 +48,6 @@ jobs:
           TRIAGE_KIND: ${{ inputs.kind }}
           TRIAGE_NUMBER: ${{ inputs.number }}
           TRIAGE_DRY_RUN: 'true'
+          TRIAGE_DEBUG: 'true'
           GH_TOKEN: ${{ github.token }}
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
