@@ -445,7 +445,11 @@ class IssueAssessment # :nodoc:
       record_usage(usage_path) if File.file?(usage_path)
       ledger_path = File.join(directory, 'evidence.json')
       @tool_ledger = JSON.parse(File.read(ledger_path)) if File.file?(ledger_path)
-      next unless status.success? && copilot_response(output) && File.file?(ledger_path)
+      unless status.success? && copilot_response(output) && File.file?(ledger_path)
+        report("Copilot produced no submitted decision (exit #{status.exitstatus}; " \
+               "evidence calls #{@tool_ledger&.fetch('calls', 0) || 0}).")
+        next
+      end
 
       decision = @tool_ledger['decision']
       JSON.generate(decision) if decision
