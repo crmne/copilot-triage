@@ -107,6 +107,14 @@ RSpec.describe 'Bounded evidence requests' do
     expect(catalog.fetch('docs/tools.md').fetch(:hint).bytesize).to be < 300
   end
 
+  it 'keeps the continuation of a relevant sentence in documentation hints' do
+    File.write('docs/tools.md', "# Policy\nAndroid and iOS clients\nare outside the project scope.\n")
+    item['title'] = 'Android support'
+    item['body'] = 'Please port the app to Android.'
+    catalog = assessment.send(:source_catalog, item)
+    expect(catalog.fetch('docs/tools.md').fetch(:hint)).to include('Android and iOS clients are outside')
+  end
+
   it 'does not allow an uncited clarification to invent a source reference' do
     allow(assessment).to receive(:ask_copilot).and_return(
       selection, JSON.generate(comment: 'Have you tried [[unlisted/file.md]]?', sources: [])

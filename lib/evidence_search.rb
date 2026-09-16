@@ -39,7 +39,8 @@ module EvidenceSearch
       entry = { bytes: File.size(path) }
       if path.match?(/\.(?:md|rst|txt)\z/i)
         lines = File.readlines(path).map(&:strip).reject(&:empty?)
-        useful = lines.sort_by { |line| -relevance(line, query) }.first(2).join(' ')
+        start = lines.each_index.max_by { |index| [relevance(lines[index], query), -index] } || 0
+        useful = lines[start, 3].to_a.join(' ')
         entry[:hint] = bounded_text(useful, 240)
       end
       [path, entry]

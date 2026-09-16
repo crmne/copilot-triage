@@ -67,6 +67,16 @@ RSpec.describe 'Comment assessments' do
     expect(assessment).not_to have_received(:mutate).with('addComment', anything)
   end
 
+  it 'allows a necessary clarification when explicitly asked to reassess' do
+    comment['body'] = '/triage'
+    event['comment']['body'] = '/triage'
+
+    assessment.run
+
+    expect(assessment).to have_received(:mutate).with('addComment', subjectId: 'report-id',
+                                                                    body: start_with('Which provider are you using?'))
+  end
+
   {
     'pull request comments' => ->(e) { e['issue']['pull_request'] = { 'url' => 'a pull request' } },
     'bot comments' => ->(e) { e['comment']['user']['type'] = 'Bot' },

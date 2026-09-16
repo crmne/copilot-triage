@@ -510,7 +510,7 @@ class IssueAssessment # :nodoc:
     return true unless comment_event?
 
     body = item.fetch('comments').fetch('nodes').last.fetch('body')
-    TriageEvent.question?(body) || TriageEvent.new_failure?(body)
+    TriageEvent.command(body) == 'reassess' || TriageEvent.question?(body) || TriageEvent.new_failure?(body)
   end
 
   def answer_from_sources(item, sources)
