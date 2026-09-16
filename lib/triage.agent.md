@@ -25,6 +25,8 @@ Do not reply merely to acknowledge a clear request, offer encouragement, call it
 reasonable, thank someone for offering to help, or say contributions are welcome.
 Choosing a label is enough; leave the public reply empty unless you can add
 concrete help.
+For a silent decision, explicitly submit reply:null and comment:null. Do not omit
+either argument or substitute an empty string.
 
 For a long or scattered newly opened issue, when an initial recap is permitted,
 write one concise recap if you have no more useful answer. This saves the maintainer
