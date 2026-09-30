@@ -7,6 +7,10 @@ and discussions, built for [RubyLLM](https://github.com/crmne/ruby_llm) and
 [Spotifast](https://github.com/crmne/spotifast). A small Ruby program, a cheap model,
 a system prompt, and scoped tools. Read the report, help the person, get out of the way.
 
+https://github.com/user-attachments/assets/7fbd2ac8-33e7-49d3-a3f2-0d1ce509a3d6
+
+[Download the video](https://github.com/crmne/copilot-triage/releases/download/v0.6.2/copilot-triage-launch-1080p60.mp4)
+
 ## Why this exists
 
 We used [GitHub Agentic Workflows](https://github.com/github/gh-aw) to triage
