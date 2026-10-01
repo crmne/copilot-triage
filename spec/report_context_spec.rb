@@ -73,7 +73,19 @@ RSpec.describe 'Report context' do
     expect(prompt).to include('follow-up: assess the latest_comment, not the original report again')
   end
 
-  it 'keeps the beginning and end of a large report without repeated padding' do
+  it 'gives the agent a long conversation in full' do
+    item['comments']['nodes'] = (1..40).map do |number|
+      { 'id' => "comment-#{number}", 'body' => "Update #{number}: #{'details ' * 100}",
+        'author' => { 'login' => 'reporter' }, 'authorAssociation' => 'NONE' }
+    end
+
+    assessment.run
+
+    expect(assessment).to have_received(:ask_copilot).with(include('Update 1:', 'Update 39:', 'Update 40:'))
+    expect(assessment).not_to have_received(:ask_copilot).with(include('bytes omitted'))
+  end
+
+  it 'keeps the beginning and end of a huge pasted log without repeated padding' do
     item['body'] = "Started.\n#{'Important log data. ' * 2000}Crashed here."
 
     assessment.run
@@ -82,15 +94,15 @@ RSpec.describe 'Report context' do
   end
 
   it 'keeps the most recent recovered history within its budget' do
-    history = (1..50).map do |number|
+    history = (1..60).map do |number|
       { 'id' => "old-#{number}", 'body' => "Old comment #{number}. #{'x' * 900}", 'author' => { 'login' => 'reporter' },
         'authorAssociation' => 'NONE' }
     end
     assessment.instance_variable_set(:@recovered_comments, history)
 
     recovered = assessment.send(:recovered_context)
-    expect(JSON.generate(recovered).bytesize).to be <= 4_000
-    expect(recovered.last['body']).to start_with('Old comment 50.')
+    expect(JSON.generate(recovered).bytesize).to be <= 40_000
+    expect(recovered.last['body']).to start_with('Old comment 60.')
     expect(recovered.first['body']).not_to start_with('Old comment 1.')
   end
 

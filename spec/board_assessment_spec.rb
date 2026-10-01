@@ -107,15 +107,6 @@ RSpec.describe IssueAssessment, 'with a project board' do
     expect(board).not_to have_received(:update)
   end
 
-  it 'gives the board guidance its own context allowance' do
-    overhead = assessment.send(:system_prompt).bytesize +
-               JSON.generate(TriageTools.definitions(board: true)).bytesize
-
-    expect(assessment.send(:request, 'x' * (49_000 - overhead)) { :assessed }).to eq(:assessed)
-    expect { assessment.send(:request, 'x' * (50_001 - overhead)) { :assessed } }
-      .to raise_error(IssueAssessment::Skipped, 'context exceeds 50 KB')
-  end
-
   it 'adds the board guidance and tool fields to the agent' do
     expect(assessment.send(:system_prompt)).to include('## Maintainer board')
     expect(assessment.send(:tools_settings, Dir.pwd)).to include(board: true)

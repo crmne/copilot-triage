@@ -113,8 +113,8 @@ pin a commit SHA if you need an immutable version. `main` is development work.
 ### Copilot (default)
 
 The default model is `gpt-5.6-luna` at low reasoning effort, billed to the
-token's Copilot allowance. A typical assessment reads 10,000 to 50,000 input
-tokens over a few model turns, a fraction of a cent at
+token's Copilot allowance. A typical assessment reads 10,000 to 60,000 input
+tokens over a few model turns, around a cent or less at
 [GitHub's listed price](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing).
 Change it with the `model` input.
 
@@ -478,8 +478,11 @@ Policy keys in `.github/triage.yml`: `labels` (at most two per issue),
   are removed from the Copilot CLI environment and redacted from logs. Copilot
   runs with isolated settings and repository instructions disabled.
 - **Bounded.** At most 12 evidence calls, 90 seconds (Copilot) or 20 turns and
-  120 seconds (RubyLLM), and a 48 KB starting prompt. Long threads are
-  shortened around a visible marker rather than skipped.
+  120 seconds (RubyLLM). The agent reads the whole conversation, up to the
+  latest 100 comments, because long threads are where it helps most. Only a
+  single text over 30 KB, such as a pasted log, is shortened around a visible
+  marker, and a starting prompt over 200 KB (about 50,000 tokens) is left for a
+  maintainer.
 
 ## Failures
 

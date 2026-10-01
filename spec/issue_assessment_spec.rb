@@ -186,11 +186,11 @@ RSpec.describe IssueAssessment, type: :task do
   end
 
   it 'still skips runaway input instead of paying to process it' do
-    assessment.instance_variable_get(:@config)['instructions'] = 'Be careful. ' * 5_000
+    assessment.instance_variable_get(:@config)['instructions'] = 'Be careful. ' * 20_000
 
     assessment.run
     expect(assessment).not_to have_received(:ask_copilot)
-    expect(assessment).to have_received(:puts).with(start_with('Skipped: context exceeds 48 KB'))
+    expect(assessment).to have_received(:puts).with(start_with('Skipped: context exceeds 200 KB'))
   end
 
   it 'leaves quota failures available for a later retry without posting failure comments' do
