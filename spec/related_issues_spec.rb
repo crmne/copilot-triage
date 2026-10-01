@@ -62,6 +62,7 @@ RSpec.describe 'Agent-selected related issues and guarded publishing' do
 
   it 'closes duplicate discussions through the discussion API' do
     assessment.instance_variable_set(:@kind, 'discussion')
+    decision[:move_to_issue] = false
     assessment.run
     expect(assessment).to have_received(:mutate).with('closeDiscussion', discussionId: 'current-id',
                                                                          reason: 'DUPLICATE')

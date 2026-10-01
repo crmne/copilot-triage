@@ -88,8 +88,19 @@ RSpec.describe IssueAssessment, 'moving discussions to issues' do
     end
   end
 
-  context 'without the policy' do
+  context 'without a discussions policy' do
     let(:policy) { {} }
+
+    it 'moves real issues by default' do
+      assessment.run
+
+      expect(assessment).to have_received(:mutate).with('closeDiscussion', discussionId: 'discussion-id',
+                                                                           reason: 'OUTDATED')
+    end
+  end
+
+  context 'when the policy turns moving off' do
+    let(:policy) { { 'discussions' => { 'move_to_issues' => false } } }
 
     it 'keeps discussions as they are' do
       decision.merge!(labels: [], comment: nil).delete(:move_to_issue)

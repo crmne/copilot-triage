@@ -111,9 +111,9 @@ RSpec.describe IssueAssessment, 'with a project board' do
     overhead = assessment.send(:system_prompt).bytesize +
                JSON.generate(TriageTools.definitions(board: true)).bytesize
 
-    expect(assessment.send(:request, 'x' * (25_000 - overhead)) { :assessed }).to eq(:assessed)
-    expect { assessment.send(:request, 'x' * (26_001 - overhead)) { :assessed } }
-      .to raise_error(IssueAssessment::Skipped, 'context exceeds 26 KB')
+    expect(assessment.send(:request, 'x' * (49_000 - overhead)) { :assessed }).to eq(:assessed)
+    expect { assessment.send(:request, 'x' * (50_001 - overhead)) { :assessed } }
+      .to raise_error(IssueAssessment::Skipped, 'context exceeds 50 KB')
   end
 
   it 'adds the board guidance and tool fields to the agent' do
@@ -134,9 +134,8 @@ RSpec.describe IssueAssessment, 'with a project board' do
   context 'with a discussion' do
     let(:kind) { 'discussion' }
 
-    it 'leaves the board alone because projects cannot hold discussions' do
-      decision[:labels] = []
-      %i[waiting_on priority next_step].each { |key| decision.delete(key) }
+    it 'leaves the board alone for a discussion that stays, since projects cannot hold discussions' do
+      decision.merge!(labels: [], move_to_issue: false)
 
       assessment.run
       expect(board).not_to have_received(:update)

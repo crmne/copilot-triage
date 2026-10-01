@@ -53,7 +53,8 @@ RSpec.describe IssueAssessment, type: :task do
     end
 
     it 'posts replies through the discussion API' do
-      allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: 'provider', sources: []))
+      allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: 'provider', sources: [],
+                                                                          move_to_issue: false))
 
       assessment.run
       expect(assessment).to have_received(:mutate).with(
@@ -169,12 +170,19 @@ RSpec.describe IssueAssessment, type: :task do
     expect(assessment).to have_received(:ask_copilot).once
   end
 
-  it 'skips oversized input instead of paying to process it or silently truncating it' do
-    item['body'] = 'a' * 24_000
+  it 'shortens an oversized report around a visible marker instead of skipping it' do
+    item['body'] = "#{'a' * 30_000}THE END"
+
+    assessment.run
+    expect(assessment).to have_received(:ask_copilot).with(include('bytes omitted', 'THE END'))
+  end
+
+  it 'still skips runaway input instead of paying to process it' do
+    assessment.instance_variable_get(:@config)['instructions'] = 'Be careful. ' * 5_000
 
     assessment.run
     expect(assessment).not_to have_received(:ask_copilot)
-    expect(assessment).not_to have_received(:mutate)
+    expect(assessment).to have_received(:puts).with(start_with('Skipped: context exceeds 48 KB'))
   end
 
   it 'leaves quota failures available for a later retry without posting failure comments' do

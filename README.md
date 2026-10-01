@@ -268,12 +268,13 @@ generation. Invalid tool arguments produce an error the agent can correct.
 
 ### Discussions that belong in issues
 
-People sometimes open a discussion for what is really a bug report. Let triage
-move those:
+People sometimes open a discussion for what is really a bug report. Triage
+moves those to issues by default, so discussions can stay a place for questions
+and community. To keep every discussion where it is:
 
 ```yaml
 discussions:
-  move_to_issues: true
+  move_to_issues: false
 ```
 
 When a new discussion is a reproducible bug report or a concrete feature
@@ -599,10 +600,13 @@ never receives the project token.
 
 The model remains `gpt-5.6-luna` with `reasoning-effort: low`. Each assessment uses
 one native Copilot session, which may contain multiple model/tool turns. The
-initial task, system prompt, and tool definitions are bounded to 24 KB (26 KB
-with a project board, covering its guidance); tool
-results are bounded separately. Repeated NUL padding in logs is compacted without
-discarding surrounding evidence. Other oversized input is left for a maintainer.
+initial task, system prompt, and tool definitions are bounded to 48 KB, with a
+little more for board and pull request guidance; tool results are bounded
+separately. Long threads are shortened rather than skipped: the report body,
+the latest comment, earlier comments, and recovered history each keep their
+beginning and end around a marker saying how many bytes were left out, and
+repeated NUL padding in logs is compacted. Only runaway input that still
+exceeds the bound is left for a maintainer.
 
 There is one 90-second CLI timeout and no wrapper retry loop. Copilot may retry
 internally. Its 30-AI-credit session limit is a soft fallback ceiling, not an
