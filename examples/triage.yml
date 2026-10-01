@@ -21,10 +21,11 @@ pull_requests:
 discussions:
   move_to_issues: true
 
-# Optional: keep a project board of whose move it is. See the README.
+# Optional: a project board of what needs you. Triage builds it on an empty
+# project. See the README.
 # board:
 #   project: https://github.com/users/your-name/projects/1
-#   assign_urgent_to: your-name
+#   maintainer: your-name
 
 sources:
   - README.md

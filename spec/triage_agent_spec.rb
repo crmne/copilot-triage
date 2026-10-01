@@ -30,7 +30,7 @@ RSpec.describe TriageAgent do
                                 provider: :openai, assume_model_exists: true, context:)
 
     submit = agent.tools.values.find { |tool| tool.name == 'submit_decision' }
-    expect(submit.parameters_schema[:required]).to include('waiting_on', 'priority', 'next_step')
+    expect(submit.parameters_schema[:required]).to include('next_move', 'priority', 'next_step')
   end
 
   it 'runs tools through the toolbox and returns its errors as text the model can correct' do

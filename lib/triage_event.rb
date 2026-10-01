@@ -16,6 +16,16 @@ module TriageEvent
       ('reassess' if prose(body).match?(%r{\A/triage\s*\z}i))
   end
 
+  def review_skip_reason(event)
+    return 'only submitted reviews trigger triage' unless event['action'] == 'submitted'
+    return 'only Copilot reviews trigger triage' unless
+      event.dig('review', 'user', 'login').to_s.delete_suffix('[bot]') == 'copilot-pull-request-reviewer'
+    return 'reviews of forked pull requests are sent by the board sweep' unless
+      event.dig('pull_request', 'head', 'repo', 'full_name') == event.dig('repository', 'full_name')
+
+    nil
+  end
+
   def maintainer?(association)
     %w[OWNER MEMBER COLLABORATOR].include?(association)
   end
@@ -27,8 +37,11 @@ module TriageEvent
   PULL_REQUEST_ACTIONS = %w[opened reopened ready_for_review synchronize].freeze
 
   # Pull request events pass through; the policy decides whether to triage them.
+  # Of review events, only Copilot's reviews of same-repository pull requests
+  # count: review runs for forks get no secrets, so the board sweep sends those.
   def skip_reason(name, event)
     return if name == 'workflow_dispatch'
+    return review_skip_reason(event) if name == 'pull_request_review'
     if %w[pull_request pull_request_target].include?(name) && !PULL_REQUEST_ACTIONS.include?(event['action'])
       return 'only opened, reopened, ready, or updated pull requests trigger triage'
     end

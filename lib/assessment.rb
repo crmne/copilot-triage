@@ -7,6 +7,7 @@ require 'open3'
 require 'tmpdir'
 require 'yaml'
 require_relative 'conversation_state'
+require_relative 'copilot_review'
 require_relative 'project_board'
 require_relative 'triage_tools'
 
@@ -18,6 +19,9 @@ class IssueAssessment # :nodoc:
   KINDS = { 'issue' => %w[issue Issue], 'discussion' => %w[discussion Discussion],
             'pull_request' => %w[pullRequest PullRequest] }.freeze
   COPILOT_REVIEWER = 'copilot-pull-request-reviewer[bot]'
+  # GitHub's default colors for the usual labels; others get its neutral grey.
+  LABEL_COLORS = { 'bug' => 'd73a4a', 'documentation' => '0075ca', 'enhancement' => 'a2eeef',
+                   'question' => 'd876e3' }.freeze
   LONG_TEXT = 30_000
 
   def initialize(environment = ENV)
@@ -54,6 +58,7 @@ class IssueAssessment # :nodoc:
     return unless prepared
 
     item, labels = prepared
+    labels = ensure_labels(labels)
     @allowed_labels = labels.map { |label| label.fetch('name') }
     @initial_recap_allowed = initial_recap_allowed?(item)
     decision = assess(item, labels)
@@ -146,15 +151,18 @@ class IssueAssessment # :nodoc:
     [@repository, @kind, @number, item['reply_to'] || 'report'].join('/')
   end
 
+  # A new Copilot review is an update worth assessing, like a new human comment.
   def report_fingerprint(item)
     human = item.fetch('comments').fetch('nodes').reject { |comment| bot?(comment['author']) }.last
-    Digest::SHA256.hexdigest(JSON.generate([item['title'], item['body'], item['stateReason'], human]))
+    review = CopilotReview.latest(item) if pull_request?
+    Digest::SHA256.hexdigest(JSON.generate([item['title'], item['body'], item['stateReason'], human, review].compact))
   end
 
   def followup_skip_reason(item)
     return 'conversation is muted; a maintainer can use /triage unmute' if @state.data['muted']
 
-    automatic = %w[issues discussion issue_comment discussion_comment pull_request pull_request_target]
+    automatic = %w[issues discussion issue_comment discussion_comment pull_request pull_request_target
+                   pull_request_review]
     manual = !automatic.include?(@environment['GITHUB_EVENT_NAME'])
     command = comment_event? && TriageEvent.command(event.dig('comment', 'body'))
     return if manual || command == 'reassess'
@@ -355,7 +363,7 @@ class IssueAssessment # :nodoc:
   end
 
   def pull_request_fields
-    'isDraft headRefOid changedFiles additions deletions ' \
+    "isDraft changedFiles additions deletions #{CopilotReview::FIELDS} " \
       'files(first: 100) { nodes { path additions deletions changeType } }'
   end
 
@@ -399,7 +407,7 @@ class IssueAssessment # :nodoc:
     <<~PROMPT
       Submit one triage decision for this #{@kind.tr('_', ' ')} in #{@repository}, number #{@number}.
       Complete the task by calling submit_decision, including for silence. A plain-text decision is not a submission.
-      This is a #{comment_event? ? 'follow-up: assess the latest_comment, not the original report again' : 'report assessment'}.
+      This is a #{assessment_kind}.
       Initial issue recap permitted: #{@initial_recap_allowed}.
       Duplicate policy: #{duplicate_mode}.
       Follow-up policy: #{@config.fetch('followups', 'selective')}.#{board_prompt}#{pull_request_prompt}#{move_prompt}
@@ -411,6 +419,16 @@ class IssueAssessment # :nodoc:
       Recovered earlier comments: #{JSON.generate(recovered_context)}
       Report: #{report_context(item)}
     PROMPT
+  end
+
+  def assessment_kind
+    if review_event?
+      'Copilot review update: judge copilot_review for the board; reply only if the author needs something new'
+    elsif comment_event?
+      'follow-up: assess the latest_comment, not the original report again'
+    else
+      'report assessment'
+    end
   end
 
   def move_prompt
@@ -425,7 +443,7 @@ class IssueAssessment # :nodoc:
   end
 
   def board_prompt
-    "\nMaintainer board: also submit waiting_on, priority, and next_step." if board?
+    "\nMaintainer board: also submit next_move, priority, and next_step." if board?
   end
 
   # The whole conversation, up to the latest 100 comments. Only a single text
@@ -441,6 +459,7 @@ class IssueAssessment # :nodoc:
       context['files'] = item.dig('files', 'nodes').map do |file|
         "#{file['changeType']} #{file['path']} +#{file['additions']} -#{file['deletions']}"
       end
+      context['copilot_review'] = CopilotReview.latest(item)&.merge('requested_again' => CopilotReview.requested?(item))
     end
     JSON.generate(context)
   end
@@ -760,7 +779,7 @@ class IssueAssessment # :nodoc:
   end
 
   def validate_board(decision)
-    raise ArgumentError unless %w[maintainer reporter].include?(decision['waiting_on']) &&
+    raise ArgumentError unless TriageTools::BOARD_PROPERTIES[:next_move][:enum].include?(decision['next_move']) &&
                                ProjectBoard::PRIORITIES.key?(decision['priority']) &&
                                ProjectBoard.next_step?(decision['next_step'])
   end
@@ -784,6 +803,10 @@ class IssueAssessment # :nodoc:
 
   def push_event?
     %w[pull_request pull_request_target].include?(@environment['GITHUB_EVENT_NAME']) && event['action'] == 'synchronize'
+  end
+
+  def review_event?
+    @environment['GITHUB_EVENT_NAME'] == 'pull_request_review'
   end
 
   def pull_request_policy
@@ -812,9 +835,25 @@ class IssueAssessment # :nodoc:
   # A new push needs no new assessment, only a fresh Copilot review when the
   # agent judged the pull request worth reviewing. No model call.
   def review_new_push(item)
-    request_review(item) if @state.data['review_wanted'] && reviews? && !item['isDraft']
+    if @state.data['review_wanted'] && reviews? && !item['isDraft']
+      request_review(item)
+      wait_for_review(item)
+    end
     @state.save unless dry_run?
     skip('a new push needs no new assessment')
+  end
+
+  # Until Copilot reviews the new commit, the pull request is not the
+  # maintainer's move. Ruby only; the review event brings the agent back.
+  def wait_for_review(item)
+    return unless board? && !dry_run? && !@environment['TRIAGE_PROJECT_TOKEN'].to_s.empty?
+
+    changes = board.update(item.fetch('id'), column: 'waiting')
+    keep_review_request(item, board.column_name('waiting'))
+    report("Board: #{changes.empty? ? 'unchanged' : JSON.generate(changes)}")
+  rescue RuntimeError => e
+    @follow_through_failed = true
+    report("Board update failed: #{e.message}.")
   end
 
   # Once per head commit, billed to the owner of the review token.
@@ -844,17 +883,17 @@ class IssueAssessment # :nodoc:
   end
 
   # Runs after the conversation is published and saved: a board failure fails the
-  # job but never causes a repeated reply. A reporter column needs a question
-  # from this run; otherwise the card keeps its column.
+  # job but never causes a repeated reply. An issue waits on its reporter only
+  # after this run asked them something; otherwise the card keeps its column.
+  # Pull requests wait on others whenever the agent says so, such as after
+  # Copilot found real problems.
   def update_board(item, decision, reply_posted:)
-    waiting = decision.fetch('waiting_on') == 'reporter'
-    column = if waiting
-               'waiting_on_reporter' if reply_posted
-             else
-               'needs_maintainer'
+    move = decision.fetch('next_move')
+    column = if move != 'others' then move
+             elsif pull_request? || reply_posted then 'waiting'
              end
     proposed = { column: column, priority: decision.fetch('priority'), next_step: decision.fetch('next_step').strip }
-    assignee = @config.fetch('board')&.fetch('assign_urgent_to', nil)
+    assignee = maintainer_login
     assign = proposed[:priority] == 'urgent' && assignee && item.dig('assignees', 'totalCount').to_i.zero?
     if dry_run?
       report("Board proposal: #{JSON.generate(proposed.merge(assign: assign ? assignee : nil))}")
@@ -867,10 +906,49 @@ class IssueAssessment # :nodoc:
     number = @moved_issue ? @moved_issue.fetch('number') : @number
     github("repos/#{@repository}/issues/#{number}/assignees", assignees: [assignee]) if assign
     changes['assigned'] = assignee if assign
+    keep_review_request(item, changes.fetch('column') { board.column_name(column) if column }) if pull_request?
     report("Board: #{changes.empty? ? 'unchanged' : JSON.generate(changes)}")
   rescue RuntimeError => e
     @follow_through_failed = true
     report("Board update failed: #{e.message}.")
+  end
+
+  # Labels in the policy that the repository lacks are created, so issues and
+  # pull requests get the same labels in every repository. Discussions take none.
+  def ensure_labels(labels)
+    missing = @config.fetch('labels').keys - labels.map { |label| label.fetch('name') }
+    return labels if missing.empty? || dry_run? || (@kind == 'discussion' && !move?)
+
+    labels + missing.filter_map do |name|
+      created = github("repos/#{@repository}/labels", name: name, color: LABEL_COLORS.fetch(name, 'ededed'),
+                                                      description: @config.fetch('labels').fetch(name).to_s[0, 100])
+      report("Created the #{name} label.")
+      { 'id' => created.fetch('node_id'), 'name' => created.fetch('name') }
+    rescue RuntimeError, KeyError
+      report("Could not create the #{name} label.")
+      nil
+    end
+  end
+
+  def maintainer_login
+    settings = @config.fetch('board') || {}
+    settings['maintainer'] || settings['assign_urgent_to']
+  end
+
+  # The maintainer's review is requested while a pull request sits in Approve or
+  # Review, and withdrawn when it moves elsewhere. GitHub refuses a review
+  # request to the pull request's own author.
+  def keep_review_request(item, column_name)
+    login = maintainer_login
+    return unless login && column_name && item.dig('author', 'login') != login
+
+    wanted = %w[approve review].map { |key| board.column_name(key) }.include?(column_name)
+    requested = CopilotReview.reviewers(item).any? { |reviewer| reviewer['login'] == login }
+    return if wanted == requested
+
+    path = "repos/#{@repository}/pulls/#{@number}/requested_reviewers"
+    github(path, method: wanted ? 'POST' : 'DELETE', reviewers: [login])
+    report("Board: #{wanted ? 'requested' : 'withdrew'} @#{login}'s review.")
   end
 
   def duplicate_mode
@@ -985,11 +1063,12 @@ class IssueAssessment # :nodoc:
     github('graphql', token:, query: query, variables: { input: input })
   end
 
-  def github(endpoint, token: nil, **payload)
+  def github(endpoint, token: nil, method: nil, **payload)
     environment = token ? { 'GH_TOKEN' => token } : {}
-    output, _errors, status = Open3.capture3(environment, 'gh', 'api', endpoint, '--input', '-',
-                                             stdin_data: JSON.generate(payload))
+    arguments = ['gh', 'api', endpoint, '--input', '-', *(['--method', method] if method)]
+    output, _errors, status = Open3.capture3(environment, *arguments, stdin_data: JSON.generate(payload))
     raise 'GitHub request failed' unless status.success?
+    return {} if output.strip.empty?
 
     result = JSON.parse(output)
     raise 'GitHub request failed' if result['errors']

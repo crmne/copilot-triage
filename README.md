@@ -17,12 +17,15 @@ an agent investigates with read-only tools and decides what helps:
 - **Discussions.** Questions get answered from your docs. A discussion that is
   really a bug report or feature request moves to an issue.
 - **Pull requests.** Requests a Copilot code review when a change deserves one,
-  checks your contribution policy (screenshots, an issue first, scope), and
-  explains or closes changes your documented scope rules out.
+  reads Copilot's verdict when it arrives, checks your contribution policy
+  (screenshots, an issue first, scope), and explains or closes changes your
+  documented scope rules out.
 - **Your board.** Every issue and pull request lands on a GitHub project board
-  by whose move it is (Needs me, Waiting on them, Ready to merge, ...), with a
-  priority and a one-line next step. Urgent things are assigned to you, which
-  is the one notification you get.
+  sorted by what it needs from you: Approve, Answer or decide, Review, Fix, or
+  nothing yet because it waits on someone else. Each card has a priority and a
+  one-line next step, your review is requested on the pull requests that need
+  it, and urgent issues are assigned to you. Triage builds the board itself on
+  an empty project.
 
 So you can turn off GitHub's email for everything and open the board instead.
 
@@ -78,6 +81,8 @@ on:
     types: [created]
   pull_request_target:
     types: [opened, reopened, ready_for_review, synchronize]
+  pull_request_review:
+    types: [submitted]
 
 permissions:
   contents: read
@@ -92,7 +97,7 @@ concurrency:
 
 jobs:
   triage:
-    if: github.event.sender.type != 'Bot' || github.event_name == 'issues'
+    if: github.event.sender.type != 'Bot' || github.event_name == 'issues' || github.event_name == 'pull_request_review'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -302,50 +307,46 @@ what makes `pull_request_target` safe here.
 
 ## The board
 
-A GitHub project board that says whose move each issue and pull request is,
-across every repository that uses it, public and private:
+A GitHub project board of everything that needs you, across every repository
+that uses it, public and private. Its first four columns sort your work by how
+much of you it takes, so you can clear **Approve** in minutes on your phone and
+save **Review** and **Fix** for focus time:
 
-| Column | Meaning |
-| --- | --- |
-| **Needs me** | Your decision, answer, review, or fix |
-| **Waiting on them** | The reporter or author has the next move |
-| **Blocked** | Yours to set |
-| **Ready to merge** | Mergeable, green, and approved (or yours) |
-| **Backlog** | Valid, nobody has to act now |
-| **In progress** | A pull request is linked or being worked on |
-| **Done** | Closed or merged |
+| Column | What it takes | What lands there |
+| --- | --- | --- |
+| **Approve** | Seconds | Pull requests Copilot recommends approving, approved and green ones, and anything else where a quick yes is all that is left |
+| **Answer or decide** | Minutes | A question for you, a feature request, a scope call |
+| **Review** | Focus time | A change worth reading closely |
+| **Fix** | Hours | A confirmed bug, or your own pull request that still needs work |
+| **Waiting on others** | Nothing | The reporter or author owes an answer or changes, Copilot is still reviewing, or checks are running |
+| **Backlog** | Nothing | Valid, nobody has to act now; yours to set |
 
-Each card also gets a **Priority** (Urgent, High, Normal) and a **Next step**
-written for you, such as "Reproduce from the Windows backtrace; likely the path
-join in loader.rb". Sort **Needs me** by priority and you know what to do next.
+Finished work does not stay: closed issues and closed or merged pull requests
+are archived, still searchable in the project. Each card also gets a
+**Priority** (Urgent, High, Normal) and a **Next step** written for you, such as
+"Reproduce from the Windows backtrace; likely the path join in loader.rb".
 
 ### Set it up
 
-1. Create a project for your account or organization. Keep it private unless
-   you want the public to see your process; labels and replies stay the public
-   signal on each issue.
-2. Give its **Status** field the options above. Add a single-select **Priority**
-   field (Urgent, High, Normal) and a text field named **Next step**; both are
-   optional. Under the project's Workflows, enable **Item closed** and **Pull
-   request merged** so finished work moves to Done.
-3. Create a classic personal access token with the `project` scope, plus `repo`
-   if private repositories use the board (fine-grained tokens cannot reach
-   user-owned projects yet). Save it as a `TRIAGE_PROJECT_TOKEN` secret.
-4. Add the board to your policy and pass the token:
+1. Create an empty project for your account or organization, for example with
+   `gh project create --owner your-name --title "Maintainer board"`. Keep it
+   private unless you want the public to see your process; labels and replies
+   stay the public signal on each issue.
+2. Create a classic personal access token with the `project` scope, plus `repo`
+   for private repositories and for requesting your review on pull requests
+   (fine-grained tokens cannot reach user-owned projects yet). Save it as a
+   `TRIAGE_PROJECT_TOKEN` secret.
+3. Add the board to your policy:
 
 ```yaml
 board:
   project: https://github.com/users/your-name/projects/1
-  assign_urgent_to: your-name # optional
-  columns:                    # optional: rename to match existing options
-    needs_maintainer: Needs me
+  maintainer: your-name # requests your review and assigns urgent issues
 ```
 
-```yaml
-          project-token: ${{ secrets.TRIAGE_PROJECT_TOKEN }}
-```
-
-5. Add a daily sweep as `.github/workflows/board.yml`. It uses no model:
+4. Pass the token to the triage step with `project-token:
+   ${{ secrets.TRIAGE_PROJECT_TOKEN }}`, and add a daily sweep as
+   `.github/workflows/board.yml`. The sweep uses no model:
 
 ```yaml
 name: Board
@@ -374,31 +375,54 @@ jobs:
         with:
           mode: sweep
           project-token: ${{ secrets.TRIAGE_PROJECT_TOKEN }}
+          triage-workflow: triage.yml
           dry-run: ${{ inputs.dry_run || false }}
 ```
 
-Run it once by hand with `dry_run` to see where everything would go. The first
-real run adds existing open issues and pull requests, up to 100 changes a run.
+Run it once by hand with `dry_run` turned off. It builds the board on the empty
+project: the six columns in order with their colors, the Priority and Next step
+fields, an **All repositories** board view, and a board view for each
+repository once it has cards. Every sweep keeps that shape, archives finished
+work, and fixes nothing that is already right. A column of your own survives;
+the columns of earlier versions are replaced, and their cards placed again.
 
 ### How cards move
 
-On each assessment, the agent decides whose move it is, a priority, and the
-next step. A card moves to **Waiting on them** only when that run asked the
-reporter something. Priority only rises. With `assign_urgent_to`, an urgent
-item nobody is assigned to is assigned to you, since GitHub sends no
-notification for board changes.
+On each assessment, the agent picks the item's next move, a priority, and the
+next step. An issue moves to **Waiting on others** only when that run asked the
+reporter something. Priority only rises. Urgent issues are assigned to
+`maintainer`, the one notification GitHub sends you.
 
-The sweep follows GitHub facts: new issues go to **Needs me**, or **Waiting on
-them** when a maintainer spoke last, and your own untouched issues go to
-**Backlog**. A waiting card returns to **Needs me** when the reporter answers.
-An issue with an open linked pull request moves to **In progress**. Pull
-requests go to **Ready to merge**, **Needs me** (to review), **Waiting on them**
-(changes requested, failing checks, conflicts), or **In progress** (drafts and
-your own unfinished work).
+Pull requests follow Copilot's verdict on their latest commit, without a model:
+**Approval recommended** goes to **Approve**, **Changes recommended** to
+**Waiting on others** (your own pull requests to **Fix**), and a pull request
+whose review or checks are still running waits too, including right after a
+new push. **Needs a closer look** is the agent's call, because it means two
+things: when Copilot only says a change is broad or risky, the pull request is
+ready for you (**Approve** or **Review**); when Copilot names something still
+wrong, it goes back to its author. Triage runs when Copilot posts its review on
+a same-repository pull request; for forks, whose review runs get no secrets, the
+sweep sends the pull request to the workflow named by `triage-workflow`, once
+per review. That workflow needs a `workflow_dispatch` trigger with `kind`,
+`number`, and `dry_run` inputs, as in [Preview a report](#preview-a-report).
 
-**Your moves win.** Cards in **Backlog**, **Blocked**, **In progress**, or a
-column of your own stay where you put them; only pull request cards leave
-**In progress** when their facts change.
+While a pull request sits in **Approve** or **Review**, your review is
+requested, so GitHub's review-requested list is your queue; it is withdrawn when
+the card moves on. Issues are not assigned to you outside urgent ones, since
+being assigned subscribes you to every comment.
+
+The sweep also places issues by GitHub facts: new ones go to **Answer or
+decide**, or **Fix** when labeled `bug`; to **Waiting on others** when a
+maintainer spoke last or a pull request is linked; and your own untouched
+issues to **Backlog**. A waiting card comes back when the reporter answers.
+Cards in **Backlog** or a column of your own stay where you put them.
+
+### Labels
+
+Labels stay public and simple: the types in your policy, such as `bug`,
+`enhancement`, `documentation`, and `question`, on issues and pull requests
+alike. Triage creates any of them a repository lacks. Priority, next steps, and
+columns stay private on the board.
 
 ## Preview a report
 
@@ -443,6 +467,7 @@ Action inputs:
 | `provider`, `api-key`, `api-base` | | Provider, key, and optional endpoint for `rubyllm` |
 | `review-token` | `copilot-token` | Token that requests Copilot reviews, billed to its owner |
 | `project-token` | | Classic token with the `project` scope, for the board |
+| `triage-workflow` | `triage.yml` | For the sweep, the triage workflow to run on fork pull requests Copilot asks a human to look at |
 | `mode` | `triage` | `triage`, or `sweep` for the board |
 | `kind`, `number` | from the event | What to assess, for manual runs |
 | `dry-run` | `false` | Show the decision without changing GitHub |

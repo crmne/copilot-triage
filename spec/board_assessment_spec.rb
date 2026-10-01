@@ -17,10 +17,10 @@ RSpec.describe IssueAssessment, 'with a project board' do
   end
   let(:labels) { [{ 'id' => 'bug-id', 'name' => 'bug' }, { 'id' => 'question-id', 'name' => 'question' }] }
   let(:decision) do
-    { labels: ['bug'], reply: nil, comment: nil, sources: [], waiting_on: 'maintainer', priority: 'high',
+    { labels: ['bug'], reply: nil, comment: nil, sources: [], next_move: 'fix', priority: 'high',
       next_step: 'Reproduce with the streaming example from the report.' }
   end
-  let(:board) { instance_double(ProjectBoard, update: { 'column' => 'Needs me' }) }
+  let(:board) { instance_double(ProjectBoard, update: { 'column' => 'Fix' }) }
 
   before do
     config = YAML.safe_load_file('triage.yml')
@@ -33,24 +33,33 @@ RSpec.describe IssueAssessment, 'with a project board' do
     allow(assessment).to receive(:puts)
   end
 
-  it 'puts the issue in Needs me with the agent priority and next step after publishing' do
+  it 'puts the issue in the column of the agent next move, with its priority and next step' do
     assessment.run
 
     expect(assessment).to have_received(:mutate).with('addReaction', anything).ordered
-    expect(board).to have_received(:update).with('report-id', column: 'needs_maintainer', priority: 'high',
+    expect(board).to have_received(:update).with('report-id', column: 'fix', priority: 'high',
                                                               next_step: decision[:next_step]).ordered
     expect(assessment).not_to be_failed
   end
 
-  it 'moves the card to Waiting on them only when this run asked the reporter something' do
-    decision.merge!(labels: ['question'], reply: 'version', waiting_on: 'reporter')
+  %w[approve decide review fix].each do |move|
+    it "maps the #{move} next move to its column" do
+      decision[:next_move] = move
+
+      assessment.run
+      expect(board).to have_received(:update).with('report-id', hash_including(column: move))
+    end
+  end
+
+  it 'moves an issue to Waiting on others only when this run asked the reporter something' do
+    decision.merge!(labels: ['question'], reply: 'version', next_move: 'others')
 
     assessment.run
-    expect(board).to have_received(:update).with('report-id', hash_including(column: 'waiting_on_reporter'))
+    expect(board).to have_received(:update).with('report-id', hash_including(column: 'waiting'))
   end
 
   it 'keeps the column when the agent waits on the reporter without a reply' do
-    decision[:waiting_on] = 'reporter'
+    decision[:next_move] = 'others'
 
     assessment.run
     expect(board).to have_received(:update).with('report-id', hash_including(column: nil))
@@ -77,7 +86,7 @@ RSpec.describe IssueAssessment, 'with a project board' do
 
     assessment.run
     expect(board).not_to have_received(:update)
-    expect(assessment).to have_received(:puts).with(start_with('Board proposal: {"column":"needs_maintainer"'))
+    expect(assessment).to have_received(:puts).with(start_with('Board proposal: {"column":"fix"'))
   end
 
   it 'skips the board quietly until a project token is set' do

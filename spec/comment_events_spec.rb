@@ -108,6 +108,19 @@ RSpec.describe 'Comment assessments' do
     expect(TriageEvent.skip_reason('pull_request_target', 'action' => 'labeled')).to include('only opened')
   end
 
+  it 'passes only Copilot reviews of same-repository pull requests' do
+    review = lambda do |login: 'copilot-pull-request-reviewer[bot]', head: 'crmne/spotifast', action: 'submitted'|
+      { 'action' => action, 'review' => { 'user' => { 'login' => login } },
+        'repository' => { 'full_name' => 'crmne/spotifast' },
+        'pull_request' => { 'head' => { 'repo' => { 'full_name' => head } } } }
+    end
+
+    expect(TriageEvent.skip_reason('pull_request_review', review.call)).to be_nil
+    expect(TriageEvent.skip_reason('pull_request_review', review.call(login: 'crmne'))).to include('only Copilot')
+    expect(TriageEvent.skip_reason('pull_request_review', review.call(head: 'fork/x'))).to include('board sweep')
+    expect(TriageEvent.skip_reason('pull_request_review', review.call(action: 'edited'))).to include('submitted')
+  end
+
   it 'skips an older event when another comment arrived during the delay' do
     item['comments']['nodes'] << comment.merge('id' => 'newer-comment', 'body' => 'Here are the logs.')
 

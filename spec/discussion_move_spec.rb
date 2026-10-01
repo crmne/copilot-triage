@@ -82,10 +82,10 @@ RSpec.describe IssueAssessment, 'moving discussions to issues' do
     it 'puts the new issue on it' do
       board = instance_double(ProjectBoard, update: {})
       allow(assessment).to receive(:board).and_return(board)
-      decision.merge!(waiting_on: 'maintainer', priority: 'high', next_step: 'Reproduce the empty-queue crash.')
+      decision.merge!(next_move: 'fix', priority: 'high', next_step: 'Reproduce the empty-queue crash.')
 
       assessment.run
-      expect(board).to have_received(:update).with('issue-id', hash_including(column: 'needs_maintainer'))
+      expect(board).to have_received(:update).with('issue-id', hash_including(column: 'fix'))
     end
   end
 

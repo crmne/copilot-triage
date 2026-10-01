@@ -23,6 +23,12 @@ end
 
 RSpec.configure do |config|
   config.include AgentToolHelpers
+  # Creating missing labels talks to GitHub; the label specs opt back in.
+  config.before do |example|
+    next if example.metadata[:label_creation] || !defined?(IssueAssessment)
+
+    allow_any_instance_of(IssueAssessment).to receive(:ensure_labels) { |_, labels| labels }
+  end
   config.around do |example|
     Dir.mktmpdir('triage-repository-') do |directory|
       FileUtils.cp_r(Dir.glob(File.join(__dir__, 'fixtures', '*')), directory)

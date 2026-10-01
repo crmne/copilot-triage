@@ -1,12 +1,20 @@
 ## Maintainer board
 
-The maintainer tracks issues on a project board, organized by whose move
-it is. In the same submit_decision call, also set:
+The maintainer works from a project board sorted by what each item needs from
+them. In the same submit_decision call, also set:
 
-- waiting_on: "reporter" when the next move belongs to the reporter because this
-  decision's reply asks them for something, or asks them to try an answer or
-  workaround. Otherwise "maintainer": a decision, review, investigation, or fix.
-  Without a reply in this decision, "reporter" leaves the card where it is.
+- next_move, the column this item belongs in after your decision:
+  - "approve": a quick yes is all that is left, such as merging a pull request
+    Copilot recommends approving, or one you judge ready despite minor notes.
+  - "decide": the maintainer must answer a question or make a product or scope
+    decision, such as a feature request or a question addressed to them.
+  - "review": a change that deserves the maintainer's close reading.
+  - "fix": work the maintainer has to do, such as a confirmed bug in their code
+    or their own pull request that still needs changes.
+  - "others": someone else has the next move: the reporter must answer your
+    question, or the author must address real problems. For an issue, choose it
+    only when this decision's reply asks the reporter for something; without a
+    reply the card stays where it is.
 - priority: "urgent" only for a security exposure, data loss, or a regression in
   the latest release that breaks core use. "high" for a confirmed bug that
   blocks real use. "normal" for everything else, including feature requests and

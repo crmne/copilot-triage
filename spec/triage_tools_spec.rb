@@ -169,16 +169,16 @@ RSpec.describe TriageTools do
 
     it 'requires whose move it is, a priority, and a next step' do
       submit = tools.definitions.find { |tool| tool[:name] == 'submit_decision' }
-      expect(submit.dig(:inputSchema, :required)).to include('waiting_on', 'priority', 'next_step')
+      expect(submit.dig(:inputSchema, :required)).to include('next_move', 'priority', 'next_step')
       expect(described_class.definitions.find { |tool| tool[:name] == 'submit_decision' }
-        .dig(:inputSchema, :required)).not_to include('waiting_on')
+        .dig(:inputSchema, :required)).not_to include('next_move')
 
       expect(tools.call('submit_decision', decision)[:content].first[:text])
-        .to include('Missing required arguments: waiting_on, priority, next_step')
-      result = tools.call('submit_decision', decision.merge('waiting_on' => 'reporter', 'priority' => 'normal',
+        .to include('Missing required arguments: next_move, priority, next_step')
+      result = tools.call('submit_decision', decision.merge('next_move' => 'others', 'priority' => 'normal',
                                                             'next_step' => "Line one\nline two"))
       expect(result[:content].first[:text]).to include('next_step must be one non-empty line')
-      expect(call('submit_decision', **decision, 'waiting_on' => 'maintainer', 'priority' => 'normal',
+      expect(call('submit_decision', **decision, 'next_move' => 'decide', 'priority' => 'normal',
                                                  'next_step' => 'Decide whether to support it.')
         .transform_keys(&:to_sym)).to eq(accepted: true)
     end

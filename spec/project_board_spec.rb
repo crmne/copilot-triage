@@ -12,12 +12,22 @@ RSpec.describe ProjectBoard do
      { 'id' => 'next-field', 'name' => 'Next step', 'dataType' => 'TEXT' }]
   end
   let(:item) { { 'id' => 'item-id', 'status' => nil, 'priority' => nil } }
+  let(:views) { [{ 'id' => 'view-all', 'name' => 'All repositories' }] }
   let(:writes) { [] }
+  let(:mutations) { [] }
+  let(:inputs) { [] }
 
   before do
     allow(board).to receive(:graphql) do |query, **variables|
+      if query.start_with?('mutation')
+        mutations << query[/\{\s*(\w+)\(input/, 1]
+        inputs << variables[:input]
+      end
       if query.include?('projectV2(number')
-        { 'data' => { 'user' => { 'projectV2' => { 'id' => 'project-id', 'fields' => { 'nodes' => fields } } } } }
+        { 'data' => { 'user' => { 'projectV2' => { 'id' => 'project-id', 'fields' => { 'nodes' => fields },
+                                                   'views' => { 'nodes' => views } } } } }
+      elsif query.include?('createProjectV2View')
+        { 'data' => { 'createProjectV2View' => { 'projectV2View' => { 'id' => 'new-view' } } } }
       elsif query.include?('addProjectV2ItemById')
         { 'data' => { 'addProjectV2ItemById' => { 'item' => item } } }
       else
@@ -28,27 +38,67 @@ RSpec.describe ProjectBoard do
   end
 
   it 'adds a card and sets its column, priority, and next step' do
-    changes = board.update('issue-id', column: 'needs_maintainer', priority: 'high', next_step: 'Reproduce it.')
+    changes = board.update('issue-id', column: 'fix', priority: 'high', next_step: 'Reproduce it.')
 
-    expect(changes).to eq('column' => 'Needs me', 'priority' => 'High', 'next_step' => 'Reproduce it.')
-    expect(writes).to eq([{ fieldId: 'status-field', value: { singleSelectOptionId: 'option-Needs me' } },
+    expect(changes).to eq('column' => 'Fix', 'priority' => 'High', 'next_step' => 'Reproduce it.')
+    expect(writes).to eq([{ fieldId: 'status-field', value: { singleSelectOptionId: 'option-Fix' } },
                           { fieldId: 'priority-field', value: { singleSelectOptionId: 'option-High' } },
                           { fieldId: 'next-field', value: { text: 'Reproduce it.' } }])
   end
 
-  ['Backlog', 'Blocked', 'In progress', 'Someday'].each do |column|
+  %w[Backlog Someday].each do |column|
     it "leaves a card the maintainer put in #{column}" do
       item['status'] = { 'name' => column }
 
-      expect(board.update('issue-id', column: 'needs_maintainer')).to eq({})
+      expect(board.update('issue-id', column: 'decide')).to eq({})
       expect(writes).to be_empty
     end
   end
 
-  it 'moves cards between its own columns and out of Done when an issue reopens' do
-    item['status'] = { 'name' => 'Done' }
+  it 'moves cards between its own columns' do
+    item['status'] = { 'name' => 'Approve' }
 
-    expect(board.update('issue-id', column: 'waiting_on_reporter')).to eq('column' => 'Waiting on them')
+    expect(board.update('issue-id', column: 'waiting')).to eq('column' => 'Waiting on others')
+  end
+
+  it 'sorts what needs the maintainer by effort, then the rest' do
+    expect(ProjectBoard::COLUMNS.values)
+      .to eq(['Approve', 'Answer or decide', 'Review', 'Fix', 'Waiting on others', 'Backlog'])
+  end
+
+  it 'changes nothing when the project already has the board shape' do
+    expect(board.set_up).to eq([])
+    expect(mutations).to be_empty
+  end
+
+  it 'sets up an empty project: columns, fields, and the All repositories view' do
+    status_options.replace([{ 'id' => 'todo', 'name' => 'Todo' }, { 'id' => 'done', 'name' => 'Done' }])
+    fields.pop(2)
+    views.clear
+
+    expect(board.set_up).to eq(['columns', 'Priority', 'Next step', 'All repositories view'])
+    expect(mutations).to eq(%w[updateProjectV2Field createProjectV2Field createProjectV2Field createProjectV2View
+                               updateProjectV2View])
+  end
+
+  it 'replaces retired columns but keeps columns of the maintainer own' do
+    status_options.replace((['Needs me', 'Someday', 'Done'] + ProjectBoard::COLUMNS.values.first(2))
+                             .map { |name| { 'id' => name, 'name' => name } })
+    board.set_up
+    sent = inputs.first.fetch(:singleSelectOptions).map { |option| option[:name] }
+    expect(sent).to eq(ProjectBoard::COLUMNS.values + ['Someday'])
+  end
+
+  it 'adds a view for a repository once' do
+    expect(board.ensure_repository_view('crmne/spotifast')).to eq('spotifast view')
+    views << { 'id' => 'view-spotifast', 'name' => 'spotifast' }
+    board.instance_variable_set(:@project, nil)
+    expect(board.ensure_repository_view('crmne/spotifast')).to be_nil
+  end
+
+  it 'archives finished items' do
+    board.archive('item-id')
+    expect(mutations).to eq(['archiveProjectV2Item'])
   end
 
   it 'raises a priority but never lowers one' do
@@ -61,24 +111,24 @@ RSpec.describe ProjectBoard do
   it 'skips optional fields the project does not have' do
     fields.pop(2)
 
-    expect(board.update('issue-id', column: 'needs_maintainer', priority: 'urgent', next_step: 'Fix it.'))
-      .to eq('column' => 'Needs me')
+    expect(board.update('issue-id', column: 'fix', priority: 'urgent', next_step: 'Fix it.'))
+      .to eq('column' => 'Fix')
   end
 
   it 'uses renamed columns' do
     board = described_class.new({ 'project' => 'https://github.com/orgs/acme/projects/1',
-                                  'columns' => { 'needs_maintainer' => 'Inbox' } }, token: 'project-token')
+                                  'columns' => { 'decide' => 'Inbox' } }, token: 'project-token')
 
-    expect(board.column_name('needs_maintainer')).to eq('Inbox')
-    expect(board.column_key('Inbox')).to eq('needs_maintainer')
-    expect(board.column_key('Waiting on them')).to eq('waiting_on_reporter')
+    expect(board.column_name('decide')).to eq('Inbox')
+    expect(board.column_key('Inbox')).to eq('decide')
+    expect(board.column_key('Waiting on others')).to eq('waiting')
   end
 
   it 'explains a missing column option' do
-    status_options.reject! { |option| option['name'] == 'Needs me' }
+    status_options.reject! { |option| option['name'] == 'Fix' }
 
-    expect { board.update('issue-id', column: 'needs_maintainer') }
-      .to raise_error(ProjectBoard::Error, /Status needs an option named Needs me/)
+    expect { board.update('issue-id', column: 'fix') }
+      .to raise_error(ProjectBoard::Error, /Status needs an option named Fix/)
   end
 
   it 'rejects missing tokens, malformed URLs, and unknown columns' do

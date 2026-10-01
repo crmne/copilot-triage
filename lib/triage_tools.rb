@@ -61,7 +61,7 @@ class TriageTools
   }.freeze
   # Extra submit_decision arguments when the repository keeps a project board.
   BOARD_PROPERTIES = {
-    waiting_on: { type: 'string', enum: %w[maintainer reporter] },
+    next_move: { type: 'string', enum: %w[approve decide review fix others] },
     priority: { type: 'string', enum: %w[urgent high normal] },
     next_step: { type: 'string', maxLength: 160 }
   }.freeze

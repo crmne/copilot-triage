@@ -3,21 +3,35 @@
 require 'json'
 require 'open3'
 
-# The maintainer's project board. Columns say whose move it is. Triage moves cards
-# only between its own columns; Backlog, Blocked, In progress, and any custom
-# column are maintainer decisions it never overrides.
+# The maintainer's project board. Five columns sort what needs the maintainer by
+# effort (approve, answer or decide, review, fix); everything else waits on
+# someone else or sits in the backlog. Finished work is archived, not kept.
+# Backlog and any column of the maintainer's own are never overridden.
 class ProjectBoard
   class Error < RuntimeError; end
 
   COLUMNS = {
-    'needs_maintainer' => 'Needs me', 'waiting_on_reporter' => 'Waiting on them', 'blocked' => 'Blocked',
-    'ready_to_merge' => 'Ready to merge', 'backlog' => 'Backlog', 'in_progress' => 'In progress', 'done' => 'Done'
+    'approve' => 'Approve', 'decide' => 'Answer or decide', 'review' => 'Review', 'fix' => 'Fix',
+    'waiting' => 'Waiting on others', 'backlog' => 'Backlog'
   }.freeze
-  MOVABLE = [nil, 'needs_maintainer', 'waiting_on_reporter', 'ready_to_merge', 'done'].freeze
+  DESCRIPTIONS = {
+    'approve' => 'A quick yes: merge, accept, or confirm',
+    'decide' => 'A question to answer or a decision to make',
+    'review' => 'A change worth reading closely',
+    'fix' => 'Work for you to do or finish',
+    'waiting' => 'Someone else has the next move',
+    'backlog' => 'Valid, nobody has to act now'
+  }.freeze
+  COLORS = { 'approve' => 'GREEN', 'decide' => 'PURPLE', 'review' => 'BLUE', 'fix' => 'ORANGE',
+             'waiting' => 'YELLOW', 'backlog' => 'GRAY' }.freeze
+  # Columns from earlier versions, removed when the board is set up again.
+  RETIRED = ['Needs me', 'Waiting on them', 'Blocked', 'Ready to merge', 'In progress', 'Done'].freeze
+  MOVABLE = [nil, 'approve', 'decide', 'review', 'fix', 'waiting'].freeze
   PRIORITIES = { 'urgent' => 'Urgent', 'high' => 'High', 'normal' => 'Normal' }.freeze
   STATUS_FIELD = 'Status'
   PRIORITY_FIELD = 'Priority'
   NEXT_STEP_FIELD = 'Next step'
+  ALL_VIEW = 'All repositories'
 
   def self.next_step?(text)
     text.is_a?(String) && !text.strip.empty? && text.bytesize <= 160 && !text.match?(/[\r\n\0]/)
@@ -94,6 +108,26 @@ class ProjectBoard
     set_option(item_id, STATUS_FIELD, column_name(column))
   end
 
+  # Finished work leaves the board; archived items stay searchable in the project.
+  def archive(item_id)
+    graphql('mutation($input: ArchiveProjectV2ItemInput!) { archiveProjectV2Item(input: $input) { clientMutationId } }',
+            input: { projectId: id, itemId: item_id })
+  end
+
+  # Brings the project to the board's shape: the columns in order, the Priority
+  # and Next step fields, and the All repositories view. Changes nothing that is
+  # already right, keeps columns of the maintainer's own, and returns what it did.
+  def set_up
+    [ensure_columns, ensure_field(PRIORITY_FIELD, 'SINGLE_SELECT', priority_options),
+     ensure_field(NEXT_STEP_FIELD, 'TEXT'), ensure_view(ALL_VIEW, '')].compact
+  end
+
+  # A board view of one repository, created when it first has cards. Returns the
+  # view's name when it was created.
+  def ensure_repository_view(repository)
+    ensure_view(repository.split('/', 2).last, "repo:#{repository}")
+  end
+
   def graphql(query, **variables)
     output, _errors, status = Open3.capture3({ 'GH_TOKEN' => @token, 'GITHUB_TOKEN' => nil },
                                              'gh', 'api', 'graphql', '--input', '-',
@@ -110,6 +144,54 @@ class ProjectBoard
   end
 
   private
+
+  def ensure_columns
+    status = field(STATUS_FIELD)
+    current = status.fetch('options').map { |option| option.fetch('name') }
+    wanted = COLUMNS.keys.map { |key| column_name(key) }
+    own = current - wanted - RETIRED
+    return if current == wanted + own
+
+    options = COLUMNS.keys.map do |key|
+      { name: column_name(key), color: COLORS.fetch(key), description: DESCRIPTIONS.fetch(key) }
+    end
+    options += status.fetch('options').select { |option| own.include?(option['name']) }
+                     .map { |option| { name: option['name'], color: 'GRAY', description: '' } }
+    graphql('mutation($input: UpdateProjectV2FieldInput!) { updateProjectV2Field(input: $input) { clientMutationId } }',
+            input: { fieldId: status.fetch('id'), singleSelectOptions: options })
+    reload
+    'columns'
+  end
+
+  def priority_options
+    PRIORITIES.values.zip(%w[RED YELLOW GRAY]).map { |name, color| { name: name, color: color, description: '' } }
+  end
+
+  def ensure_field(name, type, options = nil)
+    return if field(name)
+
+    input = { projectId: id, dataType: type, name: name }
+    input[:singleSelectOptions] = options if options
+    graphql('mutation($input: CreateProjectV2FieldInput!) { createProjectV2Field(input: $input) { clientMutationId } }',
+            input: input)
+    reload
+    name
+  end
+
+  def ensure_view(name, filter)
+    return if project.dig('views', 'nodes').any? { |view| view['name'] == name }
+
+    query = 'mutation($input: CreateProjectV2ViewInput!) ' \
+            '{ createProjectV2View(input: $input) { projectV2View { id } } }'
+    created = graphql(query, input: { projectId: id, name: name, layout: 'BOARD_LAYOUT' })
+    view = created.dig('data', 'createProjectV2View', 'projectV2View', 'id')
+    visible = [STATUS_FIELD, PRIORITY_FIELD, NEXT_STEP_FIELD, 'Title', 'Repository', 'Assignees', 'Labels']
+              .filter_map { |field_name| field(field_name)&.fetch('id') }
+    graphql('mutation($input: UpdateProjectV2ViewInput!) { updateProjectV2View(input: $input) { clientMutationId } }',
+            input: { viewId: view, filter: filter, configuration: { visibleFieldIds: visible } })
+    reload
+    "#{name} view"
+  end
 
   def raise_priority?(current, proposed)
     ranks = PRIORITIES.values
@@ -137,6 +219,10 @@ class ProjectBoard
     project.fetch('fields').fetch('nodes').find { |entry| entry['name'] == name }
   end
 
+  def reload
+    @project = nil
+  end
+
   def project
     @project ||= begin
       query = <<~GRAPHQL
@@ -144,6 +230,7 @@ class ProjectBoard
           #{@owner_type}(login: $owner) {
             projectV2(number: $number) {
               id
+              views(first: 100) { nodes { id name } }
               fields(first: 50) {
                 nodes {
                   ... on ProjectV2FieldCommon { id name dataType }
