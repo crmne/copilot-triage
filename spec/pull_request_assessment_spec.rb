@@ -148,6 +148,15 @@ RSpec.describe IssueAssessment, 'with a pull request' do
     expect(runner).to be_failed
   end
 
+  it 'skips the review quietly when no token can request one' do
+    environment.delete('COPILOT_GITHUB_TOKEN')
+    runner = run_with
+
+    expect(runner).not_to have_received(:mutate).with('requestReviewsByLogin', anything)
+    expect(runner).to have_received(:puts).with(start_with('Copilot review: skipped'))
+    expect(runner).not_to be_failed
+  end
+
   it 'rejects a decision without the pull request fields' do
     decision.delete(:review)
     runner = run_with

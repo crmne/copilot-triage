@@ -821,6 +821,7 @@ class IssueAssessment # :nodoc:
     head = item.fetch('headRefOid')
     return report("Copilot review: already requested for #{head[0, 7]}.") if @state.data['reviewed_head'] == head
     return report("Copilot review: would request one for #{head[0, 7]}.") if dry_run?
+    return report('Copilot review: skipped; no token can request one.') if review_token.to_s.empty?
 
     mutate('requestReviewsByLogin', token: review_token, pullRequestId: item.fetch('id'),
                                     botLogins: [COPILOT_REVIEWER], union: true)

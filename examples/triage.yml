@@ -10,13 +10,16 @@ labels:
 report_bots:
   - honeybadger[bot]
 
-# Optional: triage pull requests. Discussions that are really bug reports or
-# feature requests move to issues unless move_to_issues is false. See the README.
-# pull_requests:
-#   reviews: copilot
-#   out_of_scope: suggest
-# discussions:
-#   move_to_issues: false
+# Triage pull requests: request a Copilot review when a change deserves one,
+# and explain (suggest) or close changes your documented scope rules out.
+pull_requests:
+  reviews: copilot
+  out_of_scope: suggest
+
+# Discussions that are really bug reports or feature requests move to issues.
+# Set this to false to keep every discussion where it is.
+discussions:
+  move_to_issues: true
 
 # Optional: keep a project board of whose move it is. See the README.
 # board:
