@@ -40,7 +40,7 @@ inputs:
     description: Token that requests Copilot code reviews of pull requests, billed to its owner; defaults to copilot-token.
     default: ''
   reasoning-effort:
-    description: Copilot reasoning effort (none or low).
+    description: Copilot reasoning effort (none or low), or default for models without the setting.
     default: low
   dry-run:
     description: Preview the decision without publishing. Model calls still consume credits.

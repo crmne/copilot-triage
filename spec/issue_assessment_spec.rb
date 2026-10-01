@@ -177,6 +177,14 @@ RSpec.describe IssueAssessment, type: :task do
     expect(assessment).to have_received(:ask_copilot).with(include('bytes omitted', 'THE END'))
   end
 
+  it 'sends no reasoning setting to models without one' do
+    expect(assessment.send(:reasoning_flag)).to eq(['--reasoning-effort=low'])
+    environment['TRIAGE_REASONING_EFFORT'] = 'default'
+    expect(described_class.new(environment).send(:reasoning_flag)).to eq([])
+    environment['TRIAGE_REASONING_EFFORT'] = 'high'
+    expect { described_class.new(environment).send(:reasoning_flag) }.to raise_error(ArgumentError)
+  end
+
   it 'still skips runaway input instead of paying to process it' do
     assessment.instance_variable_get(:@config)['instructions'] = 'Be careful. ' * 5_000
 

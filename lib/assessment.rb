@@ -618,7 +618,7 @@ class IssueAssessment # :nodoc:
       output, errors, status = Open3.capture3(
         environment, 'timeout', '--kill-after=5s', '90s', 'copilot',
         '--model', model_id,
-        "--reasoning-effort=#{reasoning_effort}", '--agent=triage', '--excluded-tools=skill,sql',
+        *reasoning_flag, '--agent=triage', '--excluded-tools=skill,sql',
         '--additional-mcp-config', JSON.generate(mcp), '--allow-tool=triage',
         '--disable-builtin-mcps', '--no-custom-instructions', '--no-ask-user',
         '--no-auto-update', '--no-remote-export', '--max-ai-credits=30',
@@ -668,10 +668,12 @@ class IssueAssessment # :nodoc:
     report("Triage debug: #{redact(details)}")
   end
 
-  def reasoning_effort
-    @environment.fetch('TRIAGE_REASONING_EFFORT', 'low').tap do |effort|
-      raise ArgumentError, 'reasoning effort must be none or low' unless %w[none low].include?(effort)
-    end
+  # Some models, such as Claude Haiku, take no reasoning setting: default sends none.
+  def reasoning_flag
+    effort = @environment.fetch('TRIAGE_REASONING_EFFORT', 'low')
+    raise ArgumentError, 'reasoning effort must be none, low, or default' unless %w[none low default].include?(effort)
+
+    effort == 'default' ? [] : ["--reasoning-effort=#{effort}"]
   end
 
   def record_usage(path)

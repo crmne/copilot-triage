@@ -106,7 +106,7 @@ OptionParser.new do |parser|
     options[:provider] = value
   end
   parser.on('--api-base URL', 'OpenAI-compatible or other custom endpoint') { |value| options[:api_base] = value }
-  parser.on('--reasoning-effort EFFORT', %w[none low]) { |value| options[:effort] = value }
+  parser.on('--reasoning-effort EFFORT', %w[none low default]) { |value| options[:effort] = value }
   parser.on('--case ID') { |value| options[:case] = value }
   parser.on('--output PATH') { |value| options[:output] = value }
 end.parse!
