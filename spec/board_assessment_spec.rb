@@ -1,0 +1,146 @@
+# frozen_string_literal: true
+
+require_relative '../lib/assessment'
+
+RSpec.describe IssueAssessment, 'with a project board' do
+  let(:environment) do
+    { 'GITHUB_REPOSITORY' => 'crmne/ruby_llm', 'TRIAGE_NUMBER' => '123', 'TRIAGE_KIND' => kind,
+      'COPILOT_GITHUB_TOKEN' => 'test-copilot-token', 'TRIAGE_CONFIG' => 'board-triage.yml',
+      'TRIAGE_PROJECT_TOKEN' => 'project-token' }
+  end
+  let(:kind) { 'issue' }
+  let(:assessment) { described_class.new(environment) }
+  let(:item) do
+    { 'id' => 'report-id', 'title' => 'Streaming broke in 1.9', 'body' => 'Every stream now raises.',
+      'closed' => false, 'author' => { 'login' => 'reporter' }, 'assignees' => { 'totalCount' => 0 },
+      'comments' => { 'nodes' => [] } }
+  end
+  let(:labels) { [{ 'id' => 'bug-id', 'name' => 'bug' }, { 'id' => 'question-id', 'name' => 'question' }] }
+  let(:decision) do
+    { labels: ['bug'], reply: nil, comment: nil, sources: [], waiting_on: 'maintainer', priority: 'high',
+      next_step: 'Reproduce with the streaming example from the report.' }
+  end
+  let(:board) { instance_double(ProjectBoard, update: { 'column' => 'Needs me' }) }
+
+  before do
+    config = YAML.safe_load_file('triage.yml')
+    config['board'] = { 'project' => 'https://github.com/users/crmne/projects/3', 'assign_urgent_to' => 'crmne' }
+    File.write('board-triage.yml', YAML.dump(config))
+    allow(assessment).to receive_messages(read_report: [item, labels], board: board)
+    allow(assessment).to receive(:ask_copilot) { JSON.generate(decision) }
+    allow(assessment).to receive(:mutate)
+    allow(assessment).to receive(:github)
+    allow(assessment).to receive(:puts)
+  end
+
+  it 'puts the issue in Needs me with the agent priority and next step after publishing' do
+    assessment.run
+
+    expect(assessment).to have_received(:mutate).with('addReaction', anything).ordered
+    expect(board).to have_received(:update).with('report-id', column: 'needs_maintainer', priority: 'high',
+                                                              next_step: decision[:next_step]).ordered
+    expect(assessment).not_to be_failed
+  end
+
+  it 'moves the card to Waiting on them only when this run asked the reporter something' do
+    decision.merge!(labels: ['question'], reply: 'version', waiting_on: 'reporter')
+
+    assessment.run
+    expect(board).to have_received(:update).with('report-id', hash_including(column: 'waiting_on_reporter'))
+  end
+
+  it 'keeps the column when the agent waits on the reporter without a reply' do
+    decision[:waiting_on] = 'reporter'
+
+    assessment.run
+    expect(board).to have_received(:update).with('report-id', hash_including(column: nil))
+  end
+
+  it 'assigns urgent issues to the configured maintainer when nobody is assigned' do
+    decision[:priority] = 'urgent'
+
+    assessment.run
+    expect(assessment).to have_received(:github).with('repos/crmne/ruby_llm/issues/123/assignees',
+                                                      assignees: ['crmne'])
+  end
+
+  it 'does not reassign an issue that already has an assignee' do
+    decision[:priority] = 'urgent'
+    item['assignees']['totalCount'] = 1
+
+    assessment.run
+    expect(assessment).not_to have_received(:github)
+  end
+
+  it 'reports the board proposal in a dry run without writing' do
+    environment['TRIAGE_DRY_RUN'] = 'true'
+
+    assessment.run
+    expect(board).not_to have_received(:update)
+    expect(assessment).to have_received(:puts).with(start_with('Board proposal: {"column":"needs_maintainer"'))
+  end
+
+  it 'fails the job on a board error but keeps the published reply complete' do
+    allow(board).to receive(:update).and_raise(ProjectBoard::Error, 'project 3 is not visible to the project-token')
+
+    assessment.run
+    expect(assessment).to be_failed
+    expect(assessment).to have_received(:mutate).with('addReaction', anything)
+    expect(assessment).to have_received(:puts)
+      .with('Board update failed: project 3 is not visible to the project-token.')
+  end
+
+  it 'rejects a decision without the board fields' do
+    decision.delete(:next_step)
+
+    assessment.run
+    expect(assessment).to be_failed
+    expect(assessment).not_to have_received(:mutate)
+    expect(board).not_to have_received(:update)
+  end
+
+  it 'rejects a multi-line next step' do
+    decision[:next_step] = "Reproduce.\nThen fix."
+
+    assessment.run
+    expect(assessment).to be_failed
+    expect(board).not_to have_received(:update)
+  end
+
+  it 'gives the board guidance its own context allowance' do
+    overhead = assessment.send(:system_prompt).bytesize +
+               JSON.generate(TriageTools.definitions(board: true)).bytesize
+
+    expect(assessment.send(:request, 'x' * (25_000 - overhead)) { :assessed }).to eq(:assessed)
+    expect { assessment.send(:request, 'x' * (26_001 - overhead)) { :assessed } }
+      .to raise_error(IssueAssessment::Skipped, 'context exceeds 26 KB')
+  end
+
+  it 'adds the board guidance and tool fields to the agent' do
+    expect(assessment.send(:system_prompt)).to include('## Maintainer board')
+    expect(assessment.send(:tools_settings, Dir.pwd)).to include(board: true)
+  end
+
+  it 'keeps the model environment free of the project token' do
+    status = instance_double(Process::Status, success?: false, exitstatus: 1)
+    allow(Open3).to receive(:capture3).and_return(['', '', status])
+    allow(assessment).to receive(:ask_copilot).and_call_original
+
+    assessment.send(:ask_copilot, 'prompt')
+    expect(Open3).to have_received(:capture3).with(hash_including('TRIAGE_PROJECT_TOKEN' => nil), 'timeout',
+                                                   any_args)
+  end
+
+  context 'with a discussion' do
+    let(:kind) { 'discussion' }
+
+    it 'leaves the board alone because projects cannot hold discussions' do
+      decision[:labels] = []
+      %i[waiting_on priority next_step].each { |key| decision.delete(key) }
+
+      assessment.run
+      expect(board).not_to have_received(:update)
+      expect(assessment).not_to be_failed
+    end
+  end
+end

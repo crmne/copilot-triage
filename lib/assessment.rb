@@ -7,6 +7,7 @@ require 'open3'
 require 'tmpdir'
 require 'yaml'
 require_relative 'conversation_state'
+require_relative 'project_board'
 require_relative 'triage_tools'
 
 class IssueAssessment # :nodoc:
@@ -33,7 +34,7 @@ class IssueAssessment # :nodoc:
     @model_calls = @prompt_bytes = 0
     @usage = []
     @outcome = 'error'
-    @skip_reason = @related_snapshot = nil
+    @skip_reason = @related_snapshot = @board_failed = nil
     @recovered_comments = []
     @tool_ledger = { 'calls' => 0, 'bytes' => 0, 'evidence' => {} }
     prepared = load_prepared_report || prepare_report
@@ -66,6 +67,7 @@ class IssueAssessment # :nodoc:
     @state.complete(report_fingerprint(item), body, reply_posted: !dry_run? && !body.nil?)
     @state.data['initial_assessed'] = true if @initial_recap_allowed
     @state.save unless dry_run?
+    update_board(item, decision, reply_posted: !body.nil?) if board?
   rescue Skipped => e
     skip("#{e.message}; left for a maintainer")
   rescue Failed => e
@@ -79,7 +81,7 @@ class IssueAssessment # :nodoc:
   end
 
   def failed?
-    @outcome == 'error'
+    @outcome == 'error' || @board_failed == true
   end
 
   private
@@ -270,8 +272,10 @@ class IssueAssessment # :nodoc:
       @state.data['replies'].empty? && !@state.data['maintainer_replied'] && !answered?(item)
   end
 
-  def request(prompt, limit: 24_000)
-    bytes = prompt.bytesize + system_prompt.bytesize + JSON.generate(TriageTools.definitions).bytesize
+  # The board guidance and fields get their own allowance so enabling the board
+  # does not leave more reports for a maintainer.
+  def request(prompt, limit: board? ? 26_000 : 24_000)
+    bytes = prompt.bytesize + system_prompt.bytesize + JSON.generate(TriageTools.definitions(board: board?)).bytesize
     raise Skipped, "context exceeds #{limit / 1000} KB" if bytes > limit
 
     @model_calls += 1
@@ -303,7 +307,7 @@ class IssueAssessment # :nodoc:
           labels(first: 100) { nodes { id name } }
           #{@kind}(number: $number) {
             id title body closed authorAssociation author { __typename login }
-            #{'stateReason' if @kind == 'issue'}
+            #{'stateReason assignees { totalCount }' if @kind == 'issue'}
             comments(last: 5) { pageInfo { hasPreviousPage startCursor } nodes { #{comment_fields} } }
           }
         }
@@ -355,7 +359,7 @@ class IssueAssessment # :nodoc:
       This is a #{comment_event? ? 'follow-up: assess the latest_comment, not the original report again' : 'report assessment'}.
       Initial issue recap permitted: #{@initial_recap_allowed}.
       Duplicate policy: #{duplicate_mode}.
-      Follow-up policy: #{@config.fetch('followups', 'selective')}.
+      Follow-up policy: #{@config.fetch('followups', 'selective')}.#{board_prompt}
       Allowed labels: #{JSON.generate(allowed)}
       Configured replies: #{JSON.generate(@config.fetch('replies'))}
       These are optional templates, not a checklist of missing information to request.
@@ -364,6 +368,10 @@ class IssueAssessment # :nodoc:
       Recovered earlier comments: #{JSON.generate(@recovered_comments || [])}
       Report: #{report_context(item)}
     PROMPT
+  end
+
+  def board_prompt
+    "\nMaintainer board: also submit waiting_on, priority, and next_step." if board?
   end
 
   def report_context(item)
@@ -419,14 +427,16 @@ class IssueAssessment # :nodoc:
   end
 
   def system_prompt
-    "#{File.read(File.join(__dir__, 'triage.agent.md'))}\n\nProject policy:\n#{@config.fetch('instructions')}"
+    prompt = File.read(File.join(__dir__, 'triage.agent.md'))
+    prompt += "\n#{File.read(File.join(__dir__, 'board.agent.md'))}" if board?
+    "#{prompt}\n\nProject policy:\n#{@config.fetch('instructions')}"
   end
 
   def tools_settings(directory)
     allowed = @allowed_labels || @config.fetch('labels').keys
     config = @config.merge('labels' => @config.fetch('labels').slice(*allowed))
     { root: Dir.pwd, repository: @repository, config: config,
-      ledger_path: File.join(directory, 'evidence.json'), token: @environment['GH_TOKEN'] }
+      ledger_path: File.join(directory, 'evidence.json'), token: @environment['GH_TOKEN'], board: board? }
   end
 
   def tools_command(settings_path)
@@ -452,7 +462,7 @@ class IssueAssessment # :nodoc:
                                       deferTools: 'never' } } }
       environment = {
         'COPILOT_GITHUB_TOKEN' => @environment.fetch('COPILOT_GITHUB_TOKEN'),
-        'COPILOT_HOME' => directory, 'GH_TOKEN' => nil, 'GITHUB_TOKEN' => nil
+        'COPILOT_HOME' => directory, 'GH_TOKEN' => nil, 'GITHUB_TOKEN' => nil, 'TRIAGE_PROJECT_TOKEN' => nil
       }
       output, errors, status = Open3.capture3(
         environment, 'timeout', '--kill-after=5s', '90s', 'copilot',
@@ -474,7 +484,7 @@ class IssueAssessment # :nodoc:
                                   "evidence calls #{@tool_ledger&.fetch('calls', 0) || 0}; " \
                                   "ledger present #{File.file?(ledger_path)})"
         details = errors.strip
-        %w[GH_TOKEN GITHUB_TOKEN COPILOT_GITHUB_TOKEN].each do |key|
+        %w[GH_TOKEN GITHUB_TOKEN COPILOT_GITHUB_TOKEN TRIAGE_PROJECT_TOKEN].each do |key|
           token = @environment[key]
           details = details.gsub(token, '[REDACTED]') if token && !token.empty?
         end
@@ -508,7 +518,7 @@ class IssueAssessment # :nodoc:
     details = JSON.generate(final_text: copilot_response(output)&.slice(0, 2000), requested_tools: requested,
                             decision: @tool_ledger&.fetch('decision', nil),
                             tools: @tool_ledger&.fetch('trace', []), runtime_tools: tool_events)
-    %w[GH_TOKEN GITHUB_TOKEN COPILOT_GITHUB_TOKEN].each do |key|
+    %w[GH_TOKEN GITHUB_TOKEN COPILOT_GITHUB_TOKEN TRIAGE_PROJECT_TOKEN].each do |key|
       token = @environment[key]
       details = details.gsub(token, '[REDACTED]') if token && !token.empty?
     end
@@ -560,8 +570,11 @@ class IssueAssessment # :nodoc:
     decision = JSON.parse(response)
     allowed = @config.fetch('labels').keys & labels.map { |label| label.fetch('name') }
     keys = %w[comment labels sources related_issue relationship reply mute]
+    keys += TriageTools::BOARD_PROPERTIES.keys.map(&:to_s) if board?
     raise ArgumentError unless decision.is_a?(Hash) && (decision.keys - keys).empty?
     raise ArgumentError unless (%w[labels reply] - decision.keys).empty?
+
+    validate_board(decision) if board?
 
     validate_labels(decision['labels'], allowed)
     raise ArgumentError unless decision['reply'].nil? || @config.fetch('replies').key?(decision['reply'])
@@ -591,6 +604,47 @@ class IssueAssessment # :nodoc:
       raise ArgumentError
     end
     decision
+  end
+
+  def validate_board(decision)
+    raise ArgumentError unless %w[maintainer reporter].include?(decision['waiting_on']) &&
+                               ProjectBoard::PRIORITIES.key?(decision['priority']) &&
+                               ProjectBoard.next_step?(decision['next_step'])
+  end
+
+  def board?
+    @kind == 'issue' && @config.key?('board')
+  end
+
+  def board
+    @board ||= ProjectBoard.new(@config.fetch('board') || {}, token: @environment['TRIAGE_PROJECT_TOKEN'])
+  end
+
+  # Runs after the conversation is published and saved: a board failure fails the
+  # job but never causes a repeated reply. A reporter column needs a question
+  # from this run; otherwise the card keeps its column.
+  def update_board(item, decision, reply_posted:)
+    waiting = decision.fetch('waiting_on') == 'reporter'
+    column = if waiting
+               'waiting_on_reporter' if reply_posted
+             else
+               'needs_maintainer'
+             end
+    proposed = { column: column, priority: decision.fetch('priority'), next_step: decision.fetch('next_step').strip }
+    assignee = @config.fetch('board')&.fetch('assign_urgent_to', nil)
+    assign = proposed[:priority] == 'urgent' && assignee && item.dig('assignees', 'totalCount').to_i.zero?
+    if dry_run?
+      report("Board proposal: #{JSON.generate(proposed.merge(assign: assign ? assignee : nil))}")
+      return
+    end
+
+    changes = board.update(item.fetch('id'), **proposed)
+    github("repos/#{@repository}/issues/#{@number}/assignees", assignees: [assignee]) if assign
+    changes['assigned'] = assignee if assign
+    report("Board: #{changes.empty? ? 'unchanged' : JSON.generate(changes)}")
+  rescue RuntimeError => e
+    @board_failed = true
+    report("Board update failed: #{e.message}.")
   end
 
   def duplicate_mode

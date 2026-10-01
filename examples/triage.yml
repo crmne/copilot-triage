@@ -10,6 +10,11 @@ labels:
 report_bots:
   - honeybadger[bot]
 
+# Optional: keep a project board of whose move it is. See the README.
+# board:
+#   project: https://github.com/users/your-name/projects/1
+#   assign_urgent_to: your-name
+
 sources:
   - README.md
   - CONTRIBUTING.md

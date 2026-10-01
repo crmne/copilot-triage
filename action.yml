@@ -7,8 +7,8 @@ branding:
 
 inputs:
   copilot-token:
-    description: Token with Copilot Requests permission and an available Copilot allowance.
-    required: true
+    description: Token with Copilot Requests permission and an available Copilot allowance; required for triage.
+    default: ''
   github-token:
     description: Token for reading reports, publishing labels and comments, and optionally closing duplicates.
     default: ${{ github.token }}
@@ -33,18 +33,31 @@ inputs:
   debounce-seconds:
     description: Wait for nearby follow-up comments before assessment (0 to 60 seconds).
     default: '10'
+  mode:
+    description: triage assesses the triggering report; sweep updates the project board without a model.
+    default: triage
+  project-token:
+    description: Classic token with the project scope (and repo for private repositories), used only for the board.
+    default: ''
 
 runs:
   using: composite
   steps:
+    - name: Check the mode
+      if: inputs.mode != 'triage' && inputs.mode != 'sweep'
+      shell: bash
+      run: |
+        echo "mode must be triage or sweep" >&2
+        exit 1
     - name: Check event eligibility
       id: event
+      if: inputs.mode == 'triage'
       shell: bash
       run: ruby "$TRIAGE_ACTION_PATH/lib/triage_event.rb"
       env:
         TRIAGE_ACTION_PATH: ${{ github.action_path }}
     - uses: actions/checkout@v7
-      if: steps.event.outputs.eligible == 'true'
+      if: steps.event.outputs.eligible == 'true' || inputs.mode == 'sweep'
       with:
         ref: ${{ github.event.repository.default_branch }}
         persist-credentials: false
@@ -102,3 +115,13 @@ runs:
         TRIAGE_STATE_DIR: ${{ runner.temp }}/copilot-triage-state
         TRIAGE_PREPARED_PATH: ${{ runner.temp }}/copilot-triage-prepared.json
         TRIAGE_METRICS_PATH: ${{ runner.temp }}/copilot-triage-metrics.json
+        TRIAGE_PROJECT_TOKEN: ${{ inputs.project-token }}
+    - name: Sweep the project board
+      if: inputs.mode == 'sweep'
+      shell: bash
+      run: ruby "$TRIAGE_ACTION_PATH/lib/board_sweep.rb"
+      env:
+        TRIAGE_ACTION_PATH: ${{ github.action_path }}
+        TRIAGE_CONFIG: ${{ inputs.config }}
+        TRIAGE_DRY_RUN: ${{ inputs.dry-run }}
+        TRIAGE_PROJECT_TOKEN: ${{ inputs.project-token }}

@@ -1,0 +1,111 @@
+# frozen_string_literal: true
+
+require_relative '../lib/project_board'
+
+RSpec.describe ProjectBoard do
+  let(:board) { described_class.new({ 'project' => 'https://github.com/users/crmne/projects/3' }, token: 'project-token') }
+  let(:status_options) { ProjectBoard::COLUMNS.values.map { |name| { 'id' => "option-#{name}", 'name' => name } } }
+  let(:fields) do
+    [{ 'id' => 'status-field', 'name' => 'Status', 'options' => status_options },
+     { 'id' => 'priority-field', 'name' => 'Priority',
+       'options' => ProjectBoard::PRIORITIES.values.map { |name| { 'id' => "option-#{name}", 'name' => name } } },
+     { 'id' => 'next-field', 'name' => 'Next step', 'dataType' => 'TEXT' }]
+  end
+  let(:item) { { 'id' => 'item-id', 'status' => nil, 'priority' => nil } }
+  let(:writes) { [] }
+
+  before do
+    allow(board).to receive(:graphql) do |query, **variables|
+      if query.include?('projectV2(number')
+        { 'data' => { 'user' => { 'projectV2' => { 'id' => 'project-id', 'fields' => { 'nodes' => fields } } } } }
+      elsif query.include?('addProjectV2ItemById')
+        { 'data' => { 'addProjectV2ItemById' => { 'item' => item } } }
+      else
+        writes << variables.fetch(:input).slice(:fieldId, :value)
+        { 'data' => {} }
+      end
+    end
+  end
+
+  it 'adds a card and sets its column, priority, and next step' do
+    changes = board.update('issue-id', column: 'needs_maintainer', priority: 'high', next_step: 'Reproduce it.')
+
+    expect(changes).to eq('column' => 'Needs me', 'priority' => 'High', 'next_step' => 'Reproduce it.')
+    expect(writes).to eq([{ fieldId: 'status-field', value: { singleSelectOptionId: 'option-Needs me' } },
+                          { fieldId: 'priority-field', value: { singleSelectOptionId: 'option-High' } },
+                          { fieldId: 'next-field', value: { text: 'Reproduce it.' } }])
+  end
+
+  ['Backlog', 'Blocked', 'In progress', 'Someday'].each do |column|
+    it "leaves a card the maintainer put in #{column}" do
+      item['status'] = { 'name' => column }
+
+      expect(board.update('issue-id', column: 'needs_maintainer')).to eq({})
+      expect(writes).to be_empty
+    end
+  end
+
+  it 'moves cards between its own columns and out of Done when an issue reopens' do
+    item['status'] = { 'name' => 'Done' }
+
+    expect(board.update('issue-id', column: 'waiting_on_reporter')).to eq('column' => 'Waiting on them')
+  end
+
+  it 'raises a priority but never lowers one' do
+    item['priority'] = { 'name' => 'High' }
+
+    expect(board.update('issue-id', priority: 'normal')).to eq({})
+    expect(board.update('issue-id', priority: 'urgent')).to eq('priority' => 'Urgent')
+  end
+
+  it 'skips optional fields the project does not have' do
+    fields.pop(2)
+
+    expect(board.update('issue-id', column: 'needs_maintainer', priority: 'urgent', next_step: 'Fix it.'))
+      .to eq('column' => 'Needs me')
+  end
+
+  it 'uses renamed columns' do
+    board = described_class.new({ 'project' => 'https://github.com/orgs/acme/projects/1',
+                                  'columns' => { 'needs_maintainer' => 'Inbox' } }, token: 'project-token')
+
+    expect(board.column_name('needs_maintainer')).to eq('Inbox')
+    expect(board.column_key('Inbox')).to eq('needs_maintainer')
+    expect(board.column_key('Waiting on them')).to eq('waiting_on_reporter')
+  end
+
+  it 'explains a missing column option' do
+    status_options.reject! { |option| option['name'] == 'Needs me' }
+
+    expect { board.update('issue-id', column: 'needs_maintainer') }
+      .to raise_error(ProjectBoard::Error, /Status needs an option named Needs me/)
+  end
+
+  it 'rejects missing tokens, malformed URLs, and unknown columns' do
+    expect { described_class.new({ 'project' => 'https://github.com/users/crmne/projects/3' }, token: '') }
+      .to raise_error(ProjectBoard::Error, /project-token/)
+    expect { described_class.new({ 'project' => 'https://example.com/projects/3' }, token: 'token') }
+      .to raise_error(ProjectBoard::Error, /project URL/)
+    expect do
+      described_class.new({ 'project' => 'https://github.com/users/crmne/projects/3',
+                            'columns' => { 'later' => 'Later' } }, token: 'token')
+    end.to raise_error(ProjectBoard::Error, /unknown board columns: later/)
+  end
+
+  it 'sends requests with the project token only' do
+    allow(board).to receive(:graphql).and_call_original
+    status = instance_double(Process::Status, success?: false)
+    allow(Open3).to receive(:capture3).and_return(['{"errors":[{"message":"Resource not accessible"}]}', '', status])
+
+    expect { board.id }.to raise_error(ProjectBoard::Error, 'GitHub project request failed: Resource not accessible')
+    expect(Open3).to have_received(:capture3).with({ 'GH_TOKEN' => 'project-token', 'GITHUB_TOKEN' => nil },
+                                                   'gh', 'api', 'graphql', '--input', '-', stdin_data: anything)
+  end
+
+  it 'accepts a next step only as one short line' do
+    expect(described_class.next_step?('Decide on Fedora support.')).to be(true)
+    expect(described_class.next_step?("Two\nlines")).to be(false)
+    expect(described_class.next_step?(' ')).to be(false)
+    expect(described_class.next_step?('x' * 161)).to be(false)
+  end
+end

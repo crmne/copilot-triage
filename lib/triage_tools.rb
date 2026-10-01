@@ -5,6 +5,7 @@ require 'yaml'
 require 'open3'
 require 'digest'
 require 'uri'
+require_relative 'project_board'
 
 # Read-only, repository-scoped tools. Retrieval is mechanical; the agent chooses
 # queries, follows references, interprets evidence, and decides when to stop.
@@ -58,11 +59,26 @@ class TriageTools
       }, required: %w[labels reply comment sources related_issue relationship mute]
     }
   }.freeze
+  # Extra submit_decision arguments when the repository keeps a project board.
+  BOARD_PROPERTIES = {
+    waiting_on: { type: 'string', enum: %w[maintainer reporter] },
+    priority: { type: 'string', enum: %w[urgent high normal] },
+    next_step: { type: 'string', maxLength: 160 }
+  }.freeze
 
   attr_reader :ledger
 
-  def self.definitions
-    SCHEMAS.map do |name, schema|
+  def self.schemas(board: false)
+    return SCHEMAS unless board
+
+    submit = SCHEMAS.fetch('submit_decision')
+    required = submit.fetch(:required) + BOARD_PROPERTIES.keys.map(&:to_s)
+    SCHEMAS.merge('submit_decision' => submit.merge(properties: submit.fetch(:properties).merge(BOARD_PROPERTIES),
+                                                    required: required))
+  end
+
+  def self.definitions(board: false)
+    schemas(board: board).map do |name, schema|
       { name: name, description: schema.fetch(:description),
         inputSchema: { type: 'object', properties: schema.fetch(:properties),
                        required: schema.fetch(:required), additionalProperties: false },
@@ -70,8 +86,9 @@ class TriageTools
     end
   end
 
-  def initialize(root:, repository:, config:, ledger_path: nil, token: nil)
+  def initialize(root:, repository:, config:, ledger_path: nil, token: nil, board: false)
     @root = File.realpath(root)
+    @board = board
     @repository = repository
     raise ArgumentError, 'Invalid repository' unless repository.match?(%r{\A[\w.-]+/[\w.-]+\z})
 
@@ -80,6 +97,10 @@ class TriageTools
     @token = token
     @ledger = { 'calls' => 0, 'bytes' => 0, 'evidence' => {} }
     @records = {}
+  end
+
+  def definitions
+    self.class.definitions(board: @board)
   end
 
   def call(name, arguments)
@@ -198,6 +219,9 @@ class TriageTools
 
     references = decision[:comment].to_s.scan(/\[\[([^\]]+)\]\]/).flatten
     raise ArgumentError, 'Citations must match sources.' unless references.uniq.sort == sources.uniq.sort
+    if @board && !ProjectBoard.next_step?(decision[:next_step])
+      raise ArgumentError, 'next_step must be one non-empty line under 160 bytes.'
+    end
 
     @ledger['decision'] = decision.transform_keys(&:to_s)
     { accepted: true }
@@ -250,7 +274,7 @@ class TriageTools
   end
 
   def validate_arguments(name, arguments)
-    schema = SCHEMAS.fetch(name) { raise ArgumentError, 'Unknown tool.' }
+    schema = self.class.schemas(board: @board).fetch(name) { raise ArgumentError, 'Unknown tool.' }
     properties = schema.fetch(:properties).transform_keys(&:to_s)
     raise ArgumentError, 'Tool arguments must be an object.' unless arguments.is_a?(Hash)
 

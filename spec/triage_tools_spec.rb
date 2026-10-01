@@ -160,6 +160,30 @@ RSpec.describe TriageTools do
     expect(tools.ledger).not_to have_key('decision')
   end
 
+  context 'with a project board' do
+    let(:tools) { described_class.new(root: Dir.pwd, repository: 'owner/project', config: config, board: true) }
+    let(:decision) do
+      { 'labels' => [], 'reply' => nil, 'comment' => nil, 'sources' => [], 'related_issue' => nil,
+        'relationship' => nil, 'mute' => false }
+    end
+
+    it 'requires whose move it is, a priority, and a next step' do
+      submit = tools.definitions.find { |tool| tool[:name] == 'submit_decision' }
+      expect(submit.dig(:inputSchema, :required)).to include('waiting_on', 'priority', 'next_step')
+      expect(described_class.definitions.find { |tool| tool[:name] == 'submit_decision' }
+        .dig(:inputSchema, :required)).not_to include('waiting_on')
+
+      expect(tools.call('submit_decision', decision)[:content].first[:text])
+        .to include('Missing required arguments: waiting_on, priority, next_step')
+      result = tools.call('submit_decision', decision.merge('waiting_on' => 'reporter', 'priority' => 'normal',
+                                                            'next_step' => "Line one\nline two"))
+      expect(result[:content].first[:text]).to include('next_step must be one non-empty line')
+      expect(call('submit_decision', **decision, 'waiting_on' => 'maintainer', 'priority' => 'normal',
+                                                 'next_step' => 'Decide whether to support it.')
+        .transform_keys(&:to_sym)).to eq(accepted: true)
+    end
+  end
+
   it 'uses standard MCP initialization, listing, and tool calls over stdio' do
     requests = [
       { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05' } },

@@ -193,8 +193,9 @@ Tools never receive an entire repository dump.
 
 The action suppresses ordinary replies when a maintainer or bot commented most
 recently. It checks the report again before publishing and skips if it changed. Successful
-assessments get a bot 🎉 reaction. PRs are outside its scope; GitHub's built-in
-Copilot code review is a separate product.
+assessments get a bot 🎉 reaction. Triage does not assess PRs; GitHub's built-in
+Copilot code review is a separate product. The optional
+[project board](#project-board) sweep does place PRs on the board.
 
 ### Related issues and duplicates
 
@@ -320,11 +321,136 @@ install or upgrade the action. Use a manual preview for older reports. If a
 run posts nothing, its job summary distinguishes skipped input or invalid model
 output from a valid decision to stay silent.
 
+## Project board
+
+Optionally, triage can keep a GitHub project board of what needs you, across
+every repository that uses it, public and private. The columns say whose move
+it is:
+
+| Column | Meaning |
+| --- | --- |
+| **Needs me** | Your decision, answer, review, or fix |
+| **Waiting on them** | Triage or you asked the reporter something |
+| **Blocked** | Yours to set; triage never moves cards out of it |
+| **Ready to merge** | A PR is mergeable, green, and approved (or yours) |
+| **Backlog** | Valid, nobody has to act now; yours to set |
+| **In progress** | A PR is linked, or a draft PR is being worked on |
+| **Done** | Closed; use the project's built-in workflow |
+
+Each card can also carry a **Priority** (Urgent, High, Normal) and a one-line
+**Next step** written for you by the agent, such as "Reproduce from the Windows
+backtrace; likely the path join in loader.rb". The board is the summary: sort
+**Needs me** by priority and you know what to do next.
+
+### Set it up
+
+1. Create a project owned by your account or organization, for example
+   `https://github.com/users/crmne/projects/3`. Keep it private unless you want
+   the public to see your workflow; triage's labels and replies stay the
+   public signal on each issue.
+2. Give its **Status** field the column options above. Add a single-select
+   **Priority** field with Urgent, High, and Normal, and a text field named
+   **Next step**. Both are optional; triage skips fields the project lacks.
+   Enable the project's built-in workflows that set Done when an issue or PR
+   is closed or merged.
+3. Create a classic personal access token with the `project` scope, plus
+   `repo` if private repositories use the board. Fine-grained tokens cannot
+   access user-owned projects yet. Save it as a `TRIAGE_PROJECT_TOKEN`
+   repository secret (or an organization secret).
+4. Add the board to `.github/triage.yml`:
+
+```yaml
+board:
+  project: https://github.com/users/crmne/projects/3
+  assign_urgent_to: crmne # optional
+  columns:                # optional: rename to match existing options
+    needs_maintainer: Needs me
+```
+
+Column keys are `needs_maintainer`, `waiting_on_reporter`, `blocked`,
+`ready_to_merge`, `backlog`, `in_progress`, and `done`.
+
+5. Pass the token to the triage step:
+
+```yaml
+      - uses: crmne/copilot-triage@v0
+        with:
+          copilot-token: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          project-token: ${{ secrets.TRIAGE_PROJECT_TOKEN }}
+```
+
+6. Add a daily sweep as `.github/workflows/board.yml`:
+
+```yaml
+name: Board
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: board
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: crmne/copilot-triage@v0
+        with:
+          mode: sweep
+          project-token: ${{ secrets.TRIAGE_PROJECT_TOKEN }}
+          dry-run: ${{ inputs.dry_run || false }}
+```
+
+Run it once manually with `dry_run` to see what it would place. The first real
+run adds existing open issues and PRs, at most 100 changes per run.
+
+### How cards move
+
+On each assessed issue event, the agent decides whose move it is, a priority,
+and the next step, as part of the decision it already submits. The card moves
+to **Waiting on them** only when that run posted a reply asking the reporter
+something; otherwise "waiting on the reporter" leaves the column unchanged.
+Priority only rises, never falls. With `assign_urgent_to`, an urgent issue
+nobody is assigned to is assigned to that person, which notifies them; GitHub
+sends no notification for board changes. Discussions cannot be project items,
+so they stay off the board.
+
+The sweep uses no model and spends no Copilot credits. It applies moves that
+follow from GitHub facts:
+
+- New issues go to **Needs me**, or **Waiting on them** when a maintainer spoke
+  last. Your own untouched issues go to **Backlog**.
+- A card in **Waiting on them** returns to **Needs me** when the reporter
+  commented after it moved.
+- An issue with an open linked PR moves to **In progress**.
+- PRs go to **Ready to merge**, **Needs me** (a contributor PR to review),
+  **Waiting on them** (changes requested, failing checks, or conflicts), or
+  **In progress** (drafts and your own unfinished PRs).
+
+**Your moves win.** Triage and the sweep only move cards out of no column,
+**Needs me**, **Waiting on them**, **Ready to merge**, and **Done** (for
+reopened issues). **Backlog**, **Blocked**, **In progress**, and any column of
+your own are your decisions and stay put; only PR cards leave **In progress**
+when their facts change. Board failures fail the job and appear in its summary,
+after any reply was published, so they never cause a repeated reply. The model
+never receives the project token.
+
 ## Cost and caching
 
 The model remains `gpt-5.6-luna` with `reasoning-effort: low`. Each assessment uses
 one native Copilot session, which may contain multiple model/tool turns. The
-initial task, system prompt, and tool definitions are bounded to 24 KB; tool
+initial task, system prompt, and tool definitions are bounded to 24 KB (26 KB
+with a project board, covering its guidance); tool
 results are bounded separately. Repeated NUL padding in logs is compacted without
 discarding surrounding evidence. Other oversized input is left for a maintainer.
 
@@ -357,6 +483,9 @@ GitHub credential is available to that server, not the model's environment.
 Copilot runs with isolated settings and repository instructions disabled.
 The wrapper controls labels/comments and closes duplicates only with explicit
 configuration and the safeguards above. It never edits project code.
+
+The optional project token is passed only to the Ruby code that writes the
+board and is removed from the Copilot CLI environment.
 
 The CLI is pinned to `1.0.83`. Skill and SQL tools are excluded explicitly.
 The offline integration test verifies the actual provider request exposes only

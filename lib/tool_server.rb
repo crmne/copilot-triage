@@ -18,7 +18,7 @@ class TriageToolServer
                  { protocolVersion: '2024-11-05', capabilities: { tools: {} },
                    serverInfo: { name: 'triage', version: '1' } }
                when 'ping' then {}
-               when 'tools/list' then { tools: TriageTools.definitions }
+               when 'tools/list' then { tools: @tools.definitions }
                when 'tools/call'
                  @tools.call(request.dig('params', 'name'), request.dig('params', 'arguments') || {})
                end
