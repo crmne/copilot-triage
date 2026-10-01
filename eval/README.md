@@ -19,6 +19,15 @@ Measure fresh model behavior with a Copilot token in `COPILOT_GITHUB_TOKEN`:
 bundle exec ruby eval/run.rb --live --model gpt-5.6-luna --output luna-eval.json
 ```
 
+Measure a model from another provider through RubyLLM with its key in
+`TRIAGE_API_KEY`:
+
+```sh
+bundle exec ruby eval/run.rb --live --engine rubyllm --provider anthropic --model claude-haiku-4-5
+```
+
+Add `--api-base URL` for an OpenAI-compatible or local endpoint.
+
 The live option consumes Copilot credits but still uses fixture GitHub evidence
 and dry-run publishing. Compare another model by changing `--model`, or compare
 `--reasoning-effort none` and `--reasoning-effort low`. Use

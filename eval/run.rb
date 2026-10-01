@@ -21,7 +21,7 @@ class TriageEvaluation < IssueAssessment
     @decision = super
   end
 
-  def ask_copilot(prompt)
+  def ask_model(prompt)
     response = if @replay
                  @example.fetch('tools', []).each do |call|
                    result = evidence_tools.call(call.fetch('name'), call.fetch('arguments'))
@@ -41,6 +41,10 @@ class TriageEvaluation < IssueAssessment
 
   def tools_settings(directory)
     super.merge(example: @example)
+  end
+
+  def engine_tools(settings)
+    EvaluationTools.new(**settings)
   end
 
   def tools_command(settings_path)
@@ -91,17 +95,25 @@ class TriageEvaluation < IssueAssessment
   end
 end
 
-options = { replay: true, model: 'gpt-5.6-luna', effort: 'low' }
+options = { replay: true, model: 'gpt-5.6-luna', effort: 'low', engine: 'copilot' }
 OptionParser.new do |parser|
   parser.banner = 'Usage: ruby eval/run.rb [--replay | --live] [--model ID] [--case ID] [--output PATH]'
   parser.on('--replay', 'Offline replay; no model credits (default)') { options[:replay] = true }
   parser.on('--live', 'Evaluate fresh model output using COPILOT_GITHUB_TOKEN') { options[:replay] = false }
   parser.on('--model ID') { |value| options[:model] = value }
+  parser.on('--engine ENGINE', %w[copilot rubyllm]) { |value| options[:engine] = value }
+  parser.on('--provider SLUG', 'RubyLLM provider; the key comes from TRIAGE_API_KEY') do |value|
+    options[:provider] = value
+  end
+  parser.on('--api-base URL', 'OpenAI-compatible or other custom endpoint') { |value| options[:api_base] = value }
   parser.on('--reasoning-effort EFFORT', %w[none low]) { |value| options[:effort] = value }
   parser.on('--case ID') { |value| options[:case] = value }
   parser.on('--output PATH') { |value| options[:output] = value }
 end.parse!
-abort 'Set COPILOT_GITHUB_TOKEN for live evaluation.' unless options[:replay] || ENV['COPILOT_GITHUB_TOKEN']
+if !options[:replay] && options[:engine] == 'copilot' && !ENV['COPILOT_GITHUB_TOKEN']
+  abort 'Set COPILOT_GITHUB_TOKEN for live evaluation.'
+end
+abort 'Set --provider for the rubyllm engine.' if options[:engine] == 'rubyllm' && !options[:provider]
 
 cases = YAML.safe_load_file(File.join(__dir__, 'cases.yml'))
 cases.select! { |example| example.fetch('id') == options[:case] } if options[:case]
@@ -117,6 +129,8 @@ results = cases.map do |example|
                       'TRIAGE_MODEL' => options[:model],
                       'TRIAGE_REASONING_EFFORT' => options[:effort],
                       'COPILOT_GITHUB_TOKEN' => ENV.fetch('COPILOT_GITHUB_TOKEN', nil),
+                      'TRIAGE_ENGINE' => options[:engine], 'TRIAGE_PROVIDER' => options[:provider],
+                      'TRIAGE_API_KEY' => ENV.fetch('TRIAGE_API_KEY', nil), 'TRIAGE_API_BASE' => options[:api_base],
                       'GITHUB_EVENT_NAME' => example['comment'] ? 'issue_comment' : 'issues',
                       'GITHUB_EVENT_PATH' => 'fixture-event' }
       runner = TriageEvaluation.new(environment, example, replay: options[:replay])
@@ -146,7 +160,8 @@ results = cases.map do |example|
   end
 end
 summary = {
-  mode: options[:replay] ? 'offline_replay' : 'live', model: options[:model], reasoning_effort: options[:effort],
+  mode: options[:replay] ? 'offline_replay' : 'live', engine: options[:engine], provider: options[:provider],
+  model: options[:model], reasoning_effort: options[:effort],
   cases: results.size,
   passed: results.count { |result| result[:passed] },
   unnecessary_replies: results.count do |result|
@@ -156,6 +171,7 @@ summary = {
     !result[:allowed_actions].include?('silent') && result[:actual] == 'silent'
   end,
   model_calls: results.sum { |result| result[:metrics].fetch('model_calls') },
+  cost_usd: results.sum { |result| result[:metrics].fetch('cost_usd', 0) }.round(6),
   prompt_bytes: results.sum { |result| result[:metrics].fetch('prompt_bytes') },
   elapsed_seconds: results.sum { |result| result[:metrics].fetch('elapsed_seconds') }.round(3),
   results: results

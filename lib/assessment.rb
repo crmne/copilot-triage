@@ -20,6 +20,9 @@ class IssueAssessment # :nodoc:
     @kind = environment.fetch('TRIAGE_KIND', 'issue')
     @number = Integer(environment.fetch('TRIAGE_NUMBER'), 10)
     @config = YAML.safe_load_file(environment.fetch('TRIAGE_CONFIG', '.github/triage.yml'))
+    @engine = environment.fetch('TRIAGE_ENGINE', 'copilot')
+    raise ArgumentError, 'engine must be copilot or rubyllm' unless %w[copilot rubyllm].include?(@engine)
+
     @model_calls = 0
     @usage = []
     @prompt_bytes = 0
@@ -34,7 +37,7 @@ class IssueAssessment # :nodoc:
     @model_calls = @prompt_bytes = 0
     @usage = []
     @outcome = 'error'
-    @skip_reason = @related_snapshot = @board_failed = nil
+    @skip_reason = @related_snapshot = @board_failed = @cost = nil
     @recovered_comments = []
     @tool_ledger = { 'calls' => 0, 'bytes' => 0, 'evidence' => {} }
     prepared = load_prepared_report || prepare_report
@@ -238,7 +241,8 @@ class IssueAssessment # :nodoc:
     metrics = { outcome: @outcome, reason: @skip_reason, model_calls: @model_calls,
                 prompt_bytes: @prompt_bytes, elapsed_seconds: elapsed,
                 evidence_reads: @tool_ledger.fetch('calls', 0), tool_result_bytes: @tool_ledger.fetch('bytes', 0),
-                dry_run: dry_run? }
+                dry_run: dry_run?, engine: @engine }
+    metrics[:cost_usd] = @cost.to_f.round(6) if @cost
     if @model_calls.zero?
       metrics.merge!(input_tokens: 0, output_tokens: 0)
     elsif @usage.any?
@@ -280,7 +284,8 @@ class IssueAssessment # :nodoc:
 
     @model_calls += 1
     @prompt_bytes += bytes
-    response = ask_copilot(prompt) || raise(Failed, @copilot_failure_reason || 'Copilot unavailable')
+    fallback = @engine == 'copilot' ? 'Copilot unavailable' : 'model unavailable'
+    response = ask_model(prompt) || raise(Failed, @model_failure_reason || fallback)
     yield response
   end
 
@@ -443,8 +448,72 @@ class IssueAssessment # :nodoc:
     [RbConfig.ruby, File.join(__dir__, 'tool_server.rb'), settings_path]
   end
 
+  def ask_model(prompt)
+    @engine == 'rubyllm' ? ask_rubyllm(prompt) : ask_copilot(prompt)
+  end
+
+  # RubyLLM loads only for this engine; the Copilot engine needs no gems.
+  def ask_rubyllm(prompt)
+    require_relative 'triage_agent'
+    @model_failure_reason = nil
+    Dir.mktmpdir('issue-assessment-') do |directory|
+      toolbox = engine_tools(tools_settings(directory))
+      agent = TriageAgent.new(toolbox:, system_prompt:, **rubyllm_options)
+      begin
+        agent.triage(prompt)
+      rescue TriageAgent::Exhausted, RubyLLM::Error, RubyLLM::ConfigurationError, RubyLLM::ModelNotFoundError,
+             Faraday::Error => e
+        @model_failure_reason = "model unavailable (#{redact(e.message)[0, 300]})"
+      ensure
+        @tool_ledger = toolbox.ledger
+        @model_calls = agent.turns
+        @usage << [agent.tokens.input.to_i, agent.tokens.output.to_i]
+        @cost = agent.cost.total
+      end
+      decision = @tool_ledger['decision']
+      @model_failure_reason ||= 'the model finished without calling submit_decision' unless decision
+      report("The model produced no submitted decision: #{@model_failure_reason}.") unless decision
+      JSON.generate(decision) if decision
+    end
+  end
+
+  # Any RubyLLM provider: the key and endpoint apply to the chosen provider only,
+  # in a context of their own. A custom endpoint may serve models RubyLLM's
+  # registry does not list.
+  def rubyllm_options
+    provider = @environment['TRIAGE_PROVIDER'].to_s
+    raise Failed, 'the rubyllm engine needs a provider' if provider.empty?
+
+    key = @environment['TRIAGE_API_KEY'].to_s
+    base = @environment['TRIAGE_API_BASE'].to_s
+    context = RubyLLM.context do |config|
+      config.request_timeout = 60
+      config.max_retries = 2
+      config.public_send(:"#{provider}_api_key=", key) unless key.empty?
+      config.public_send(:"#{provider}_api_base=", base) unless base.empty?
+    end
+    { model: model_id, provider: provider.to_sym, assume_model_exists: !base.empty?, context: }
+  rescue NoMethodError
+    raise Failed, "RubyLLM has no #{provider} provider with that setting"
+  end
+
+  def engine_tools(settings)
+    TriageTools.new(**settings)
+  end
+
+  def model_id
+    @environment.fetch('TRIAGE_MODEL', 'gpt-5.6-luna')
+  end
+
+  def redact(text)
+    %w[GH_TOKEN GITHUB_TOKEN COPILOT_GITHUB_TOKEN TRIAGE_PROJECT_TOKEN TRIAGE_API_KEY].reduce(text) do |result, key|
+      token = @environment[key]
+      token && !token.empty? ? result.gsub(token, '[REDACTED]') : result
+    end
+  end
+
   def ask_copilot(prompt)
-    @copilot_failure_reason = nil
+    @model_failure_reason = nil
     Dir.mktmpdir('issue-assessment-') do |directory|
       Dir.mkdir(File.join(directory, 'agents'))
       File.write(File.join(directory, 'agents', 'triage.agent.md'), <<~AGENT)
@@ -462,11 +531,12 @@ class IssueAssessment # :nodoc:
                                       deferTools: 'never' } } }
       environment = {
         'COPILOT_GITHUB_TOKEN' => @environment.fetch('COPILOT_GITHUB_TOKEN'),
-        'COPILOT_HOME' => directory, 'GH_TOKEN' => nil, 'GITHUB_TOKEN' => nil, 'TRIAGE_PROJECT_TOKEN' => nil
+        'COPILOT_HOME' => directory, 'GH_TOKEN' => nil, 'GITHUB_TOKEN' => nil, 'TRIAGE_PROJECT_TOKEN' => nil,
+        'TRIAGE_API_KEY' => nil
       }
       output, errors, status = Open3.capture3(
         environment, 'timeout', '--kill-after=5s', '90s', 'copilot',
-        '--model', @environment.fetch('TRIAGE_MODEL', 'gpt-5.6-luna'),
+        '--model', model_id,
         "--reasoning-effort=#{reasoning_effort}", '--agent=triage', '--excluded-tools=skill,sql',
         '--additional-mcp-config', JSON.generate(mcp), '--allow-tool=triage',
         '--disable-builtin-mcps', '--no-custom-instructions', '--no-ask-user',
@@ -480,16 +550,12 @@ class IssueAssessment # :nodoc:
       @tool_ledger = JSON.parse(File.read(ledger_path)) if File.file?(ledger_path)
       debug_copilot(output) if dry_run? && @environment['TRIAGE_DEBUG'] == 'true'
       unless status.success? && copilot_response(output) && File.file?(ledger_path)
-        @copilot_failure_reason = "Copilot unavailable (exit #{status.exitstatus}; " \
-                                  "evidence calls #{@tool_ledger&.fetch('calls', 0) || 0}; " \
-                                  "ledger present #{File.file?(ledger_path)})"
-        details = errors.strip
-        %w[GH_TOKEN GITHUB_TOKEN COPILOT_GITHUB_TOKEN TRIAGE_PROJECT_TOKEN].each do |key|
-          token = @environment[key]
-          details = details.gsub(token, '[REDACTED]') if token && !token.empty?
-        end
-        @copilot_failure_reason += "; #{details[0, 500]}" unless details.empty?
-        report("Copilot produced no submitted decision: #{@copilot_failure_reason}.")
+        @model_failure_reason = "Copilot unavailable (exit #{status.exitstatus}; " \
+                                "evidence calls #{@tool_ledger&.fetch('calls', 0) || 0}; " \
+                                "ledger present #{File.file?(ledger_path)})"
+        details = redact(errors.strip)
+        @model_failure_reason += "; #{details[0, 500]}" unless details.empty?
+        report("Copilot produced no submitted decision: #{@model_failure_reason}.")
         next
       end
 
@@ -518,11 +584,7 @@ class IssueAssessment # :nodoc:
     details = JSON.generate(final_text: copilot_response(output)&.slice(0, 2000), requested_tools: requested,
                             decision: @tool_ledger&.fetch('decision', nil),
                             tools: @tool_ledger&.fetch('trace', []), runtime_tools: tool_events)
-    %w[GH_TOKEN GITHUB_TOKEN COPILOT_GITHUB_TOKEN TRIAGE_PROJECT_TOKEN].each do |key|
-      token = @environment[key]
-      details = details.gsub(token, '[REDACTED]') if token && !token.empty?
-    end
-    report("Triage debug: #{details}")
+    report("Triage debug: #{redact(details)}")
   end
 
   def reasoning_effort
@@ -546,10 +608,10 @@ class IssueAssessment # :nodoc:
   end
 
   def attributed(body)
-    model = @environment.fetch('TRIAGE_MODEL', 'gpt-5.6-luna')
+    model = model_id
     details = if @model_calls.positive? && @usage.any?
                 input, output = @usage.transpose.map(&:sum)
-                "#{input} input / #{output} output tokens this run"
+                "#{input} input / #{output} output tokens#{format(' ($%.4f)', @cost) if @cost} this run"
               else
                 'token usage unavailable'
               end

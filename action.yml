@@ -7,7 +7,7 @@ branding:
 
 inputs:
   copilot-token:
-    description: Token with Copilot Requests permission and an available Copilot allowance; required for triage.
+    description: Token with Copilot Requests permission and an available Copilot allowance, for the copilot engine.
     default: ''
   github-token:
     description: Token for reading reports, publishing labels and comments, and optionally closing duplicates.
@@ -22,8 +22,20 @@ inputs:
     description: Issue or discussion number; inferred from the event when omitted.
     default: ${{ github.event.issue.number || github.event.discussion.number }}
   model:
-    description: Copilot model ID.
+    description: Model ID; for the rubyllm engine, as the provider names it.
     default: gpt-5.6-luna
+  engine:
+    description: copilot runs Copilot CLI with your Copilot allowance; rubyllm uses a provider API key through RubyLLM.
+    default: copilot
+  provider:
+    description: RubyLLM provider for the rubyllm engine, such as openai, anthropic, gemini, openrouter, or ollama.
+    default: ''
+  api-key:
+    description: API key for the rubyllm engine's provider.
+    default: ''
+  api-base:
+    description: Custom endpoint for the rubyllm engine, such as an OpenAI-compatible server.
+    default: ''
   reasoning-effort:
     description: Copilot reasoning effort (none or low).
     default: low
@@ -43,11 +55,11 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Check the mode
-      if: inputs.mode != 'triage' && inputs.mode != 'sweep'
+    - name: Check the mode and engine
+      if: (inputs.mode != 'triage' && inputs.mode != 'sweep') || (inputs.engine != 'copilot' && inputs.engine != 'rubyllm')
       shell: bash
       run: |
-        echo "mode must be triage or sweep" >&2
+        echo "mode must be triage or sweep, and engine copilot or rubyllm" >&2
         exit 1
     - name: Check event eligibility
       id: event
@@ -87,20 +99,37 @@ runs:
         TRIAGE_METRICS_PATH: ${{ runner.temp }}/copilot-triage-metrics.json
     - name: Restore Copilot CLI
       id: cli
-      if: steps.report.outputs.eligible == 'true'
+      if: steps.report.outputs.eligible == 'true' && inputs.engine == 'copilot'
       uses: actions/cache@v6
       with:
         path: ${{ runner.temp }}/copilot-triage-cli
         key: copilot-cli-${{ runner.os }}-${{ runner.arch }}-1.0.83
     - name: Install Copilot
-      if: steps.report.outputs.eligible == 'true' && steps.cli.outputs.cache-hit != 'true'
+      if: steps.report.outputs.eligible == 'true' && inputs.engine == 'copilot' && steps.cli.outputs.cache-hit != 'true'
       shell: bash
       run: npm install --prefix "$RUNNER_TEMP/copilot-triage-cli" --no-audit --no-fund @github/copilot@1.0.83
+    - name: Check Ruby
+      id: ruby
+      if: steps.report.outputs.eligible == 'true' && inputs.engine == 'rubyllm'
+      shell: bash
+      run: echo "version=$(ruby -e 'print RUBY_VERSION')" >> "$GITHUB_OUTPUT"
+    - name: Restore RubyLLM
+      id: gems
+      if: steps.report.outputs.eligible == 'true' && inputs.engine == 'rubyllm'
+      uses: actions/cache@v6
+      with:
+        path: ${{ runner.temp }}/copilot-triage-gems
+        key: rubyllm-${{ runner.os }}-${{ runner.arch }}-ruby-${{ steps.ruby.outputs.version }}-2.0.0
+    - name: Install RubyLLM
+      if: steps.report.outputs.eligible == 'true' && inputs.engine == 'rubyllm' && steps.gems.outputs.cache-hit != 'true'
+      shell: bash
+      run: gem install ruby_llm --version 2.0.0 --install-dir "$RUNNER_TEMP/copilot-triage-gems" --no-document
     - name: Assess the report
       if: steps.report.outputs.eligible == 'true'
       shell: bash
       run: |
         export PATH="$RUNNER_TEMP/copilot-triage-cli/node_modules/.bin:$PATH"
+        export GEM_PATH="$RUNNER_TEMP/copilot-triage-gems:$(ruby -e 'print Gem.default_path.join(":")')"
         ruby "$TRIAGE_ACTION_PATH/lib/assessment.rb"
       env:
         TRIAGE_ACTION_PATH: ${{ github.action_path }}
@@ -111,6 +140,10 @@ runs:
         TRIAGE_NUMBER: ${{ inputs.number }}
         TRIAGE_MODEL: ${{ inputs.model }}
         TRIAGE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
+        TRIAGE_ENGINE: ${{ inputs.engine }}
+        TRIAGE_PROVIDER: ${{ inputs.provider }}
+        TRIAGE_API_KEY: ${{ inputs.api-key }}
+        TRIAGE_API_BASE: ${{ inputs.api-base }}
         TRIAGE_DRY_RUN: ${{ inputs.dry-run }}
         TRIAGE_STATE_DIR: ${{ runner.temp }}/copilot-triage-state
         TRIAGE_PREPARED_PATH: ${{ runner.temp }}/copilot-triage-prepared.json

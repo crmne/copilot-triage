@@ -47,8 +47,10 @@ gates. Ruby validates and publishes the agent's structured decision.
 - Keep replies useful: answers, essential questions, policy, released fixes,
   duplicates, and one helpful initial recap. Do not recap every follow-up.
 - Keep failures in job summaries, never new failure tickets or bot apologies.
-- Keep the runtime Ruby standard-library only. Copilot owns the agent loop;
-  the small MCP server exposes tools, not another orchestration framework.
+- Keep the runtime small. With Copilot, it is Ruby's standard library and
+  Copilot owns the agent loop; with [another provider](#other-model-providers),
+  a [RubyLLM](https://rubyllm.com) agent runs the same tools. Neither is
+  another orchestration framework.
 
 Unit tests cover boundaries and publishing. Offline tool integration tests use
 the real Copilot CLI with a fake provider; they do not establish model quality.
@@ -100,7 +102,8 @@ The action checks out your repository's **default branch**, restores conversatio
 state, installs Copilot CLI, and runs the assessment. Commit the configuration
 to that branch before enabling the workflow. It requires the Ruby, Node.js,
 GitHub CLI, Git, and `timeout` commands provided by GitHub's Ubuntu runners.
-There is no runtime gem dependency or provider API key.
+With the default Copilot engine there is no runtime gem dependency or
+provider API key.
 
 The `v0` tag tracks tested v0 releases, so consuming repositories update
 automatically. Use a full commit SHA instead when you need an immutable version.
@@ -320,6 +323,49 @@ Existing issues and discussions are not automatically backfilled when you
 install or upgrade the action. Use a manual preview for older reports. If a
 run posts nothing, its job summary distinguishes skipped input or invalid model
 output from a valid decision to stay silent.
+
+## Other model providers
+
+Copilot is the default because it uses an allowance you may already pay for.
+To pay for tokens another way, switch to the `rubyllm` engine: a
+[RubyLLM](https://rubyllm.com) agent with the same system prompt, tools,
+evidence budget, and decision checks. Use a company API key, OpenRouter, a
+cloud provider, or any OpenAI-compatible endpoint:
+
+```yaml
+      - uses: crmne/copilot-triage@v0
+        with:
+          engine: rubyllm
+          provider: openrouter
+          model: openai/gpt-oss-120b
+          api-key: ${{ secrets.OPENROUTER_API_KEY }}
+```
+
+`provider` is a RubyLLM provider slug, such as `openai`, `anthropic`, `gemini`,
+`openrouter`, `mistral`, `deepseek`, `xai`, or `ollama`, and `model` is the ID
+that provider uses. For a server that speaks the OpenAI API, set
+`provider: openai` and `api-base` to its URL; models it serves do not need to
+be in RubyLLM's registry. A local model works the same way on a self-hosted
+runner, for example `provider: ollama` with `api-base: http://localhost:11434/v1`.
+
+The action installs the `ruby_llm` gem only for this engine, cached between
+runs. The agent gets 20 model turns, 120 seconds, and 4,000 output tokens per
+turn, and stops as soon as it submits a decision. Replies show the run's cost
+when RubyLLM knows the model's price.
+
+Choose a model by measuring it. The [evaluation runner](eval/README.md) runs
+the same cases against any provider:
+
+```sh
+TRIAGE_API_KEY=... bundle exec ruby eval/run.rb --live --engine rubyllm \
+  --provider openrouter --model openai/gpt-oss-120b
+```
+
+Small and free models vary widely in tool calling and judgment, so check that
+a model passes before relying on it. Free tiers also have tight rate limits,
+and some free providers log or train on prompts. Issue text from private
+repositories, including error reports, goes to that provider; use a provider
+whose data terms you accept.
 
 ## Project board
 

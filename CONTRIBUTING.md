@@ -19,9 +19,12 @@ The CLI integration test talks to a local fake model and consumes no credits.
 It skips if Copilot CLI is absent. Add a regression test for behavior changes.
 Include example public replies when changing response policy.
 
-The runtime uses Ruby's standard library. Keep GitHub mutations in the script.
+The Copilot engine uses only Ruby's standard library; the RubyLLM engine adds
+the `ruby_llm` gem, installed only when it is selected. Write RubyLLM code the
+way its guides show it: an agent class, tool classes, and the documented loop.
+Keep GitHub mutations in the script.
 Give the agent scoped, bounded read-only tools and a clear system prompt. Let
-Copilot own tool calling and conversational judgment; do not build another
+the engine own tool calling and the model own conversational judgment; do not build another
 retrieval router, keyword ranker, or semantic regex gate. Submit decisions through
 the schema-defined tool, not JSON scraped from final prose. Keep arbitrary CLI
 execution, URLs, and GitHub write tools unavailable to the model. Do not run
