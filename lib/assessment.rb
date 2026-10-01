@@ -861,6 +861,8 @@ class IssueAssessment # :nodoc:
       return
     end
 
+    return report('Board: skipped; no project-token is set.') if @environment['TRIAGE_PROJECT_TOKEN'].to_s.empty?
+
     changes = board.update((@moved_issue || item).fetch('id'), **proposed)
     number = @moved_issue ? @moved_issue.fetch('number') : @number
     github("repos/#{@repository}/issues/#{number}/assignees", assignees: [assignee]) if assign

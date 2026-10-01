@@ -80,6 +80,15 @@ RSpec.describe IssueAssessment, 'with a project board' do
     expect(assessment).to have_received(:puts).with(start_with('Board proposal: {"column":"needs_maintainer"'))
   end
 
+  it 'skips the board quietly until a project token is set' do
+    environment['TRIAGE_PROJECT_TOKEN'] = ''
+
+    assessment.run
+    expect(board).not_to have_received(:update)
+    expect(assessment).to have_received(:puts).with('Board: skipped; no project-token is set.')
+    expect(assessment).not_to be_failed
+  end
+
   it 'fails the job on a board error but keeps the published reply complete' do
     allow(board).to receive(:update).and_raise(ProjectBoard::Error, 'project 3 is not visible to the project-token')
 

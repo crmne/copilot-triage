@@ -5,7 +5,8 @@ require_relative '../lib/assessment'
 RSpec.describe IssueAssessment, 'moving discussions to issues' do
   let(:environment) do
     { 'GITHUB_REPOSITORY' => 'crmne/spotifast', 'TRIAGE_NUMBER' => '41', 'TRIAGE_KIND' => 'discussion',
-      'TRIAGE_CONFIG' => 'move-triage.yml', 'COPILOT_GITHUB_TOKEN' => 'copilot-token' }
+      'TRIAGE_CONFIG' => 'move-triage.yml', 'COPILOT_GITHUB_TOKEN' => 'copilot-token',
+      'TRIAGE_PROJECT_TOKEN' => 'project-token' }
   end
   let(:policy) { { 'discussions' => { 'move_to_issues' => true } } }
   let(:assessment) { described_class.new(environment) }
