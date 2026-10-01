@@ -81,6 +81,16 @@ RSpec.describe IssueAssessment, 'with a project board' do
     expect(assessment).not_to have_received(:github)
   end
 
+  it 'writes only to the board when quiet, as for a backfill' do
+    environment['TRIAGE_QUIET'] = 'true'
+    decision.merge!(labels: ['question'], reply: 'version', priority: 'urgent')
+
+    assessment.run
+    expect(board).to have_received(:update).with('report-id', hash_including(column: 'fix', priority: 'urgent'))
+    expect(assessment).not_to have_received(:mutate)
+    expect(assessment).to have_received(:puts).with(include('"outcome":"quiet"'))
+  end
+
   it 'reports the board proposal in a dry run without writing' do
     environment['TRIAGE_DRY_RUN'] = 'true'
 

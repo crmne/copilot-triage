@@ -45,6 +45,9 @@ inputs:
   reasoning-effort:
     description: Copilot reasoning effort (none or low), or default for models without the setting.
     default: low
+  quiet:
+    description: Write only to the board, without comments, labels, closures, or Copilot reviews; for backfilling existing reports.
+    default: 'false'
   dry-run:
     description: Preview the decision without publishing. Model calls still consume credits.
     default: 'false'
@@ -151,6 +154,7 @@ runs:
         TRIAGE_API_KEY: ${{ inputs.api-key }}
         TRIAGE_API_BASE: ${{ inputs.api-base }}
         TRIAGE_DRY_RUN: ${{ inputs.dry-run }}
+        TRIAGE_QUIET: ${{ inputs.quiet }}
         TRIAGE_STATE_DIR: ${{ runner.temp }}/copilot-triage-state
         TRIAGE_PREPARED_PATH: ${{ runner.temp }}/copilot-triage-prepared.json
         TRIAGE_METRICS_PATH: ${{ runner.temp }}/copilot-triage-metrics.json

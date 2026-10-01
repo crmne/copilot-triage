@@ -72,8 +72,10 @@ class IssueAssessment # :nodoc:
     report(JSON.generate(decision))
     body = reply_body(decision)
     report(attributed(body)) if dry_run? && body
-    publish(item, labels, decision) unless dry_run? || decision['mute']
-    @outcome = if decision['close']
+    publish(item, labels, decision) unless dry_run? || quiet? || decision['mute']
+    @outcome = if quiet?
+                 'quiet'
+               elsif decision['close']
                  'duplicate_closed'
                elsif decision['close_pull_request']
                  'closed_out_of_scope'
@@ -86,9 +88,10 @@ class IssueAssessment # :nodoc:
     @state.data['review_wanted'] = decision['review'] if pull_request?
     @state.complete(report_fingerprint(item), body, reply_posted: !dry_run? && !body.nil?)
     @state.data['initial_assessed'] = true if @initial_recap_allowed
-    @state.save unless dry_run?
-    request_review(item) if pull_request? && decision['review'] && reviews?
-    update_board(item, decision, reply_posted: !body.nil?) if board? && (@kind != 'discussion' || @moved_issue)
+    @state.save unless dry_run? || quiet?
+    request_review(item) if pull_request? && decision['review'] && reviews? && !quiet?
+    posted = !body.nil? && !quiet?
+    update_board(item, decision, reply_posted: posted) if board? && (@kind != 'discussion' || @moved_issue)
   rescue Skipped => e
     skip("#{e.message}; left for a maintainer")
   rescue Failed => e
@@ -936,7 +939,7 @@ class IssueAssessment # :nodoc:
   # pull requests get the same labels in every repository. Discussions take none.
   def ensure_labels(labels)
     missing = @config.fetch('labels').keys - labels.map { |label| label.fetch('name') }
-    return labels if missing.empty? || dry_run? || (@kind == 'discussion' && !move?)
+    return labels if missing.empty? || dry_run? || quiet? || (@kind == 'discussion' && !move?)
 
     labels + missing.filter_map do |name|
       created = github("repos/#{@repository}/labels", name: name, color: LABEL_COLORS.fetch(name, 'ededed'),
@@ -1117,6 +1120,12 @@ class IssueAssessment # :nodoc:
 
   def dry_run?
     @environment['TRIAGE_DRY_RUN'] == 'true'
+  end
+
+  # Quiet assessments, such as a backfill of existing reports, write only to the
+  # private board: no comments, labels, closures, moves, or Copilot reviews.
+  def quiet?
+    @environment['TRIAGE_QUIET'] == 'true'
   end
 
   def report(message)

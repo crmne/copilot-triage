@@ -452,6 +452,11 @@ Add `|| inputs.number` to the concurrency group's number expression. A manual
 run shows its decision in the job summary without changing anything, including
 for closed reports. Previews spend model tokens.
 
+To assess existing reports after installing, dispatch the same workflow for
+each open issue and pull request with `dry_run` off. Add `quiet: true` to the
+action step to sort them onto the board without comments, labels, closures, or
+Copilot reviews, so nobody is pinged about an old thread.
+
 ## Configuration
 
 Action inputs:
