@@ -42,7 +42,7 @@ class IssueAssessment # :nodoc:
     @model_calls = @prompt_bytes = 0
     @usage = []
     @outcome = 'error'
-    @skip_reason = @related_snapshot = @follow_through_failed = @cost = nil
+    @skip_reason = @related_snapshot = @follow_through_failed = @cost = @moved_issue = nil
     @recovered_comments = []
     @tool_ledger = { 'calls' => 0, 'bytes' => 0, 'evidence' => {} }
     prepared = load_prepared_report || prepare_report
@@ -70,6 +70,8 @@ class IssueAssessment # :nodoc:
                  'duplicate_closed'
                elsif decision['close_pull_request']
                  'closed_out_of_scope'
+               elsif decision['move_to_issue']
+                 'moved_to_issue'
                else
                  body ? 'reply' : 'silent'
                end
@@ -79,7 +81,7 @@ class IssueAssessment # :nodoc:
     @state.data['initial_assessed'] = true if @initial_recap_allowed
     @state.save unless dry_run?
     request_review(item) if pull_request? && decision['review'] && reviews?
-    update_board(item, decision, reply_posted: !body.nil?) if board?
+    update_board(item, decision, reply_posted: !body.nil?) if board? && (@kind != 'discussion' || @moved_issue)
   rescue Skipped => e
     skip("#{e.message}; left for a maintainer")
   rescue Failed => e
@@ -297,7 +299,7 @@ class IssueAssessment # :nodoc:
   # Board and pull request guidance get their own allowance, so enabling them
   # does not leave more reports for a maintainer.
   def request(prompt, limit: 24_000 + (board? ? 2_000 : 0) + (pull_request? ? 3_000 : 0))
-    definitions = TriageTools.definitions(board: board?, pull_request: pull_request?)
+    definitions = TriageTools.definitions(**schema_options)
     bytes = prompt.bytesize + system_prompt.bytesize + JSON.generate(definitions).bytesize
     raise Skipped, "context exceeds #{limit / 1000} KB" if bytes > limit
 
@@ -330,9 +332,10 @@ class IssueAssessment # :nodoc:
     query = <<~GRAPHQL
       query($owner: String!, $name: String!, $number: Int!) {
         repository(owner: $owner, name: $name) {
+          id
           labels(first: 100) { nodes { id name } }
           #{KINDS.fetch(@kind).first}(number: $number) {
-            id title body closed authorAssociation author { __typename login }
+            id url title body closed authorAssociation author { __typename login }
             #{'stateReason' if @kind == 'issue'}
             #{'assignees { totalCount }' unless @kind == 'discussion'}
             #{pull_request_fields if pull_request?}
@@ -344,6 +347,7 @@ class IssueAssessment # :nodoc:
     repository = github('graphql', query: query, variables: { owner: owner, name: name, number: @number })
                  .fetch('data').fetch('repository')
     item = repository.fetch(KINDS.fetch(@kind).first)
+    item['repository_id'] = repository['id']
     read_discussion_thread(item) if @kind == 'discussion' && comment_event?
     [item, repository.fetch('labels').fetch('nodes')]
   end
@@ -385,14 +389,18 @@ class IssueAssessment # :nodoc:
   end
 
   def build_prompt(item, labels)
-    allowed = @kind == 'discussion' ? {} : @config.fetch('labels').slice(*labels.map { |label| label.fetch('name') })
+    allowed = if @kind == 'discussion' && !move?
+                {}
+              else
+                @config.fetch('labels').slice(*labels.map { |label| label.fetch('name') })
+              end
     <<~PROMPT
       Submit one triage decision for this #{@kind.tr('_', ' ')} in #{@repository}, number #{@number}.
       Complete the task by calling submit_decision, including for silence. A plain-text decision is not a submission.
       This is a #{comment_event? ? 'follow-up: assess the latest_comment, not the original report again' : 'report assessment'}.
       Initial issue recap permitted: #{@initial_recap_allowed}.
       Duplicate policy: #{duplicate_mode}.
-      Follow-up policy: #{@config.fetch('followups', 'selective')}.#{board_prompt}#{pull_request_prompt}
+      Follow-up policy: #{@config.fetch('followups', 'selective')}.#{board_prompt}#{pull_request_prompt}#{move_prompt}
       Allowed labels: #{JSON.generate(allowed)}
       Configured replies: #{JSON.generate(@config.fetch('replies'))}
       These are optional templates, not a checklist of missing information to request.
@@ -401,6 +409,10 @@ class IssueAssessment # :nodoc:
       Recovered earlier comments: #{JSON.generate(@recovered_comments || [])}
       Report: #{report_context(item)}
     PROMPT
+  end
+
+  def move_prompt
+    "\nDiscussion: also submit move_to_issue; labels apply only to the new issue." if move?
   end
 
   def pull_request_prompt
@@ -475,6 +487,7 @@ class IssueAssessment # :nodoc:
   def system_prompt
     prompt = File.read(File.join(__dir__, 'triage.agent.md'))
     prompt += "\n#{File.read(File.join(__dir__, 'pull_request.agent.md'))}" if pull_request?
+    prompt += "\n#{File.read(File.join(__dir__, 'discussion.agent.md'))}" if move?
     prompt += "\n#{File.read(File.join(__dir__, 'board.agent.md'))}" if board?
     "#{prompt}\n\nProject policy:\n#{@config.fetch('instructions')}"
   end
@@ -484,7 +497,7 @@ class IssueAssessment # :nodoc:
     config = @config.merge('labels' => @config.fetch('labels').slice(*allowed))
     { root: Dir.pwd, repository: @repository, config: config,
       ledger_path: File.join(directory, 'evidence.json'), token: @environment['GH_TOKEN'], board: board?,
-      pull_request: (@number if pull_request?) }
+      pull_request: (@number if pull_request?), move: move? }
   end
 
   def tools_command(settings_path)
@@ -678,13 +691,16 @@ class IssueAssessment # :nodoc:
     keys = %w[comment labels sources related_issue relationship reply mute]
     keys += TriageTools::BOARD_PROPERTIES.keys.map(&:to_s) if board?
     keys += TriageTools::PULL_REQUEST_PROPERTIES.keys.map(&:to_s) if pull_request?
+    keys += TriageTools::MOVE_PROPERTIES.keys.map(&:to_s) if move?
     raise ArgumentError unless decision.is_a?(Hash) && (decision.keys - keys).empty?
     raise ArgumentError unless (%w[labels reply] - decision.keys).empty?
 
     validate_board(decision) if board?
     validate_pull_request(decision) if pull_request?
+    raise ArgumentError if move? && ![true, false].include?(decision['move_to_issue'])
+    raise ArgumentError if decision['move_to_issue'] && (decision['related_issue'] || decision['mute'])
 
-    validate_labels(decision['labels'], allowed)
+    validate_labels(decision['labels'], allowed, moving: decision['move_to_issue'] == true)
     raise ArgumentError unless decision['reply'].nil? || @config.fetch('replies').key?(decision['reply'])
     raise ArgumentError if decision.key?('mute') && ![true, false].include?(decision['mute'])
 
@@ -725,7 +741,16 @@ class IssueAssessment # :nodoc:
   end
 
   def board?
-    @kind != 'discussion' && @config.key?('board')
+    @config.key?('board') && (@kind != 'discussion' || move?)
+  end
+
+  def schema_options
+    { board: board?, pull_request: pull_request?, move: move? }
+  end
+
+  # Only a newly assessed discussion can move, never a comment thread.
+  def move?
+    @kind == 'discussion' && !comment_event? && (@config.fetch('discussions', nil) || {})['move_to_issues'] == true
   end
 
   def pull_request?
@@ -810,8 +835,9 @@ class IssueAssessment # :nodoc:
       return
     end
 
-    changes = board.update(item.fetch('id'), **proposed)
-    github("repos/#{@repository}/issues/#{@number}/assignees", assignees: [assignee]) if assign
+    changes = board.update((@moved_issue || item).fetch('id'), **proposed)
+    number = @moved_issue ? @moved_issue.fetch('number') : @number
+    github("repos/#{@repository}/issues/#{number}/assignees", assignees: [assignee]) if assign
     changes['assigned'] = assignee if assign
     report("Board: #{changes.empty? ? 'unchanged' : JSON.generate(changes)}")
   rescue RuntimeError => e
@@ -868,12 +894,14 @@ class IssueAssessment # :nodoc:
     end
   end
 
-  def validate_labels(selected, allowed)
+  def validate_labels(selected, allowed, moving: false)
     validate_selection(selected, allowed)
-    raise ArgumentError if @kind == 'discussion' && selected.any?
+    raise ArgumentError if @kind == 'discussion' && selected.any? && !moving
   end
 
   def publish(item, labels, decision)
+    return move_to_issue(item, labels, decision) if decision['move_to_issue']
+
     ids = labels.filter_map { |label| label['id'] if decision['labels'].include?(label['name']) }
     mutate('addLabelsToLabelable', labelableId: item.fetch('id'), labelIds: ids) if ids.any?
     body = reply_body(decision)
@@ -890,6 +918,20 @@ class IssueAssessment # :nodoc:
     close_duplicate(item) if decision['close']
     mutate('closePullRequest', pullRequestId: item.fetch('id')) if decision['close_pull_request']
     mutate('addReaction', subjectId: item.fetch('id'), content: 'HOORAY')
+  end
+
+  # GitHub has no API to convert a discussion, so the issue is created here,
+  # crediting and mentioning the author, and the discussion links to it.
+  def move_to_issue(item, labels, decision)
+    author = item.dig('author', 'login')
+    body = "_Moved from #{item.fetch('url')}#{", opened by @#{author}" if author}._\n\n#{item.fetch('body')}"
+    query = 'mutation($input: CreateIssueInput!) { createIssue(input: $input) { issue { id number } } }'
+    input = { repositoryId: item.fetch('repository_id'), title: item.fetch('title'), body: body,
+              labelIds: labels.filter_map { |label| label['id'] if decision['labels'].include?(label['name']) } }
+    @moved_issue = github('graphql', query: query, variables: { input: input }).dig('data', 'createIssue', 'issue')
+    reply = attributed("Moved to ##{@moved_issue.fetch('number')}. #{decision['comment']}".strip)
+    mutate('addDiscussionComment', discussionId: item.fetch('id'), body: reply)
+    mutate('closeDiscussion', discussionId: item.fetch('id'), reason: 'OUTDATED')
   end
 
   def suppress_repeated_reply(item, decision)

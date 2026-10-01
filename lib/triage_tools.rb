@@ -71,14 +71,17 @@ class TriageTools
     review: { type: 'boolean' },
     out_of_scope: { type: 'boolean' }
   }.freeze
+  # Extra submit_decision argument for a new discussion when the policy moves reports to issues.
+  MOVE_PROPERTIES = { move_to_issue: { type: 'boolean' } }.freeze
   DIFF_HINT = ' For the pull request being assessed, diff:path reads the patch of a changed file.'
 
   attr_reader :ledger
 
-  def self.schemas(board: false, pull_request: false)
+  def self.schemas(board: false, pull_request: false, move: false)
     extra = {}
     extra.merge!(BOARD_PROPERTIES) if board
     extra.merge!(PULL_REQUEST_PROPERTIES) if pull_request
+    extra.merge!(MOVE_PROPERTIES) if move
     submit = SCHEMAS.fetch('submit_decision')
     schemas = SCHEMAS.merge('submit_decision' => submit.merge(
       properties: submit.fetch(:properties).merge(extra), required: submit.fetch(:required) + extra.keys.map(&:to_s)
@@ -89,8 +92,8 @@ class TriageTools
     schemas.merge('read_evidence' => read.merge(description: read.fetch(:description) + DIFF_HINT))
   end
 
-  def self.definitions(board: false, pull_request: false)
-    schemas(board:, pull_request:).map do |name, schema|
+  def self.definitions(board: false, pull_request: false, move: false)
+    schemas(board:, pull_request:, move:).map do |name, schema|
       { name: name, description: schema.fetch(:description),
         inputSchema: { type: 'object', properties: schema.fetch(:properties),
                        required: schema.fetch(:required), additionalProperties: false },
@@ -98,10 +101,12 @@ class TriageTools
     end
   end
 
-  def initialize(root:, repository:, config:, ledger_path: nil, token: nil, board: false, pull_request: nil)
+  def initialize(root:, repository:, config:, ledger_path: nil, token: nil, board: false, pull_request: nil,
+                 move: false)
     @root = File.realpath(root)
     @board = board
     @pull_request = pull_request
+    @move = move
     @repository = repository
     raise ArgumentError, 'Invalid repository' unless repository.match?(%r{\A[\w.-]+/[\w.-]+\z})
 
@@ -113,7 +118,11 @@ class TriageTools
   end
 
   def definitions
-    self.class.definitions(board: @board, pull_request: !@pull_request.nil?)
+    self.class.definitions(**schema_options)
+  end
+
+  def schema_options
+    { board: @board, pull_request: !@pull_request.nil?, move: @move }
   end
 
   def call(name, arguments)
@@ -215,6 +224,10 @@ class TriageTools
             'Choose only configured labels.'
     end
 
+    if @move && decision[:labels].any? && !decision[:move_to_issue]
+      raise ArgumentError, 'Labels apply only to an issue created by move_to_issue; use [] for a discussion that stays.'
+    end
+
     reply = decision.fetch(:reply)
     raise ArgumentError, 'Unknown configured reply.' if reply && !@config.fetch('replies').key?(reply)
     raise ArgumentError, 'Use either comment or a configured reply, not both.' if reply && decision[:comment]
@@ -314,7 +327,7 @@ class TriageTools
   end
 
   def validate_arguments(name, arguments)
-    schema = self.class.schemas(board: @board, pull_request: !@pull_request.nil?).fetch(name) do
+    schema = self.class.schemas(**schema_options).fetch(name) do
       raise ArgumentError, 'Unknown tool.'
     end
     properties = schema.fetch(:properties).transform_keys(&:to_s)

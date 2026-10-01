@@ -217,6 +217,15 @@ RSpec.describe TriageTools do
     end
   end
 
+  it 'lets a discussion carry labels only when it moves to an issue' do
+    tools = described_class.new(root: Dir.pwd, repository: 'owner/project', config: config, move: true)
+    decision = { 'labels' => ['bug'], 'reply' => nil, 'comment' => nil, 'sources' => [], 'related_issue' => nil,
+                 'relationship' => nil, 'mute' => false, 'move_to_issue' => false }
+
+    expect(tools.call('submit_decision', decision)[:content].first[:text]).to include('Labels apply only')
+    expect(tools.call('submit_decision', decision.merge('move_to_issue' => true))).not_to include(isError: true)
+  end
+
   it 'offers diffs only when assessing a pull request' do
     expect(tools.call('read_evidence', { 'reference' => 'diff:lib/stream.rb' })[:content].first[:text])
       .to include('only available when assessing a pull request')

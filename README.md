@@ -266,6 +266,30 @@ generation. The agent therefore submits typed arguments through
 This is validated tool output, not a claim of provider-native strict structured
 generation. Invalid tool arguments produce an error the agent can correct.
 
+### Discussions that belong in issues
+
+People sometimes open a discussion for what is really a bug report. Let triage
+move those:
+
+```yaml
+discussions:
+  move_to_issues: true
+```
+
+When a new discussion is a reproducible bug report or a concrete feature
+request that no issue tracks yet, the agent proposes a move. GitHub has no API
+to convert a discussion, so the action creates the issue itself: same title,
+the original text under a "Moved from" line that mentions the author (which
+subscribes them), and the agent's labels. It then replies in the discussion
+with the link and closes it as outdated. With a [board](#project-board), the
+new issue gets a card.
+
+The issue is opened by the workflow's bot, so the author cannot edit it, and it
+does not trigger other workflows; the same run has already assessed it.
+Questions, ideas still being explored, feedback, and anything already tracked
+stay as discussions, and so does anything the agent is unsure about. Comment
+threads never move.
+
 ### Reports from Honeybadger
 
 Private repositories work too. Allow the reporting bot in your policy:
