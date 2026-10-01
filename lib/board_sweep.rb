@@ -150,6 +150,11 @@ class BoardSweep
 end
 
 if $PROGRAM_NAME == __FILE__
+  if ENV['TRIAGE_PROJECT_TOKEN'].to_s.empty?
+    puts 'Skipped: no project-token is set.'
+    exit 0
+  end
+
   succeeded = begin
     BoardSweep.new.run
   rescue ProjectBoard::Error => e
