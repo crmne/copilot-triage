@@ -52,10 +52,15 @@ class TriageEvaluation < IssueAssessment
   end
 
   def evidence_tools
-    @evidence_tools ||= EvaluationTools.new(root: Dir.pwd, repository: @repository, config: @config, example: @example)
+    @evidence_tools ||= EvaluationTools.new(root: Dir.pwd, repository: @repository, config: @config, example: @example,
+                                            pull_request: (if pull_request?
+                                                             @number
+                                                           end), **schema_options.slice(:board, :move))
   end
 
   def read_report
+    return pull_request_report if @example['pull_request']
+
     comments = []
     if @example['previous_question']
       comments << { 'id' => 'bot-1', 'author' => { '__typename' => 'Bot', 'login' => 'github-actions' },
@@ -67,12 +72,35 @@ class TriageEvaluation < IssueAssessment
      @config.fetch('labels').keys.map { |name| { 'id' => name, 'name' => name } }]
   end
 
+  # A real pull request with Copilot's last review on its latest commit, as a
+  # review event delivers it.
+  def pull_request_report
+    pull = @example.fetch('pull_request')
+    files = pull.fetch('files')
+    review = { 'author' => { 'login' => 'copilot-pull-request-reviewer' }, 'state' => 'COMMENTED',
+               'body' => pull.fetch('copilot_review'), 'submittedAt' => '2026-10-01T10:00:00Z',
+               'commit' => { 'oid' => 'head' } }
+    [{ 'id' => 'pr-100', 'title' => @example.fetch('title'), 'body' => @example.fetch('body'), 'closed' => false,
+       'author' => { 'login' => 'author' }, 'authorAssociation' => pull.fetch('association'), 'isDraft' => false,
+       'headRefOid' => 'head', 'changedFiles' => files.size, 'additions' => files.sum { |file| file['additions'] },
+       'deletions' => files.sum { |file| file['deletions'] }, 'files' => { 'nodes' => files },
+       'reviews' => { 'nodes' => [review] }, 'reviewRequests' => { 'nodes' => [] },
+       'assignees' => { 'totalCount' => 0 }, 'comments' => { 'nodes' => [] } },
+     @config.fetch('labels').keys.map { |name| { 'id' => name, 'name' => name } }]
+  end
+
   def human_comment
     { 'id' => 'human-1', 'body' => @example.fetch('comment'),
       'author' => { '__typename' => 'User', 'login' => 'reporter' }, 'authorAssociation' => 'NONE' }
   end
 
   def event
+    if @example['pull_request']
+      return { 'action' => 'submitted', 'repository' => { 'full_name' => 'example/project' },
+               'review' => { 'user' => { 'login' => 'copilot-pull-request-reviewer[bot]' } },
+               'pull_request' => { 'number' => 100, 'head' => { 'repo' => { 'full_name' => 'example/project' } } } }
+    end
+
     { 'action' => @example['comment'] ? 'created' : 'opened',
       'sender' => { 'type' => 'User' }, 'issue' => { 'state' => 'open' },
       'comment' => { 'node_id' => 'human-1', 'body' => @example['comment'],
@@ -122,6 +150,12 @@ results = cases.map do |example|
   Dir.mktmpdir('triage-eval-') do |directory|
     FileUtils.cp_r(Dir.glob(File.join(__dir__, 'fixtures', '*')), directory)
     Dir.chdir(directory) do
+      if example['pull_request']
+        policy = YAML.safe_load_file('triage.yml').merge(
+          'pull_requests' => {}, 'board' => { 'project' => 'https://github.com/users/example/projects/1' }
+        )
+        File.write('triage.yml', YAML.dump(policy))
+      end
       environment = { 'GITHUB_REPOSITORY' => 'example/project', 'TRIAGE_NUMBER' => '100',
                       'TRIAGE_CONFIG' => 'triage.yml',
                       'TRIAGE_DRY_RUN' => 'true', 'TRIAGE_DEBOUNCE_SECONDS' => '0', 'TRIAGE_STATE_DIR' => 'state',
@@ -131,7 +165,11 @@ results = cases.map do |example|
                       'COPILOT_GITHUB_TOKEN' => ENV.fetch('COPILOT_GITHUB_TOKEN', nil),
                       'TRIAGE_ENGINE' => options[:engine], 'TRIAGE_PROVIDER' => options[:provider],
                       'TRIAGE_API_KEY' => ENV.fetch('TRIAGE_API_KEY', nil), 'TRIAGE_API_BASE' => options[:api_base],
-                      'GITHUB_EVENT_NAME' => example['comment'] ? 'issue_comment' : 'issues',
+                      'TRIAGE_KIND' => example['pull_request'] ? 'pull_request' : 'issue',
+                      'GITHUB_EVENT_NAME' => if example['pull_request'] then 'pull_request_review'
+                                             elsif example['comment'] then 'issue_comment'
+                                             else 'issues'
+                                             end,
                       'GITHUB_EVENT_PATH' => 'fixture-event' }
       runner = TriageEvaluation.new(environment, example, replay: options[:replay])
       runner.run
@@ -152,8 +190,10 @@ results = cases.map do |example|
                (action == 'silent' || expected.fetch('contains', []).all? do |text|
                  content.include?(text.to_s.downcase)
                end) &&
-               (alternatives.empty? || alternatives.any? { |text| content.include?(text.to_s.downcase) })
+               (alternatives.empty? || alternatives.any? { |text| content.include?(text.to_s.downcase) }) &&
+               (!expected.key?('next_move') || Array(expected['next_move']).include?(runner.decision&.dig('next_move')))
       { id: example.fetch('id'), passed: passed, expected: expected['action'], allowed_actions: actions, actual: action,
+        next_move: runner.decision&.dig('next_move'), expected_next_move: expected['next_move'],
         reply: body, metrics: metrics, model_responses: runner.model_responses,
         tool_calls: runner.tool_ledger.fetch('trace', []), copilot_debug: runner.copilot_debug }
     end

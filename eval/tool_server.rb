@@ -23,6 +23,8 @@ class EvaluationTools < TriageTools
       return issue if issue && issue['number'] == Regexp.last_match(1).to_i
 
       raise IOError, 'No fixture issue with that number.'
+    when %r{/pulls/\d+/files\?}
+      @example.dig('pull_request', 'files').to_a.map { |file| { 'filename' => file['path'], 'status' => 'modified' } }
     when %r{/releases\?} then [release].compact
     when %r{/releases/(\d+)\z}
       return release if release && release['id'] == Regexp.last_match(1).to_i
