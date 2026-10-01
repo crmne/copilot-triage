@@ -100,6 +100,14 @@ RSpec.describe 'Comment assessments' do
     end
   end
 
+  it 'passes only opened, reopened, ready, and updated pull request events' do
+    allowed = TriageEvent::PULL_REQUEST_ACTIONS.map do |action|
+      TriageEvent.skip_reason('pull_request_target', 'action' => action)
+    end
+    expect(allowed).to all(be_nil)
+    expect(TriageEvent.skip_reason('pull_request_target', 'action' => 'labeled')).to include('only opened')
+  end
+
   it 'skips an older event when another comment arrived during the delay' do
     item['comments']['nodes'] << comment.merge('id' => 'newer-comment', 'body' => 'Here are the logs.')
 

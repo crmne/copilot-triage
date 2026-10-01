@@ -184,6 +184,44 @@ RSpec.describe TriageTools do
     end
   end
 
+  context 'with a pull request' do
+    let(:tools) { described_class.new(root: Dir.pwd, repository: 'owner/project', config: config, pull_request: 77) }
+    let(:decision) do
+      { 'labels' => [], 'reply' => nil, 'comment' => nil, 'sources' => [], 'related_issue' => nil,
+        'relationship' => nil, 'mute' => false, 'review' => true, 'out_of_scope' => false }
+    end
+
+    before do
+      allow(tools).to receive(:api).with('repos/owner/project/pulls/77/files?per_page=100&page=1').and_return(
+        [{ 'filename' => 'lib/stream.rb', 'status' => 'modified', 'patch' => "@@ -1 +1 @@\n-old\n+new" },
+         { 'filename' => 'logo.png', 'status' => 'added' }]
+      )
+    end
+
+    it 'reads the patch of a changed file through the API' do
+      expect(call('read_evidence', reference: 'diff:lib/stream.rb')['content']).to eq("@@ -1 +1 @@\n-old\n+new")
+      expect(call('read_evidence', reference: 'diff:logo.png')['content']).to include('No text patch')
+      expect(tools.call('read_evidence', { 'reference' => 'diff:lib/other.rb' })[:content].first[:text])
+        .to include('not changed by this pull request')
+      expect(tools.definitions.find { |tool| tool[:name] == 'read_evidence' }[:description]).to include('diff:path')
+    end
+
+    it 'keeps diffs out of citations and requires an explanation for out-of-scope changes' do
+      call('read_evidence', reference: 'diff:lib/stream.rb')
+      cited = decision.merge('comment' => 'See [[diff:lib/stream.rb]].', 'sources' => ['diff:lib/stream.rb'])
+      expect(tools.call('submit_decision', cited)[:content].first[:text]).to include('not citations')
+      expect(tools.call('submit_decision', decision.merge('out_of_scope' => true))[:content].first[:text])
+        .to include('Explain in comment')
+      expect(tools.call('submit_decision', decision.except('review'))[:content].first[:text])
+        .to include('Missing required arguments: review')
+    end
+  end
+
+  it 'offers diffs only when assessing a pull request' do
+    expect(tools.call('read_evidence', { 'reference' => 'diff:lib/stream.rb' })[:content].first[:text])
+      .to include('only available when assessing a pull request')
+  end
+
   it 'uses standard MCP initialization, listing, and tool calls over stdio' do
     requests = [
       { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05' } },

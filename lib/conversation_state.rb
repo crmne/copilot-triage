@@ -18,7 +18,8 @@ class ConversationState
     return unless saved.is_a?(Hash) && saved['version'] == 1 &&
                   %w[seen replies].all? { |key| saved[key].is_a?(Array) && saved[key].all?(String) }
 
-    @data = saved.slice('version', 'seen', 'replies', 'muted', 'processed', 'initial_assessed', 'maintainer_replied')
+    @data = saved.slice('version', 'seen', 'replies', 'muted', 'processed', 'initial_assessed', 'maintainer_replied',
+                        'review_wanted', 'reviewed_head')
     @loaded = true
   rescue JSON::ParserError
     nil

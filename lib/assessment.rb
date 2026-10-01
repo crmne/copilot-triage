@@ -14,6 +14,11 @@ class IssueAssessment # :nodoc:
   class Skipped < StandardError; end
   class Failed < StandardError; end
 
+  # GraphQL field and type for each kind of report.
+  KINDS = { 'issue' => %w[issue Issue], 'discussion' => %w[discussion Discussion],
+            'pull_request' => %w[pullRequest PullRequest] }.freeze
+  COPILOT_REVIEWER = 'copilot-pull-request-reviewer[bot]'
+
   def initialize(environment = ENV)
     @environment = environment
     @repository = environment.fetch('GITHUB_REPOSITORY')
@@ -27,9 +32,9 @@ class IssueAssessment # :nodoc:
     @usage = []
     @prompt_bytes = 0
     @outcome = 'error'
-    return if %w[issue discussion].include?(@kind) && @number.positive?
+    return if KINDS.key?(@kind) && @number.positive?
 
-    raise ArgumentError, 'Expected an issue or discussion number'
+    raise ArgumentError, 'Expected an issue, discussion, or pull request number'
   end
 
   def run
@@ -37,7 +42,7 @@ class IssueAssessment # :nodoc:
     @model_calls = @prompt_bytes = 0
     @usage = []
     @outcome = 'error'
-    @skip_reason = @related_snapshot = @board_failed = @cost = nil
+    @skip_reason = @related_snapshot = @follow_through_failed = @cost = nil
     @recovered_comments = []
     @tool_ledger = { 'calls' => 0, 'bytes' => 0, 'evidence' => {} }
     prepared = load_prepared_report || prepare_report
@@ -63,13 +68,17 @@ class IssueAssessment # :nodoc:
     publish(item, labels, decision) unless dry_run? || decision['mute']
     @outcome = if decision['close']
                  'duplicate_closed'
+               elsif decision['close_pull_request']
+                 'closed_out_of_scope'
                else
                  body ? 'reply' : 'silent'
                end
     @state.data['muted'] = true if decision['mute']
+    @state.data['review_wanted'] = decision['review'] if pull_request?
     @state.complete(report_fingerprint(item), body, reply_posted: !dry_run? && !body.nil?)
     @state.data['initial_assessed'] = true if @initial_recap_allowed
     @state.save unless dry_run?
+    request_review(item) if pull_request? && decision['review'] && reviews?
     update_board(item, decision, reply_posted: !body.nil?) if board?
   rescue Skipped => e
     skip("#{e.message}; left for a maintainer")
@@ -84,7 +93,7 @@ class IssueAssessment # :nodoc:
   end
 
   def failed?
-    @outcome == 'error' || @board_failed == true
+    @outcome == 'error' || @follow_through_failed == true
   end
 
   private
@@ -98,7 +107,12 @@ class IssueAssessment # :nodoc:
   end
 
   def event_skip_reason
-    TriageEvent.skip_reason(@environment['GITHUB_EVENT_NAME'], event) if @environment['GITHUB_EVENT_PATH']
+    return unless @environment['GITHUB_EVENT_PATH']
+    if event.dig('issue', 'pull_request') && !pull_request?
+      return 'pull request comments are triaged only as pull requests'
+    end
+
+    TriageEvent.skip_reason(@environment['GITHUB_EVENT_NAME'], event)
   end
 
   def prepare_report
@@ -114,6 +128,8 @@ class IssueAssessment # :nodoc:
     recover_history(item)
     comments = item.fetch('comments').fetch('nodes')
     @state.observe(comments)
+    return review_new_push(item) if push_event? && !skip_reason(item)
+
     reason = skip_reason(item) || followup_skip_reason(item)
     if reason
       @state.save unless dry_run?
@@ -135,7 +151,8 @@ class IssueAssessment # :nodoc:
   def followup_skip_reason(item)
     return 'conversation is muted; a maintainer can use /triage unmute' if @state.data['muted']
 
-    manual = !%w[issues discussion issue_comment discussion_comment].include?(@environment['GITHUB_EVENT_NAME'])
+    automatic = %w[issues discussion issue_comment discussion_comment pull_request pull_request_target]
+    manual = !automatic.include?(@environment['GITHUB_EVENT_NAME'])
     command = comment_event? && TriageEvent.command(event.dig('comment', 'body'))
     return if manual || command == 'reassess'
     return 'conversation unmuted' if command == 'unmute'
@@ -167,7 +184,7 @@ class IssueAssessment # :nodoc:
       break unless connection.dig('pageInfo', 'hasPreviousPage')
 
       field = item['reply_to'] ? 'replies' : 'comments'
-      type = item['reply_to'] ? 'DiscussionComment' : @kind.capitalize
+      type = item['reply_to'] ? 'DiscussionComment' : KINDS.fetch(@kind).last
       query = <<~GRAPHQL
         query($id: ID!, $before: String!) {
           node(id: $id) { ... on #{type} {
@@ -267,6 +284,7 @@ class IssueAssessment # :nodoc:
       decision['comment'] = "#{prefix} ##{decision['related_issue']}. #{decision['comment']}"
     end
     decision['comment'] = decision['comment']&.gsub(/\[\[([^\]]+)\]\]/) { evidence_link(Regexp.last_match(1)) }
+    decision['close_pull_request'] = close_pull_request?(item, decision)
     decision
   end
 
@@ -276,10 +294,11 @@ class IssueAssessment # :nodoc:
       @state.data['replies'].empty? && !@state.data['maintainer_replied'] && !answered?(item)
   end
 
-  # The board guidance and fields get their own allowance so enabling the board
+  # Board and pull request guidance get their own allowance, so enabling them
   # does not leave more reports for a maintainer.
-  def request(prompt, limit: board? ? 26_000 : 24_000)
-    bytes = prompt.bytesize + system_prompt.bytesize + JSON.generate(TriageTools.definitions(board: board?)).bytesize
+  def request(prompt, limit: 24_000 + (board? ? 2_000 : 0) + (pull_request? ? 3_000 : 0))
+    definitions = TriageTools.definitions(board: board?, pull_request: pull_request?)
+    bytes = prompt.bytesize + system_prompt.bytesize + JSON.generate(definitions).bytesize
     raise Skipped, "context exceeds #{limit / 1000} KB" if bytes > limit
 
     @model_calls += 1
@@ -290,6 +309,8 @@ class IssueAssessment # :nodoc:
   end
 
   def skip_reason(item)
+    return 'pull request triage is not enabled in the policy' if pull_request? && !@config['pull_requests']
+    return 'pull request is a draft' if item['isDraft']
     return 'report was opened by an unlisted bot' if bot?(item['author']) && !report_bot?(item['author'])
     return 'report is closed' if item['closed'] && (!dry_run? || comment_event?)
     return 'a participant asked the triage bot to stop' if @state.data['muted']
@@ -310,9 +331,11 @@ class IssueAssessment # :nodoc:
       query($owner: String!, $name: String!, $number: Int!) {
         repository(owner: $owner, name: $name) {
           labels(first: 100) { nodes { id name } }
-          #{@kind}(number: $number) {
+          #{KINDS.fetch(@kind).first}(number: $number) {
             id title body closed authorAssociation author { __typename login }
-            #{'stateReason assignees { totalCount }' if @kind == 'issue'}
+            #{'stateReason' if @kind == 'issue'}
+            #{'assignees { totalCount }' unless @kind == 'discussion'}
+            #{pull_request_fields if pull_request?}
             comments(last: 5) { pageInfo { hasPreviousPage startCursor } nodes { #{comment_fields} } }
           }
         }
@@ -320,9 +343,14 @@ class IssueAssessment # :nodoc:
     GRAPHQL
     repository = github('graphql', query: query, variables: { owner: owner, name: name, number: @number })
                  .fetch('data').fetch('repository')
-    item = repository.fetch(@kind)
+    item = repository.fetch(KINDS.fetch(@kind).first)
     read_discussion_thread(item) if @kind == 'discussion' && comment_event?
     [item, repository.fetch('labels').fetch('nodes')]
+  end
+
+  def pull_request_fields
+    'isDraft headRefOid changedFiles additions deletions ' \
+      'files(first: 100) { nodes { path additions deletions changeType } }'
   end
 
   def comment_fields
@@ -359,12 +387,12 @@ class IssueAssessment # :nodoc:
   def build_prompt(item, labels)
     allowed = @kind == 'discussion' ? {} : @config.fetch('labels').slice(*labels.map { |label| label.fetch('name') })
     <<~PROMPT
-      Submit one triage decision for this #{@kind} in #{@repository}, number #{@number}.
+      Submit one triage decision for this #{@kind.tr('_', ' ')} in #{@repository}, number #{@number}.
       Complete the task by calling submit_decision, including for silence. A plain-text decision is not a submission.
       This is a #{comment_event? ? 'follow-up: assess the latest_comment, not the original report again' : 'report assessment'}.
       Initial issue recap permitted: #{@initial_recap_allowed}.
       Duplicate policy: #{duplicate_mode}.
-      Follow-up policy: #{@config.fetch('followups', 'selective')}.#{board_prompt}
+      Follow-up policy: #{@config.fetch('followups', 'selective')}.#{board_prompt}#{pull_request_prompt}
       Allowed labels: #{JSON.generate(allowed)}
       Configured replies: #{JSON.generate(@config.fetch('replies'))}
       These are optional templates, not a checklist of missing information to request.
@@ -373,6 +401,13 @@ class IssueAssessment # :nodoc:
       Recovered earlier comments: #{JSON.generate(@recovered_comments || [])}
       Report: #{report_context(item)}
     PROMPT
+  end
+
+  def pull_request_prompt
+    return unless pull_request?
+
+    "\nPull request: also submit review and out_of_scope. Copilot code review is #{reviews? ? 'available' : 'off'}; " \
+      "out-of-scope changes are #{out_of_scope_mode == 'close' ? 'closed after your explanation' : 'left open'}."
   end
 
   def board_prompt
@@ -389,6 +424,12 @@ class IssueAssessment # :nodoc:
     end
     context['latest_comment'] = comments.pop
     context['earlier_comments'] = comments
+    if pull_request?
+      context['changes'] = item.slice('changedFiles', 'additions', 'deletions')
+      context['files'] = item.dig('files', 'nodes').map do |file|
+        "#{file['changeType']} #{file['path']} +#{file['additions']} -#{file['deletions']}"
+      end
+    end
     JSON.generate(context)
   end
 
@@ -433,6 +474,7 @@ class IssueAssessment # :nodoc:
 
   def system_prompt
     prompt = File.read(File.join(__dir__, 'triage.agent.md'))
+    prompt += "\n#{File.read(File.join(__dir__, 'pull_request.agent.md'))}" if pull_request?
     prompt += "\n#{File.read(File.join(__dir__, 'board.agent.md'))}" if board?
     "#{prompt}\n\nProject policy:\n#{@config.fetch('instructions')}"
   end
@@ -441,7 +483,8 @@ class IssueAssessment # :nodoc:
     allowed = @allowed_labels || @config.fetch('labels').keys
     config = @config.merge('labels' => @config.fetch('labels').slice(*allowed))
     { root: Dir.pwd, repository: @repository, config: config,
-      ledger_path: File.join(directory, 'evidence.json'), token: @environment['GH_TOKEN'], board: board? }
+      ledger_path: File.join(directory, 'evidence.json'), token: @environment['GH_TOKEN'], board: board?,
+      pull_request: (@number if pull_request?) }
   end
 
   def tools_command(settings_path)
@@ -506,7 +549,8 @@ class IssueAssessment # :nodoc:
   end
 
   def redact(text)
-    %w[GH_TOKEN GITHUB_TOKEN COPILOT_GITHUB_TOKEN TRIAGE_PROJECT_TOKEN TRIAGE_API_KEY].reduce(text) do |result, key|
+    %w[GH_TOKEN GITHUB_TOKEN COPILOT_GITHUB_TOKEN TRIAGE_PROJECT_TOKEN TRIAGE_API_KEY
+       TRIAGE_REVIEW_TOKEN].reduce(text) do |result, key|
       token = @environment[key]
       token && !token.empty? ? result.gsub(token, '[REDACTED]') : result
     end
@@ -532,7 +576,7 @@ class IssueAssessment # :nodoc:
       environment = {
         'COPILOT_GITHUB_TOKEN' => @environment.fetch('COPILOT_GITHUB_TOKEN'),
         'COPILOT_HOME' => directory, 'GH_TOKEN' => nil, 'GITHUB_TOKEN' => nil, 'TRIAGE_PROJECT_TOKEN' => nil,
-        'TRIAGE_API_KEY' => nil
+        'TRIAGE_API_KEY' => nil, 'TRIAGE_REVIEW_TOKEN' => nil
       }
       output, errors, status = Open3.capture3(
         environment, 'timeout', '--kill-after=5s', '90s', 'copilot',
@@ -633,10 +677,12 @@ class IssueAssessment # :nodoc:
     allowed = @config.fetch('labels').keys & labels.map { |label| label.fetch('name') }
     keys = %w[comment labels sources related_issue relationship reply mute]
     keys += TriageTools::BOARD_PROPERTIES.keys.map(&:to_s) if board?
+    keys += TriageTools::PULL_REQUEST_PROPERTIES.keys.map(&:to_s) if pull_request?
     raise ArgumentError unless decision.is_a?(Hash) && (decision.keys - keys).empty?
     raise ArgumentError unless (%w[labels reply] - decision.keys).empty?
 
     validate_board(decision) if board?
+    validate_pull_request(decision) if pull_request?
 
     validate_labels(decision['labels'], allowed)
     raise ArgumentError unless decision['reply'].nil? || @config.fetch('replies').key?(decision['reply'])
@@ -668,6 +714,10 @@ class IssueAssessment # :nodoc:
     decision
   end
 
+  def validate_pull_request(decision)
+    raise ArgumentError unless %w[review out_of_scope].all? { |key| [true, false].include?(decision[key]) }
+  end
+
   def validate_board(decision)
     raise ArgumentError unless %w[maintainer reporter].include?(decision['waiting_on']) &&
                                ProjectBoard::PRIORITIES.key?(decision['priority']) &&
@@ -675,7 +725,67 @@ class IssueAssessment # :nodoc:
   end
 
   def board?
-    @kind == 'issue' && @config.key?('board')
+    @kind != 'discussion' && @config.key?('board')
+  end
+
+  def pull_request?
+    @kind == 'pull_request'
+  end
+
+  def push_event?
+    %w[pull_request pull_request_target].include?(@environment['GITHUB_EVENT_NAME']) && event['action'] == 'synchronize'
+  end
+
+  def pull_request_policy
+    @config.fetch('pull_requests') || {}
+  end
+
+  def reviews?
+    pull_request_policy.fetch('reviews', 'copilot').tap do |mode|
+      raise ArgumentError, 'pull_requests.reviews must be copilot or off' unless %w[copilot off].include?(mode)
+    end == 'copilot'
+  end
+
+  def out_of_scope_mode
+    pull_request_policy.fetch('out_of_scope', 'suggest').tap do |mode|
+      raise ArgumentError, 'pull_requests.out_of_scope must be suggest or close' unless %w[suggest close].include?(mode)
+    end
+  end
+
+  # Closing someone's work is public and hard to undo: only with explicit
+  # configuration, after a posted explanation, and never a maintainer's own.
+  def close_pull_request?(item, decision)
+    pull_request? && decision['out_of_scope'] && !decision['comment'].nil? && out_of_scope_mode == 'close' &&
+      !maintainer?(item['authorAssociation'])
+  end
+
+  # A new push needs no new assessment, only a fresh Copilot review when the
+  # agent judged the pull request worth reviewing. No model call.
+  def review_new_push(item)
+    request_review(item) if @state.data['review_wanted'] && reviews? && !item['isDraft']
+    @state.save unless dry_run?
+    skip('a new push needs no new assessment')
+  end
+
+  # Once per head commit, billed to the owner of the review token.
+  def request_review(item)
+    head = item.fetch('headRefOid')
+    return report("Copilot review: already requested for #{head[0, 7]}.") if @state.data['reviewed_head'] == head
+    return report("Copilot review: would request one for #{head[0, 7]}.") if dry_run?
+
+    mutate('requestReviewsByLogin', token: review_token, pullRequestId: item.fetch('id'),
+                                    botLogins: [COPILOT_REVIEWER], union: true)
+    @state.data['reviewed_head'] = head
+    @state.save
+    report("Copilot review: requested for #{head[0, 7]}.")
+  rescue RuntimeError => e
+    @follow_through_failed = true
+    report("Copilot review request failed: #{e.message}.")
+  end
+
+  def review_token
+    token = @environment['TRIAGE_REVIEW_TOKEN'].to_s
+    token.empty? ? @environment['COPILOT_GITHUB_TOKEN'] : token
   end
 
   def board
@@ -705,7 +815,7 @@ class IssueAssessment # :nodoc:
     changes['assigned'] = assignee if assign
     report("Board: #{changes.empty? ? 'unchanged' : JSON.generate(changes)}")
   rescue RuntimeError => e
-    @board_failed = true
+    @follow_through_failed = true
     report("Board update failed: #{e.message}.")
   end
 
@@ -716,7 +826,7 @@ class IssueAssessment # :nodoc:
   end
 
   def close_duplicate?(item, number)
-    duplicate_mode == 'close' && (@kind != 'issue' || number < @number) &&
+    duplicate_mode == 'close' && !pull_request? && (@kind != 'issue' || number < @number) &&
       item['stateReason'] != 'REOPENED' && !maintainer?(item['authorAssociation']) &&
       !@state.data['maintainer_replied'] &&
       item.fetch('comments').fetch('nodes').none? { |comment| maintainer?(comment['authorAssociation']) }
@@ -778,6 +888,7 @@ class IssueAssessment # :nodoc:
       end
     end
     close_duplicate(item) if decision['close']
+    mutate('closePullRequest', pullRequestId: item.fetch('id')) if decision['close_pull_request']
     mutate('addReaction', subjectId: item.fetch('id'), content: 'HOORAY')
   end
 
@@ -798,14 +909,16 @@ class IssueAssessment # :nodoc:
     body.strip == previous.strip
   end
 
-  def mutate(operation, **input)
+  def mutate(operation, token: nil, **input)
     type = "#{operation[0].upcase}#{operation[1..]}Input!"
     query = "mutation($input: #{type}) { #{operation}(input: $input) { clientMutationId } }"
-    github('graphql', query: query, variables: { input: input })
+    github('graphql', token:, query: query, variables: { input: input })
   end
 
-  def github(endpoint, **payload)
-    output, _errors, status = Open3.capture3('gh', 'api', endpoint, '--input', '-', stdin_data: JSON.generate(payload))
+  def github(endpoint, token: nil, **payload)
+    environment = token ? { 'GH_TOKEN' => token } : {}
+    output, _errors, status = Open3.capture3(environment, 'gh', 'api', endpoint, '--input', '-',
+                                             stdin_data: JSON.generate(payload))
     raise 'GitHub request failed' unless status.success?
 
     result = JSON.parse(output)

@@ -66,19 +66,31 @@ class TriageTools
     next_step: { type: 'string', maxLength: 160 }
   }.freeze
 
+  # Extra submit_decision arguments when assessing a pull request.
+  PULL_REQUEST_PROPERTIES = {
+    review: { type: 'boolean' },
+    out_of_scope: { type: 'boolean' }
+  }.freeze
+  DIFF_HINT = ' For the pull request being assessed, diff:path reads the patch of a changed file.'
+
   attr_reader :ledger
 
-  def self.schemas(board: false)
-    return SCHEMAS unless board
-
+  def self.schemas(board: false, pull_request: false)
+    extra = {}
+    extra.merge!(BOARD_PROPERTIES) if board
+    extra.merge!(PULL_REQUEST_PROPERTIES) if pull_request
     submit = SCHEMAS.fetch('submit_decision')
-    required = submit.fetch(:required) + BOARD_PROPERTIES.keys.map(&:to_s)
-    SCHEMAS.merge('submit_decision' => submit.merge(properties: submit.fetch(:properties).merge(BOARD_PROPERTIES),
-                                                    required: required))
+    schemas = SCHEMAS.merge('submit_decision' => submit.merge(
+      properties: submit.fetch(:properties).merge(extra), required: submit.fetch(:required) + extra.keys.map(&:to_s)
+    ))
+    return schemas unless pull_request
+
+    read = schemas.fetch('read_evidence')
+    schemas.merge('read_evidence' => read.merge(description: read.fetch(:description) + DIFF_HINT))
   end
 
-  def self.definitions(board: false)
-    schemas(board: board).map do |name, schema|
+  def self.definitions(board: false, pull_request: false)
+    schemas(board:, pull_request:).map do |name, schema|
       { name: name, description: schema.fetch(:description),
         inputSchema: { type: 'object', properties: schema.fetch(:properties),
                        required: schema.fetch(:required), additionalProperties: false },
@@ -86,9 +98,10 @@ class TriageTools
     end
   end
 
-  def initialize(root:, repository:, config:, ledger_path: nil, token: nil, board: false)
+  def initialize(root:, repository:, config:, ledger_path: nil, token: nil, board: false, pull_request: nil)
     @root = File.realpath(root)
     @board = board
+    @pull_request = pull_request
     @repository = repository
     raise ArgumentError, 'Invalid repository' unless repository.match?(%r{\A[\w.-]+/[\w.-]+\z})
 
@@ -100,7 +113,7 @@ class TriageTools
   end
 
   def definitions
-    self.class.definitions(board: @board)
+    self.class.definitions(board: @board, pull_request: !@pull_request.nil?)
   end
 
   def call(name, arguments)
@@ -208,6 +221,12 @@ class TriageTools
 
     sources = decision.fetch(:sources)
     raise ArgumentError, 'Read the cited references first.' unless (sources - @ledger['evidence'].keys).empty?
+    if sources.any? { |source| source.start_with?('diff:') }
+      raise ArgumentError, 'Diffs are evidence for you, not citations.'
+    end
+    if decision[:out_of_scope] && !decision[:comment]
+      raise ArgumentError, 'Explain in comment why the change is out of scope.'
+    end
 
     if decision[:related_issue]
       reference = "issue:#{decision[:related_issue]}"
@@ -238,6 +257,7 @@ class TriageTools
 
       return { 'kind' => kind, 'path' => id, 'digest' => Digest::SHA256.hexdigest(content), 'content' => content }
     end
+    return fetch_diff(id) if kind == 'diff'
     raise ArgumentError, 'Expected file:path, issue:number, or release:id.' unless
       %w[issue release].include?(kind) && id&.match?(/\A[1-9]\d*\z/)
 
@@ -265,6 +285,26 @@ class TriageTools
 
   private
 
+  # The patch of one file changed by the pull request under assessment, read
+  # through the API. Contributor code is never checked out or run.
+  def fetch_diff(path)
+    raise ArgumentError, 'diff:path is only available when assessing a pull request.' unless @pull_request
+
+    file = changed_files.find { |entry| entry['filename'] == path }
+    raise ArgumentError, 'That file is not changed by this pull request; use a path from the file list.' unless file
+
+    content = file['patch'] || "No text patch for this #{file['status']} file (binary or too large)."
+    { 'kind' => 'diff', 'path' => path, 'digest' => Digest::SHA256.hexdigest(content), 'content' => content }
+  end
+
+  def changed_files
+    @changed_files ||= (1..10).each_with_object([]) do |page, files|
+      batch = api("repos/#{@repository}/pulls/#{@pull_request}/files?per_page=100&page=#{page}")
+      files.concat(batch)
+      break files if batch.size < 100
+    end
+  end
+
   def paths
     @config.fetch('sources', []).flat_map { |pattern| Dir.glob(pattern, base: @root) }.uniq.sort.select do |path|
       absolute = File.join(@root, path)
@@ -274,7 +314,9 @@ class TriageTools
   end
 
   def validate_arguments(name, arguments)
-    schema = self.class.schemas(board: @board).fetch(name) { raise ArgumentError, 'Unknown tool.' }
+    schema = self.class.schemas(board: @board, pull_request: !@pull_request.nil?).fetch(name) do
+      raise ArgumentError, 'Unknown tool.'
+    end
     properties = schema.fetch(:properties).transform_keys(&:to_s)
     raise ArgumentError, 'Tool arguments must be an object.' unless arguments.is_a?(Hash)
 

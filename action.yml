@@ -16,11 +16,11 @@ inputs:
     description: Repository-relative policy file on the default branch.
     default: .github/triage.yml
   kind:
-    description: issue or discussion; inferred from the triggering event when omitted.
-    default: ${{ github.event.discussion && 'discussion' || 'issue' }}
+    description: issue, discussion, or pull_request; inferred from the triggering event when omitted.
+    default: ${{ github.event.discussion && 'discussion' || (github.event.pull_request || github.event.issue.pull_request) && 'pull_request' || 'issue' }}
   number:
-    description: Issue or discussion number; inferred from the event when omitted.
-    default: ${{ github.event.issue.number || github.event.discussion.number }}
+    description: Issue, discussion, or pull request number; inferred from the event when omitted.
+    default: ${{ github.event.issue.number || github.event.discussion.number || github.event.pull_request.number }}
   model:
     description: Model ID; for the rubyllm engine, as the provider names it.
     default: gpt-5.6-luna
@@ -35,6 +35,9 @@ inputs:
     default: ''
   api-base:
     description: Custom endpoint for the rubyllm engine, such as an OpenAI-compatible server.
+    default: ''
+  review-token:
+    description: Token that requests Copilot code reviews of pull requests, billed to its owner; defaults to copilot-token.
     default: ''
   reasoning-effort:
     description: Copilot reasoning effort (none or low).
@@ -149,6 +152,7 @@ runs:
         TRIAGE_PREPARED_PATH: ${{ runner.temp }}/copilot-triage-prepared.json
         TRIAGE_METRICS_PATH: ${{ runner.temp }}/copilot-triage-metrics.json
         TRIAGE_PROJECT_TOKEN: ${{ inputs.project-token }}
+        TRIAGE_REVIEW_TOKEN: ${{ inputs.review-token }}
     - name: Sweep the project board
       if: inputs.mode == 'sweep'
       shell: bash

@@ -24,9 +24,14 @@ module TriageEvent
     author && (author['__typename'] == 'Bot' || author['type'] == 'Bot' || author['login']&.end_with?('[bot]'))
   end
 
+  PULL_REQUEST_ACTIONS = %w[opened reopened ready_for_review synchronize].freeze
+
+  # Pull request events pass through; the policy decides whether to triage them.
   def skip_reason(name, event)
     return if name == 'workflow_dispatch'
-    return 'pull requests are outside triage' if event.dig('issue', 'pull_request')
+    if %w[pull_request pull_request_target].include?(name) && !PULL_REQUEST_ACTIONS.include?(event['action'])
+      return 'only opened, reopened, ready, or updated pull requests trigger triage'
+    end
     return unless %w[issue_comment discussion_comment].include?(name)
     return 'only new comments trigger triage' unless event['action'] == 'created'
     return 'comment was posted by a bot' if bot?(event['sender']) || bot?(event.dig('comment', 'user'))

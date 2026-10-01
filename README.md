@@ -196,9 +196,8 @@ Tools never receive an entire repository dump.
 
 The action suppresses ordinary replies when a maintainer or bot commented most
 recently. It checks the report again before publishing and skips if it changed. Successful
-assessments get a bot 🎉 reaction. Triage does not assess PRs; GitHub's built-in
-Copilot code review is a separate product. The optional
-[project board](#project-board) sweep does place PRs on the board.
+assessments get a bot 🎉 reaction. Pull requests are opt-in; see
+[Pull requests](#pull-requests).
 
 ### Related issues and duplicates
 
@@ -247,7 +246,7 @@ The agent has four retrieval tools and a structured decision tool:
 | `search_repository` | Up to ten literal matches with paths, lines, and nearby byte offsets; an empty query lists files |
 | `search_issues` | Up to five same-repository GitHub search results with short body previews |
 | `list_releases` | Five published releases with version, prerelease status, and short notes |
-| `read_evidence` | A paged file, issue with recent comments, or release; up to 6 KB of content |
+| `read_evidence` | A paged file, issue with recent comments, release, or a pull request's changed-file patch; up to 6 KB of content |
 | `submit_decision` | A schema-validated proposal for labels, a reply, a related issue, or mute; no GitHub mutation |
 
 Tool results are at most 8 KB of serialized JSON, with explicit continuation
@@ -323,6 +322,87 @@ Existing issues and discussions are not automatically backfilled when you
 install or upgrade the action. Use a manual preview for older reports. If a
 run posts nothing, its job summary distinguishes skipped input or invalid model
 output from a valid decision to stay silent.
+
+## Pull requests
+
+Triage can also assess pull requests when they open, reopen, become ready for
+review, or receive a comment. It decides whether a change deserves a Copilot
+code review and requests one, applies your contribution policy (screenshots,
+an issue before a feature, scope), labels it, and places it on the
+[board](#project-board). It does not review code itself or summarize changes.
+
+Enable it in `.github/triage.yml`:
+
+```yaml
+pull_requests:
+  reviews: copilot      # or off
+  out_of_scope: suggest # or close
+```
+
+Then trigger the workflow on pull requests too. Replace the job's `if` so pull
+request comments are no longer filtered out, and give the token pull request
+access:
+
+```yaml
+on:
+  issues:
+    types: [opened, reopened]
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize]
+  discussion:
+    types: [created]
+  discussion_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  discussions: write
+
+concurrency:
+  group: >-
+    triage-${{ github.event.discussion && 'discussion' || 'issue' }}-${{ github.event.issue.number || github.event.discussion.number || github.event.pull_request.number }}-${{ github.event.discussion && (github.event.comment.parent_id || github.event.comment.id) || 'report' }}
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    if: github.event.sender.type != 'Bot' || github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: crmne/copilot-triage@v0
+        with:
+          copilot-token: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+```
+
+`pull_request_target` runs the workflow from your default branch with its
+secrets, also for pull requests from forks. That is safe here because the
+action checks out only your default branch: the agent reads changed files
+through the API as `diff:path` patches and never checks out or runs
+contributor code. Diffs inform the decision but cannot be cited in replies.
+
+**Reviews.** When the agent judges a change worth reviewing (behavior, public
+API, security, data handling, non-trivial logic), the action requests a review
+from Copilot. It skips documentation, typos, generated files, lone dependency
+bumps, and pull requests still waiting on a process step or scope decision.
+GitHub bills a Copilot review to whoever requests it: the `review-token`
+input, or `copilot-token` when that is empty. That token needs **Pull
+requests: Read and write** on the repository besides Copilot Requests. A new
+push asks for a fresh review of the new commit without calling the model, once
+per commit, only when the agent wanted one. Drafts wait until they are ready.
+
+**Out of scope.** The agent marks a change out of scope only when your
+documented scope rules out the change itself, not for a missing process step,
+code quality, or missing tests, and explains why with a citation. With
+`suggest`, that explanation is all that happens. With `close`, the action also
+closes the pull request, never one opened by a maintainer.
+
+Replies follow the same rules as for issues: only when the author needs
+something. The board gets pull request cards with whose move it is, a
+priority, and the next step, and urgent ones are assigned like issues.
 
 ## Other model providers
 
