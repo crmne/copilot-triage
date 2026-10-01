@@ -13,6 +13,10 @@ so replay cannot establish that the model follows those policies.
 It spends no model credits and cannot write to GitHub. The reported model calls
 are simulated in replay mode; replay time is not a model-latency benchmark.
 
+The [README](../README.md#evaluations) publishes the latest live results for
+the default model, other Copilot models, and local models through RubyLLM.
+We rerun them before each release and when we consider a new default model.
+
 Measure fresh model behavior with a Copilot token in `COPILOT_GITHUB_TOKEN`:
 
 ```sh

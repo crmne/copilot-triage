@@ -1,69 +1,69 @@
 # Copilot Triage
 
-**You shouldn't need 2,000 lines of generated YAML to label an issue.**
-
-Copilot Triage is a small alternative to **GitHub Agentic Workflows** for issues
-and discussions, built for [RubyLLM](https://github.com/crmne/ruby_llm) and
-[Spotifast](https://github.com/crmne/spotifast). A small Ruby program, a cheap model,
-a system prompt, and scoped tools. Read the report, help the person, get out of the way.
+**A maintainer's copilot for GitHub: it triages issues, discussions, and pull
+requests, and keeps a board of what actually needs you.**
 
 https://github.com/user-attachments/assets/7fbd2ac8-33e7-49d3-a3f2-0d1ce509a3d6
 
 [Download the video](https://github.com/crmne/copilot-triage/releases/download/v0.6.2/copilot-triage-launch-1080p60.mp4)
 
+Open source maintenance is mostly reading. Copilot Triage reads for you. When
+someone opens an issue, starts a discussion, sends a pull request, or comments,
+an agent investigates with read-only tools and decides what helps:
+
+- **Issues.** Labels, and one useful reply or none: an answer from your docs, a
+  released fix, a duplicate, one essential question, or a recap of a long
+  report. Silence is a valid decision; most follow-ups need no reply.
+- **Discussions.** Questions get answered from your docs. A discussion that is
+  really a bug report or feature request moves to an issue.
+- **Pull requests.** Requests a Copilot code review when a change deserves one,
+  checks your contribution policy (screenshots, an issue first, scope), and
+  explains or closes changes your documented scope rules out.
+- **Your board.** Every issue and pull request lands on a GitHub project board
+  by whose move it is (Needs me, Waiting on them, Ready to merge, ...), with a
+  priority and a one-line next step. Urgent things are assigned to you, which
+  is the one notification you get.
+
+So you can turn off GitHub's email for everything and open the board instead.
+
+It runs on your **Copilot** allowance by default, or on **your own API key**
+through [RubyLLM](https://rubyllm.com): a company key, OpenRouter, a cloud
+provider, or any OpenAI-compatible endpoint. We [measure models](#evaluations)
+before recommending them, and publish the results.
+
+Built for [RubyLLM](https://github.com/crmne/ruby_llm) and
+[Spotifast](https://github.com/crmne/spotifast), reusable in your repositories.
+
 ## Why this exists
 
 We used [GitHub Agentic Workflows](https://github.com/github/gh-aw) to triage
-[RubyLLM](https://github.com/crmne/ruby_llm) and
-[Spotifast](https://github.com/crmne/spotifast) issues and discussions. In
-RubyLLM alone, the [compiled workflow](https://github.com/crmne/ruby_llm/blob/d04b4eeb341d76440bee9a029f150b7598e5cfcc/.github/workflows/issue-assessment.lock.yml)
-was **2,035 lines of YAML**. Tool gateways. Agent jobs. A separate threat detector.
-Safe-output jobs. Failure-reporting machinery.
-
-Our [recorded runs](https://github.com/crmne/ruby_llm/actions/runs/33890389416)
-used Sonnet 5 to assess reports and Haiku 4.5 to inspect the output. Both consumed
-Copilot credits. Then the workflow started
+RubyLLM and Spotifast. In RubyLLM alone, the
+[compiled workflow](https://github.com/crmne/ruby_llm/blob/d04b4eeb341d76440bee9a029f150b7598e5cfcc/.github/workflows/issue-assessment.lock.yml)
+was **2,035 lines of YAML**: tool gateways, agent jobs, a separate threat
+detector, safe-output jobs, failure-reporting machinery. Then it started
 [opening issues about its own failures](https://github.com/crmne/ruby_llm/issues/922)
-and [posting comments about its detector failing](https://github.com/crmne/ruby_llm/issues/913).
-The bot became another thing to maintain. And another source of email.
+and [commenting about its detector failing](https://github.com/crmne/ruby_llm/issues/913).
+The bot became another thing to maintain, and another source of email.
 
-That is a ridiculous amount of machinery for this job.
+So we removed the platform and kept the job: one agent, a
+[system prompt](lib/triage.agent.md), and
+[small read-only tools](lib/triage_tools.rb). The agent chooses what to search,
+reads evidence, and decides whether to help. Ruby validates its structured
+decision and publishes it. No classifier calls, no keyword gates, no failure
+tickets: problems go to the job summary.
 
-GitHub Agentic Workflows is a general agent platform. We needed a bot for
-issues and discussions.
-So we removed the platform and kept the job.
+## Quick start
 
-## Small on purpose
-
-One agent, a [system prompt](lib/triage.agent.md), and
-[small read-only tools](lib/triage_tools.rb). Copilot chooses what to search,
-reads evidence, and decides whether to help. There are no separate classifier,
-answer, or duplicate-comparison model calls, and no keyword-based conversation
-gates. Ruby validates and publishes the agent's structured decision.
-
-- Use your existing Copilot subscription. The default model remains `gpt-5.6-luna`.
-- Let the agent investigate with repository search, issue search, releases, and
-  paged evidence reads. Results are bounded; the model can refine its own query.
-- Keep replies useful: answers, essential questions, policy, released fixes,
-  duplicates, and one helpful initial recap. Do not recap every follow-up.
-- Keep failures in job summaries, never new failure tickets or bot apologies.
-- Keep the runtime small. With Copilot, it is Ruby's standard library and
-  Copilot owns the agent loop; with [another provider](#other-model-providers),
-  a [RubyLLM](https://rubyllm.com) agent runs the same tools. Neither is
-  another orchestration framework.
-
-Unit tests cover boundaries and publishing. Offline tool integration tests use
-the real Copilot CLI with a fake provider; they do not establish model quality.
-The [evaluation corpus](eval/README.md) covers both required help and silence.
-
-## Use it
-
-1. Add a `COPILOT_GITHUB_TOKEN` repository secret. Use a fine-grained token with
-   **Copilot Requests** permission and an available Copilot allowance. See
-   [Copilot authentication](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference#copilot-login-options).
-2. Save [examples/triage.yml](examples/triage.yml) as `.github/triage.yml` and
-   adapt the labels, replies, source paths, and policy to your project.
-3. Add `.github/workflows/triage.yml`:
+1. **Token.** Add a `COPILOT_GITHUB_TOKEN` repository secret: a fine-grained
+   token with **Copilot Requests** and an available Copilot allowance (see
+   [Copilot authentication](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference#copilot-login-options)).
+   To request Copilot reviews of pull requests, also give it **Pull requests:
+   Read and write** on the repository. Using your own API key instead? See
+   [Models and cost](#models-and-cost).
+2. **Policy.** Save [examples/triage.yml](examples/triage.yml) as
+   `.github/triage.yml` on your default branch and adapt the labels, replies,
+   source paths, and instructions to your project.
+3. **Workflow.** Add `.github/workflows/triage.yml`:
 
 ```yaml
 name: Triage
@@ -76,316 +76,14 @@ on:
     types: [created]
   discussion_comment:
     types: [created]
-
-permissions:
-  contents: read
-  issues: write
-  discussions: write
-
-concurrency:
-  group: >-
-    triage-${{ github.event.discussion && 'discussion' || 'issue' }}-${{ github.event.issue.number || github.event.discussion.number }}-${{ github.event.discussion && (github.event.comment.parent_id || github.event.comment.id) || 'report' }}
-  cancel-in-progress: false
-
-jobs:
-  triage:
-    if: (github.event.sender.type != 'Bot' || github.event_name == 'issues') && !github.event.issue.pull_request
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: crmne/copilot-triage@v0
-        with:
-          copilot-token: ${{ secrets.COPILOT_GITHUB_TOKEN }}
-```
-
-The action checks out your repository's **default branch**, restores conversation
-state, installs Copilot CLI, and runs the assessment. Commit the configuration
-to that branch before enabling the workflow. It requires the Ruby, Node.js,
-GitHub CLI, Git, and `timeout` commands provided by GitHub's Ubuntu runners.
-With the default Copilot engine there is no runtime gem dependency or
-provider API key.
-
-The `v0` tag tracks tested v0 releases, so consuming repositories update
-automatically. Use a full commit SHA instead when you need an immutable version.
-The `main` branch contains development work, not just released versions.
-Keep project-specific policy in your repository.
-
-### Preview a report
-
-Add manual inputs to the workflow's `on` section:
-
-```yaml
-  workflow_dispatch:
-    inputs:
-      kind:
-        type: choice
-        options: [issue, discussion]
-        default: issue
-      number:
-        description: Issue or discussion number
-        required: true
-```
-
-Then add these inputs alongside `copilot-token` on the action step:
-
-```yaml
-          kind: ${{ inputs.kind || (github.event.discussion && 'discussion' || 'issue') }}
-          number: ${{ inputs.number || github.event.issue.number || github.event.discussion.number }}
-          dry-run: ${{ github.event_name == 'workflow_dispatch' }}
-```
-
-Also add `|| inputs.number` to the concurrency group's number expression and
-`inputs.kind ||` before its kind expression. A manual run shows its decision
-in the job summary without changing GitHub. It can preview closed reports.
-Previews consume Copilot credits.
-
-## Replies
-
-On a newly opened issue, one concise initial recap is welcome when it saves the
-maintainer a long read: the problem, relevant environment, and key evidence.
-A short, already clear request may need only labels. A recap does not need an
-invented next check or a question to justify posting it.
-
-After that, replies must add new help, not summarize each comment. One essential
-missing fact can get one direct question, without an introductory summary.
-The agent decides whether a recap, question, answer, or silence is appropriate.
-These are prompt policies, not regular expressions that classify human wording.
-A feature request may already be implemented; the agent should check rather than
-automatically assume that it needs development. For example:
-
-> Forwarding is already available: right-click the message or picture, choose Forward, then select the destination chat.
-
-Answers should be concise, normally under 60 words. Learned facts use citations
-to evidence the agent actually read. A released-fix claim needs release evidence,
-not just code on the default branch or a closed issue.
-
-For example, a reply might be:
-
-> Does restarting the app pick up the system theme?
->
-> _Generated by [Copilot Triage](https://github.com/marketplace/actions/copilot-triage) using `gpt-5.6-luna`; 6200 input / 80 output tokens this run; [view run](https://github.com/crmne/copilot-triage/actions)._
-
-The figures above are illustrative. Every posted comment includes this compact
-footer, added by Ruby, with the model, measured input/output tokens, and a link
-to the exact run attempt. Counts cover fresh calls in that run, including
-provider-cached input. Missing CLI usage is reported as unavailable. The footer links the Marketplace listing so
-readers can reuse the action. It does not spend model tokens to write itself.
-
-Or, when the configured documentation establishes it:
-
-> Define `execute` on your tool class. See [the guide](https://rubyllm.com/tools/).
-
-Map documentation files to your public site in the policy:
-
-```yaml
-documentation:
-  docs/*.md: https://example.com/guides/%{name}/
-```
-
-`%{name}` is the filename without its extension. The maintainer supplies this
-mapping; the action does not crawl the site. Other citations link to the exact
-Git revision read. Only references read through tools can become citations; the wrapper supplies
-links. Source files outside the checkout are excluded.
-
-Each run reads the current report and its latest five comments. A discussion
-comment event reads that thread's parent and latest five replies, including
-threads older than the latest top-level comments. Answers stay in that thread.
-The model can inspect configured sources on demand, with up to 6 KB of text per
-read and explicit pagination. Search results are previews, not citation evidence.
-Tools never receive an entire repository dump.
-
-The action suppresses ordinary replies when a maintainer or bot commented most
-recently. It checks the report again before publishing and skips if it changed. Successful
-assessments get a bot 🎉 reaction. Pull requests are opt-in; see
-[Pull requests](#pull-requests).
-
-### Related issues and duplicates
-
-The agent can search this repository's open and closed issues and read candidates
-it selects. A duplicate proposal requires reading the full candidate; a search
-title or incomplete preview cannot authorize closure.
-
-Choose the behavior in `.github/triage.yml`:
-
-```yaml
-duplicates: suggest
-```
-
-- `suggest` (default): post a useful issue link and keep the report open.
-- `close`: also close clear duplicates with GitHub's native duplicate reason.
-- `'off'`: do not propose duplicate/related-issue actions. Keep the quotes in YAML.
-
-For a clear duplicate with closure enabled:
-
-> Duplicate of #42. Both reports describe the selected theme resetting after a restart.
-
-For related reports with different requirements:
-
-> See also #325. That issue covers the Winamp mini player's taskbar entry; this request concerns the separate Milkdrop window.
-
-The script supplies the issue link and adds the usual attribution footer. The
-model cannot invent a target or close an arbitrary report. Closure requires a
-full comparison that identifies the same specific problem or feature. Different
-components, platforms, and requirements remain separate unless the evidence
-establishes a duplicate. Model judgments can still be wrong; use `suggest` when
-you want to review every closure yourself.
-
-Issue duplicates close only against an older issue, preventing reciprocal
-closures. Open and closed issues can be targets; a closed issue alone does not
-prove that a fix shipped. Discussions can close in favor of an issue. Maintainer-authored
-reports, reopened issues, and reports with a maintainer among the recent comments
-are linked without automatic closure. Both reports are fetched again before any
-changes; changed candidates invalidate the assessment.
-
-### Tools
-
-The agent has four retrieval tools and a structured decision tool:
-
-| Tool | What it returns |
-| --- | --- |
-| `search_repository` | Up to ten literal matches with paths, lines, and nearby byte offsets; an empty query lists files |
-| `search_issues` | Up to five same-repository GitHub search results with short body previews |
-| `list_releases` | Five published releases with version, prerelease status, and short notes |
-| `read_evidence` | A paged file, issue with recent comments, release, or a pull request's changed-file patch; up to 6 KB of content |
-| `submit_decision` | A schema-validated proposal for labels, a reply, a related issue, or mute; no GitHub mutation |
-
-Tool results are at most 8 KB of serialized JSON, with explicit continuation
-offsets/pages rather than hidden truncation. Files must match configured source
-patterns, resolve inside the checkout, and be no larger than 1 MB. No shell,
-arbitrary URLs, other repositories, or contributor code execution is exposed.
-The agent can make up to 12 evidence calls; submission remains available after
-that budget. Remote reads time out after 15 seconds.
-
-Search uses literal text or GitHub's issue search, not our own relevance ranker.
-The agent chooses search terms and can try again. Read results carry references;
-the wrapper checks cited content again before publishing.
-
-Copilot CLI's JSON output is an event stream, not schema-constrained final
-generation. The agent therefore submits typed arguments through
-`submit_decision`; final assistant prose is never used as a decision.
-This is validated tool output, not a claim of provider-native strict structured
-generation. Invalid tool arguments produce an error the agent can correct.
-
-### Discussions that belong in issues
-
-People sometimes open a discussion for what is really a bug report. Triage
-moves those to issues by default, so discussions can stay a place for questions
-and community. To keep every discussion where it is:
-
-```yaml
-discussions:
-  move_to_issues: false
-```
-
-When a new discussion is a reproducible bug report or a concrete feature
-request that no issue tracks yet, the agent proposes a move. GitHub has no API
-to convert a discussion, so the action creates the issue itself: same title,
-the original text under a "Moved from" line that mentions the author (which
-subscribes them), and the agent's labels. It then replies in the discussion
-with the link and closes it as outdated. With a [board](#project-board), the
-new issue gets a card.
-
-The issue is opened by the workflow's bot, so the author cannot edit it, and it
-does not trigger other workflows; the same run has already assessed it.
-Questions, ideas still being explored, feedback, and anything already tracked
-stay as discussions, and so does anything the agent is unsure about. Comment
-threads never move.
-
-### Reports from Honeybadger
-
-Private repositories work too. Allow the reporting bot in your policy:
-
-```yaml
-report_bots:
-  - honeybadger[bot]
-```
-
-The workflow above admits bot-created issue events; the script checks the
-author against this list before calling the model. Other bots remain excluded,
-and bot comments never trigger a conversation loop. Error reports are assessed
-for the maintainer using the supplied exception and backtrace. Configure the
-source files it may read; keep credentials and customer data out of that input.
-
-### Follow-up comments
-
-Every eligible human update reaches the agent. `followups: selective` and the
-legacy `all` setting both let the agent decide whether a reply helps.
-`followups: off` leaves only explicit reassessment commands and manual runs.
-There are no regexes deciding whether a comment contains a question, an error,
-new evidence, or an acknowledgement.
-
-Bot comments and ordinary maintainer comments are skipped before checkout or
-CLI installation. Anyone can request reassessment with `/triage` or
-`/triage reassess`; these commands still respect closed reports and mute state.
-
-Comment runs wait 10 seconds before reading GitHub; set the action input
-`debounce-seconds` between 0 and 60 to change this. If a newer comment exists,
-the older event is skipped without calling Copilot. Concurrency keeps one run
-active per issue or discussion thread and replaces older pending runs in that
-conversation. Separate discussion threads are assessed independently. A comment
-arriving during inference invalidates that answer; the next run assesses the
-updated conversation.
-Active runs are allowed to finish so publishing cannot be interrupted halfway.
-
-Human updates can consume model calls even when the agent correctly stays silent.
-Already-processed events are skipped; explicit reassessment bypasses that check.
-Exact duplicate replies are blocked by code; the agent handles semantic repetition.
-
-`/triage mute` takes effect without inference. The agent recognizes natural-language
-stop requests and records a mute decision without a public acknowledgement. Only
-a maintainer can use `/triage unmute`. Mute state, processed event fingerprints,
-prior replies, and maintainer participation persist in a small Actions cache.
-Previews do not change this state.
-
-When state is evicted or comments were missed, up to 500 older comments can be
-recovered. Unseen history is supplied to the agent, not interpreted with regexes.
-Incomplete or oversized history pauses automatic follow-ups; `/triage` requests
-reassessment but does not bypass the context-size limit. Silent completion cannot
-be recovered after cache eviction, so an unchanged issue may be assessed again.
-
-Existing issues and discussions are not automatically backfilled when you
-install or upgrade the action. Use a manual preview for older reports. If a
-run posts nothing, its job summary distinguishes skipped input or invalid model
-output from a valid decision to stay silent.
-
-## Pull requests
-
-Triage can also assess pull requests when they open, reopen, become ready for
-review, or receive a comment. It decides whether a change deserves a Copilot
-code review and requests one, applies your contribution policy (screenshots,
-an issue before a feature, scope), labels it, and places it on the
-[board](#project-board). It does not review code itself or summarize changes.
-
-Enable it in `.github/triage.yml`:
-
-```yaml
-pull_requests:
-  reviews: copilot      # or off
-  out_of_scope: suggest # or close
-```
-
-Then trigger the workflow on pull requests too. Replace the job's `if` so pull
-request comments are no longer filtered out, and give the token pull request
-access:
-
-```yaml
-on:
-  issues:
-    types: [opened, reopened]
-  issue_comment:
-    types: [created]
   pull_request_target:
     types: [opened, reopened, ready_for_review, synchronize]
-  discussion:
-    types: [created]
-  discussion_comment:
-    types: [created]
 
 permissions:
   contents: read
   issues: write
-  pull-requests: write
   discussions: write
+  pull-requests: write
 
 concurrency:
   group: >-
@@ -403,39 +101,27 @@ jobs:
           copilot-token: ${{ secrets.COPILOT_GITHUB_TOKEN }}
 ```
 
-`pull_request_target` runs the workflow from your default branch with its
-secrets, also for pull requests from forks. That is safe here because the
-action checks out only your default branch: the agent reads changed files
-through the API as `diff:path` patches and never checks out or runs
-contributor code. Diffs inform the decision but cannot be cited in replies.
+That's it. To add the board, see [The board](#the-board).
 
-**Reviews.** When the agent judges a change worth reviewing (behavior, public
-API, security, data handling, non-trivial logic), the action requests a review
-from Copilot. It skips documentation, typos, generated files, lone dependency
-bumps, and pull requests still waiting on a process step or scope decision.
-GitHub bills a Copilot review to whoever requests it: the `review-token`
-input, or `copilot-token` when that is empty. That token needs **Pull
-requests: Read and write** on the repository besides Copilot Requests. A new
-push asks for a fresh review of the new commit without calling the model, once
-per commit, only when the agent wanted one. Drafts wait until they are ready.
+The action checks out your **default branch** (never contributor code),
+restores small conversation state, installs Copilot CLI, and runs the
+assessment on GitHub's Ubuntu runners. The `v0` tag follows tested releases;
+pin a commit SHA if you need an immutable version. `main` is development work.
 
-**Out of scope.** The agent marks a change out of scope only when your
-documented scope rules out the change itself, not for a missing process step,
-code quality, or missing tests, and explains why with a citation. With
-`suggest`, that explanation is all that happens. With `close`, the action also
-closes the pull request, never one opened by a maintainer.
+## Models and cost
 
-Replies follow the same rules as for issues: only when the author needs
-something. The board gets pull request cards with whose move it is, a
-priority, and the next step, and urgent ones are assigned like issues.
+### Copilot (default)
 
-## Other model providers
+The default model is `gpt-5.6-luna` at low reasoning effort, billed to the
+token's Copilot allowance. A typical assessment reads 10,000 to 50,000 input
+tokens over a few model turns, a fraction of a cent at
+[GitHub's listed price](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing).
+Change it with the `model` input.
 
-Copilot is the default because it uses an allowance you may already pay for.
-To pay for tokens another way, switch to the `rubyllm` engine: a
-[RubyLLM](https://rubyllm.com) agent with the same system prompt, tools,
-evidence budget, and decision checks. Use a company API key, OpenRouter, a
-cloud provider, or any OpenAI-compatible endpoint:
+### Your own API key
+
+Set `engine: rubyllm` to run a [RubyLLM](https://rubyllm.com) agent with the same
+system prompt, tools, evidence budget, and decision checks:
 
 ```yaml
       - uses: crmne/copilot-triage@v0
@@ -446,91 +132,220 @@ cloud provider, or any OpenAI-compatible endpoint:
           api-key: ${{ secrets.OPENROUTER_API_KEY }}
 ```
 
-`provider` is a RubyLLM provider slug, such as `openai`, `anthropic`, `gemini`,
-`openrouter`, `mistral`, `deepseek`, `xai`, or `ollama`, and `model` is the ID
-that provider uses. For a server that speaks the OpenAI API, set
-`provider: openai` and `api-base` to its URL; models it serves do not need to
-be in RubyLLM's registry. A local model works the same way on a self-hosted
-runner, for example `provider: ollama` with `api-base: http://localhost:11434/v1`.
+`provider` is any RubyLLM provider slug, such as `openai`, `anthropic`,
+`gemini`, `openrouter`, `mistral`, `deepseek`, `xai`, `bedrock`, `azure`, or
+`ollama`, and `model` is that provider's model ID. For a server that speaks the
+OpenAI API, use `provider: openai` with `api-base` set to its URL; its models
+need not be in RubyLLM's registry. Replies show the run's cost when RubyLLM
+knows the model's price. The action installs the `ruby_llm` gem only for this
+engine, cached between runs.
 
-The action installs the `ruby_llm` gem only for this engine, cached between
-runs. The agent gets 20 model turns, 120 seconds, and 4,000 output tokens per
-turn, and stops as soon as it submits a decision. Replies show the run's cost
-when RubyLLM knows the model's price.
+**About free models:** free and small models vary widely at tool calling and
+judgment, and the small local ones we tried fail most of our cases (see below).
+Free tiers also have tight rate limits, and some free providers log or train on
+prompts. Issue text from private repositories goes to whichever provider you
+choose, so use one whose data terms you accept. Measure a model before you
+rely on it.
 
-Choose a model by measuring it. The [evaluation runner](eval/README.md) runs
-the same cases against any provider:
+### Evaluations
+
+An [evaluation corpus](eval/README.md) of real and synthetic reports checks
+both help and silence: stop requests, thank-yous, already answered questions,
+documented answers, released fixes, duplicates, recaps. A case passes only with
+the expected outcome, the required content, and within its call budget. Every
+change runs it offline; before each release, and before changing the default
+model, we run it live against real models and publish the results here.
+
+Latest results, measured on October 1, 2026 with Copilot CLI 1.0.83 and
+RubyLLM 2.0.0. Copilot models ran two rounds of the 15 cases, local models one.
+Costs use GitHub's list prices without cache discounts.
+
+| Model | Engine | Passed | Unneeded replies | Missed help | Input tokens per case | Cost per assessment |
+| --- | --- | --- | --- | --- | --- | --- |
+| GPT-5.6 Luna (default) | Copilot | 29/30 (97%) | 0 | 1 | 18,591 | $0.0039 |
+| GPT-6 Luna | Copilot | 23/30 (77%) | 3 | 2 | 21,847 | $0.0023 |
+| Claude Haiku 4.5 | Copilot | 19/30 (63%) | 1 | 10 | 16,750 | $0.0228 |
+| gpt-oss 20B (local, Ollama) | RubyLLM | 6/15 (40%) | 2 | 1 | not reported | free (your hardware) |
+| Qwen3 8B (local, Ollama) | RubyLLM | 5/15 (33%) | 2 | 4 | not reported | free (your hardware) |
+| GPT-5 mini | Copilot | 8/30 (27%) | 9 | 0 | 23,518 | $0.0087 |
+| Gemini 3.6 Flash | Copilot | 0/15: every case hit the 90-second limit | | | | |
+
+The default stays GPT-5.6 Luna: GPT-6 Luna costs less per assessment but misses
+more help and replies when it should not. Claude Haiku stays silent when the
+docs have an answer, GPT-5 mini replies to almost everything, and the small
+local models fail most cases even with the same tools and limits. Gemini 3.6
+Flash never finished within Copilot CLI's 90-second limit.
+
+Run it yourself against any model, with Copilot or through RubyLLM:
 
 ```sh
-TRIAGE_API_KEY=... bundle exec ruby eval/run.rb --live --engine rubyllm \
-  --provider openrouter --model openai/gpt-oss-120b
+bundle exec ruby eval/run.rb --live --model gpt-5.6-luna
+TRIAGE_API_KEY=... bundle exec ruby eval/run.rb --live --engine rubyllm --provider openrouter --model openai/gpt-oss-120b
 ```
 
-Small and free models vary widely in tool calling and judgment, so check that
-a model passes before relying on it. Free tiers also have tight rate limits,
-and some free providers log or train on prompts. Issue text from private
-repositories, including error reports, goes to that provider; use a provider
-whose data terms you accept.
+## Issues
 
-## Project board
+On a newly opened issue, the agent may write one concise recap when a report is
+long or scattered: the problem, relevant environment, and key evidence. A short,
+clear request needs only labels. After that, replies must add new help:
 
-Optionally, triage can keep a GitHub project board of what needs you, across
-every repository that uses it, public and private. The columns say whose move
-it is:
+> Forwarding is already available: right-click the message or picture, choose Forward, then select the destination chat.
+
+> Does restarting the app pick up the system theme?
+
+Replies stay short, normally under 60 words, with no headings or status chatter.
+Facts learned through tools carry citations to evidence the agent actually read,
+and Ruby renders the links. A released-fix claim needs release notes, not code
+on `main` or a closed issue. Map documentation files to your public site:
+
+```yaml
+documentation:
+  docs/*.md: https://example.com/guides/%{name}/
+```
+
+Every comment ends with a footer naming the model, the tokens used, and a link
+to the run, added by Ruby. Successful assessments get a 🎉 reaction. When a
+maintainer or bot spoke last, the agent does not reply again.
+
+### Duplicates and related issues
+
+The agent searches open and closed issues and must read a candidate in full
+before proposing a relationship.
+
+```yaml
+duplicates: suggest # or close, or 'off'
+```
+
+`suggest` posts the link and keeps the report open:
+
+> See also #325. That issue covers the mini player's taskbar entry; this request concerns the separate Milkdrop window.
+
+`close` also closes clear duplicates with GitHub's native duplicate reason, but
+only against an older issue, never a reopened or maintainer-authored one, and
+never after a maintainer has joined the conversation. Both reports are fetched
+again before anything changes.
+
+### Follow-ups and commands
+
+Every eligible human comment reaches the agent, which decides whether a reply
+helps. `followups: off` limits triage to explicit commands and manual runs.
+Bot comments and ordinary maintainer comments are skipped before any work.
+
+- `/triage` or `/triage reassess` asks for a fresh assessment.
+- `/triage mute` stops the bot in that conversation; a natural-language "please
+  stop" works too, without a public apology.
+- `/triage unmute` (maintainers only) turns it back on.
+
+Comment runs wait 10 seconds (`debounce-seconds`, 0 to 60) so a burst of
+comments is assessed once. A comment that arrives during an assessment
+invalidates it; the next run sees the whole conversation.
+
+### Error reports from bots
+
+Issues opened by bots are skipped unless you list them:
+
+```yaml
+report_bots:
+  - honeybadger[bot]
+```
+
+Error reports are assessed for the maintainer using the exception and
+backtrace, which works in private repositories too.
+
+## Discussions
+
+Discussions can stay a place for questions and community. The agent answers
+questions your docs establish, in the thread they were asked in.
+
+When a new discussion is really a reproducible bug report or a concrete feature
+request that no issue tracks yet, it moves to an issue. GitHub has no API to
+convert a discussion, so the action creates the issue itself: same title, the
+original text under a "Moved from" line that mentions the author (which
+subscribes them), and the agent's labels. It replies in the discussion with the
+link and closes it as outdated. The new issue is opened by the workflow's bot,
+so the author cannot edit it. Questions, ideas still being explored, anything
+already tracked, and anything the agent is unsure about stay put. To never
+move discussions:
+
+```yaml
+discussions:
+  move_to_issues: false
+```
+
+## Pull requests
+
+```yaml
+pull_requests:
+  reviews: copilot      # or off
+  out_of_scope: suggest # or close
+```
+
+With this in your policy, pull requests are assessed when they open, reopen,
+become ready for review, or get a comment. The agent sees the changed files and
+reads patches on demand; it never checks out or runs contributor code, which is
+what makes `pull_request_target` safe here.
+
+- **Reviews.** When a change touches behavior, public API, security, data
+  handling, or non-trivial logic, the action requests a review from Copilot.
+  Documentation, typos, generated files, lone dependency bumps, and pull
+  requests still waiting on a process step are skipped. GitHub bills a Copilot
+  review to whoever requests it: the `review-token` input, or `copilot-token`.
+  After a new push, a fresh review of the new commit is requested without
+  calling the model, once per commit. Drafts wait until they are ready.
+- **Policy.** Replies only when the author needs something: a requirement from
+  your contribution policy, one essential question, or a scope explanation. It
+  does not summarize changes or review code line by line.
+- **Out of scope.** Only when your documented scope rules out the change itself,
+  never for a missing process step, code quality, or tests, and always with a
+  cited explanation. `suggest` stops at the explanation; `close` also closes the
+  pull request, never one opened by a maintainer.
+
+## The board
+
+A GitHub project board that says whose move each issue and pull request is,
+across every repository that uses it, public and private:
 
 | Column | Meaning |
 | --- | --- |
 | **Needs me** | Your decision, answer, review, or fix |
-| **Waiting on them** | Triage or you asked the reporter something |
-| **Blocked** | Yours to set; triage never moves cards out of it |
-| **Ready to merge** | A PR is mergeable, green, and approved (or yours) |
-| **Backlog** | Valid, nobody has to act now; yours to set |
-| **In progress** | A PR is linked, or a draft PR is being worked on |
-| **Done** | Closed; use the project's built-in workflow |
+| **Waiting on them** | The reporter or author has the next move |
+| **Blocked** | Yours to set |
+| **Ready to merge** | Mergeable, green, and approved (or yours) |
+| **Backlog** | Valid, nobody has to act now |
+| **In progress** | A pull request is linked or being worked on |
+| **Done** | Closed or merged |
 
-Each card can also carry a **Priority** (Urgent, High, Normal) and a one-line
-**Next step** written for you by the agent, such as "Reproduce from the Windows
-backtrace; likely the path join in loader.rb". The board is the summary: sort
-**Needs me** by priority and you know what to do next.
+Each card also gets a **Priority** (Urgent, High, Normal) and a **Next step**
+written for you, such as "Reproduce from the Windows backtrace; likely the path
+join in loader.rb". Sort **Needs me** by priority and you know what to do next.
 
 ### Set it up
 
-1. Create a project owned by your account or organization, for example
-   `https://github.com/users/crmne/projects/3`. Keep it private unless you want
-   the public to see your workflow; triage's labels and replies stay the
-   public signal on each issue.
-2. Give its **Status** field the column options above. Add a single-select
-   **Priority** field with Urgent, High, and Normal, and a text field named
-   **Next step**. Both are optional; triage skips fields the project lacks.
-   Enable the project's built-in workflows that set Done when an issue or PR
-   is closed or merged.
-3. Create a classic personal access token with the `project` scope, plus
-   `repo` if private repositories use the board. Fine-grained tokens cannot
-   access user-owned projects yet. Save it as a `TRIAGE_PROJECT_TOKEN`
-   repository secret (or an organization secret).
-4. Add the board to `.github/triage.yml`:
+1. Create a project for your account or organization. Keep it private unless
+   you want the public to see your process; labels and replies stay the public
+   signal on each issue.
+2. Give its **Status** field the options above. Add a single-select **Priority**
+   field (Urgent, High, Normal) and a text field named **Next step**; both are
+   optional. Under the project's Workflows, enable **Item closed** and **Pull
+   request merged** so finished work moves to Done.
+3. Create a classic personal access token with the `project` scope, plus `repo`
+   if private repositories use the board (fine-grained tokens cannot reach
+   user-owned projects yet). Save it as a `TRIAGE_PROJECT_TOKEN` secret.
+4. Add the board to your policy and pass the token:
 
 ```yaml
 board:
-  project: https://github.com/users/crmne/projects/3
-  assign_urgent_to: crmne # optional
-  columns:                # optional: rename to match existing options
+  project: https://github.com/users/your-name/projects/1
+  assign_urgent_to: your-name # optional
+  columns:                    # optional: rename to match existing options
     needs_maintainer: Needs me
 ```
 
-Column keys are `needs_maintainer`, `waiting_on_reporter`, `blocked`,
-`ready_to_merge`, `backlog`, `in_progress`, and `done`.
-
-5. Pass the token to the triage step:
-
 ```yaml
-      - uses: crmne/copilot-triage@v0
-        with:
-          copilot-token: ${{ secrets.COPILOT_GITHUB_TOKEN }}
           project-token: ${{ secrets.TRIAGE_PROJECT_TOKEN }}
 ```
 
-6. Add a daily sweep as `.github/workflows/board.yml`:
+5. Add a daily sweep as `.github/workflows/board.yml`. It uses no model:
 
 ```yaml
 name: Board
@@ -562,97 +377,135 @@ jobs:
           dry-run: ${{ inputs.dry_run || false }}
 ```
 
-Run it once manually with `dry_run` to see what it would place. The first real
-run adds existing open issues and PRs, at most 100 changes per run.
+Run it once by hand with `dry_run` to see where everything would go. The first
+real run adds existing open issues and pull requests, up to 100 changes a run.
 
 ### How cards move
 
-On each assessed issue event, the agent decides whose move it is, a priority,
-and the next step, as part of the decision it already submits. The card moves
-to **Waiting on them** only when that run posted a reply asking the reporter
-something; otherwise "waiting on the reporter" leaves the column unchanged.
-Priority only rises, never falls. With `assign_urgent_to`, an urgent issue
-nobody is assigned to is assigned to that person, which notifies them; GitHub
-sends no notification for board changes. Discussions cannot be project items,
-so they stay off the board.
+On each assessment, the agent decides whose move it is, a priority, and the
+next step. A card moves to **Waiting on them** only when that run asked the
+reporter something. Priority only rises. With `assign_urgent_to`, an urgent
+item nobody is assigned to is assigned to you, since GitHub sends no
+notification for board changes.
 
-The sweep uses no model and spends no Copilot credits. It applies moves that
-follow from GitHub facts:
+The sweep follows GitHub facts: new issues go to **Needs me**, or **Waiting on
+them** when a maintainer spoke last, and your own untouched issues go to
+**Backlog**. A waiting card returns to **Needs me** when the reporter answers.
+An issue with an open linked pull request moves to **In progress**. Pull
+requests go to **Ready to merge**, **Needs me** (to review), **Waiting on them**
+(changes requested, failing checks, conflicts), or **In progress** (drafts and
+your own unfinished work).
 
-- New issues go to **Needs me**, or **Waiting on them** when a maintainer spoke
-  last. Your own untouched issues go to **Backlog**.
-- A card in **Waiting on them** returns to **Needs me** when the reporter
-  commented after it moved.
-- An issue with an open linked PR moves to **In progress**.
-- PRs go to **Ready to merge**, **Needs me** (a contributor PR to review),
-  **Waiting on them** (changes requested, failing checks, or conflicts), or
-  **In progress** (drafts and your own unfinished PRs).
+**Your moves win.** Cards in **Backlog**, **Blocked**, **In progress**, or a
+column of your own stay where you put them; only pull request cards leave
+**In progress** when their facts change.
 
-**Your moves win.** Triage and the sweep only move cards out of no column,
-**Needs me**, **Waiting on them**, **Ready to merge**, and **Done** (for
-reopened issues). **Backlog**, **Blocked**, **In progress**, and any column of
-your own are your decisions and stay put; only PR cards leave **In progress**
-when their facts change. Board failures fail the job and appear in its summary,
-after any reply was published, so they never cause a repeated reply. The model
-never receives the project token.
+## Preview a report
 
-## Cost and caching
+Add manual inputs to the workflow:
 
-The model remains `gpt-5.6-luna` with `reasoning-effort: low`. Each assessment uses
-one native Copilot session, which may contain multiple model/tool turns. The
-initial task, system prompt, and tool definitions are bounded to 48 KB, with a
-little more for board and pull request guidance; tool results are bounded
-separately. Long threads are shortened rather than skipped: the report body,
-the latest comment, earlier comments, and recovered history each keep their
-beginning and end around a marker saying how many bytes were left out, and
-repeated NUL padding in logs is compacted. Only runaway input that still
-exceeds the bound is left for a maintainer.
+```yaml
+  workflow_dispatch:
+    inputs:
+      kind:
+        type: choice
+        options: [issue, discussion, pull_request]
+        default: issue
+      number:
+        description: Issue, discussion, or pull request number
+        required: true
+```
 
-There is one 90-second CLI timeout and no wrapper retry loop. Copilot may retry
-internally. Its 30-AI-credit session limit is a soft fallback ceiling, not an
-expected price; an in-flight response may exceed it.
+and these inputs to the action step:
 
-Only conversation state and the pinned CLI installation are cached. Isolated
-model answers and local excerpts are no longer cached. State is small, disposable,
-and scoped to each issue/discussion thread. This is not yet native session resume:
-a new assessment starts a fresh Copilot session. Provider prompt caching is
-separate and any discount depends on Copilot.
+```yaml
+          kind: ${{ inputs.kind || (github.event.discussion && 'discussion' || (github.event.pull_request || github.event.issue.pull_request) && 'pull_request' || 'issue') }}
+          number: ${{ inputs.number || github.event.issue.number || github.event.discussion.number || github.event.pull_request.number }}
+          dry-run: ${{ github.event_name == 'workflow_dispatch' }}
+```
 
-Metrics include model turns, initial prompt bytes, evidence tool calls/result
-bytes, wall time, outcome, and tokens when Copilot reports them. Model input also
-includes Copilot's own system context and previous tool turns. Use the
-[evaluation runner](eval/README.md) to measure help, unwanted replies, tokens,
-and latency together. Offline replay verifies plumbing, not fresh model judgment.
+Add `|| inputs.number` to the concurrency group's number expression. A manual
+run shows its decision in the job summary without changing anything, including
+for closed reports. Previews spend model tokens.
 
-## Failures and permissions
+## Configuration
 
-Copilot failures and invalid output appear in the job summary and leave the
-report unchanged. They do not create failure issues or comments. GitHub write
-failures fail the job without marking the assessment complete. The action does
-not change your billing settings; exhausted credits require a reset or budget.
+Action inputs:
 
-The model has no shell, general filesystem tools, arbitrary network access, or
-GitHub write tools. Its only MCP server is the scoped tool server above. The
-GitHub credential is available to that server, not the model's environment.
-Copilot runs with isolated settings and repository instructions disabled.
-The wrapper controls labels/comments and closes duplicates only with explicit
-configuration and the safeguards above. It never edits project code.
+| Input | Default | Purpose |
+| --- | --- | --- |
+| `copilot-token` | | Copilot Requests token for the `copilot` engine |
+| `github-token` | `github.token` | Reads reports, publishes labels and comments |
+| `config` | `.github/triage.yml` | Policy file on the default branch |
+| `engine` | `copilot` | `copilot` or `rubyllm` |
+| `model` | `gpt-5.6-luna` | Model ID; for `rubyllm`, as the provider names it |
+| `reasoning-effort` | `low` | Copilot reasoning effort, `none` or `low`; `default` for models without it, such as Claude Haiku |
+| `provider`, `api-key`, `api-base` | | Provider, key, and optional endpoint for `rubyllm` |
+| `review-token` | `copilot-token` | Token that requests Copilot reviews, billed to its owner |
+| `project-token` | | Classic token with the `project` scope, for the board |
+| `mode` | `triage` | `triage`, or `sweep` for the board |
+| `kind`, `number` | from the event | What to assess, for manual runs |
+| `dry-run` | `false` | Show the decision without changing GitHub |
+| `debounce-seconds` | `10` | Wait for nearby comments, 0 to 60 |
 
-The optional project token is passed only to the Ruby code that writes the
-board and is removed from the Copilot CLI environment.
+Policy keys in `.github/triage.yml`: `labels` (at most two per issue),
+`replies` (optional reply templates), `sources` (globs the agent may read),
+`documentation` (links to your site), `instructions` (your project's policy),
+`duplicates`, `followups`, `report_bots`, `discussions`, `pull_requests`, and
+`board`. See [examples/triage.yml](examples/triage.yml).
 
-The CLI is pinned to `1.0.83`. Skill and SQL tools are excluded explicitly.
-The offline integration test verifies the actual provider request exposes only
-the five triage tools, and exercises native search, query refinement, reads, and
-structured decision submission.
+## Safety
+
+- **No code execution.** The model has no shell, no file writes, no arbitrary
+  URLs, and no GitHub write tools. It gets five tools:
+
+  | Tool | Returns |
+  | --- | --- |
+  | `search_repository` | Up to ten literal matches in your configured sources |
+  | `search_issues` | Up to five same-repository issue search results |
+  | `list_releases` | Five published releases with short notes |
+  | `read_evidence` | A paged file, issue, release, or pull request patch, up to 6 KB |
+  | `submit_decision` | A schema-checked proposal; no GitHub mutation |
+
+- **Ruby publishes.** Labels, comments, closures, moves, reviews, and board
+  changes happen in Ruby after validating the decision, re-reading the report,
+  and re-checking cited evidence. A report that changed during assessment is
+  left alone.
+- **Untrusted input.** Report text, comments, code, and links are evidence,
+  never instructions. Comments cannot contain mentions, HTML, raw URLs, or
+  Markdown links written by the model.
+- **Tokens stay out of the model.** The GitHub, project, review, and API tokens
+  are removed from the Copilot CLI environment and redacted from logs. Copilot
+  runs with isolated settings and repository instructions disabled.
+- **Bounded.** At most 12 evidence calls, 90 seconds (Copilot) or 20 turns and
+  120 seconds (RubyLLM), and a 48 KB starting prompt. Long threads are
+  shortened around a visible marker rather than skipped.
+
+## Failures
+
+Model failures and invalid decisions appear in the job summary and leave the
+report unchanged. They never become issues, comments, or apologies. GitHub
+write failures fail the job without marking the assessment complete, so it is
+retried. A failed board update or review request fails the job after the reply
+is published, so it never causes a repeated reply. Exhausted Copilot credits
+need a reset or a budget; the action never changes billing settings.
+
+Conversation state (mute, processed updates, prior replies, review history)
+lives in a small Actions cache. If it is evicted, up to 500 older comments are
+recovered; an unchanged issue may then be assessed again.
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Tests use fake GitHub/model responses;
-the CLI integration test uses a local fake provider and spends no credits.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Tests use fake GitHub and model
+responses; the Copilot CLI integration test uses a local fake provider and
+spends no credits.
 
-The first release is a preview. This independent project uses GitHub Copilot CLI
-and is not an official GitHub product.
+```sh
+bundle install
+bundle exec rubocop
+bundle exec rspec
+bundle exec ruby eval/run.rb --replay
+```
 
-MIT licensed. Built for [RubyLLM](https://github.com/crmne/ruby_llm) and
-[Spotifast](https://github.com/crmne/spotifast), reusable in your repositories.
+This independent project uses GitHub Copilot CLI and RubyLLM and is not an
+official GitHub product. MIT licensed.
