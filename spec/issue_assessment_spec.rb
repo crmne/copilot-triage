@@ -177,6 +177,36 @@ RSpec.describe IssueAssessment, type: :task do
     expect(assessment).to have_received(:ask_copilot).with(include('bytes omitted', 'THE END'))
   end
 
+  it 'tries again when a Copilot session called no tools, then reports the failure' do
+    allow(assessment).to receive(:ask_copilot).and_return(nil)
+
+    assessment.run
+    expect(assessment).to have_received(:ask_copilot).exactly(3).times
+    expect(assessment).to have_received(:pause).with(20)
+    expect(assessment).to have_received(:pause).with(40)
+    expect(assessment).to be_failed
+  end
+
+  it 'succeeds on a retry without posting anything twice' do
+    responses = [nil, JSON.generate(labels: ['bug'], reply: nil, sources: [])]
+    allow(assessment).to receive(:ask_copilot) { responses.shift }
+
+    assessment.run
+    expect(assessment).to have_received(:ask_copilot).twice
+    expect(assessment).to have_received(:mutate).with('addLabelsToLabelable', anything).once
+    expect(assessment).not_to be_failed
+  end
+
+  it 'does not retry a session that used tools' do
+    allow(assessment).to receive(:ask_copilot) do
+      assessment.instance_variable_set(:@tool_ledger, { 'calls' => 3, 'bytes' => 0, 'evidence' => {} })
+      nil
+    end
+
+    assessment.run
+    expect(assessment).to have_received(:ask_copilot).once
+  end
+
   it 'sends no reasoning setting to models without one' do
     expect(assessment.send(:reasoning_flag)).to eq(['--reasoning-effort=low'])
     environment['TRIAGE_REASONING_EFFORT'] = 'default'
@@ -344,8 +374,8 @@ RSpec.describe IssueAssessment, type: :task do
     end
 
     assessment.run
-    expect(Open3).to have_received(:capture3).once
+    expect(Open3).to have_received(:capture3).at_least(:once)
     expect(assessment).not_to have_received(:mutate)
-    expect(assessment).to have_received(:puts).with(include('Copilot produced no submitted decision'))
+    expect(assessment).to have_received(:puts).with(include('Copilot produced no submitted decision')).at_least(:once)
   end
 end

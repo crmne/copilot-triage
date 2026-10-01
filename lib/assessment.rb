@@ -23,6 +23,7 @@ class IssueAssessment # :nodoc:
   LABEL_COLORS = { 'bug' => 'd73a4a', 'documentation' => '0075ca', 'enhancement' => 'a2eeef',
                    'question' => 'd876e3' }.freeze
   LONG_TEXT = 30_000
+  COPILOT_RETRY_DELAYS = [20, 40].freeze
 
   def initialize(environment = ENV)
     @environment = environment
@@ -546,8 +547,24 @@ class IssueAssessment # :nodoc:
     [RbConfig.ruby, File.join(__dir__, 'tool_server.rb'), settings_path]
   end
 
+  # A Copilot session that ends without calling a single tool did nothing, so
+  # it is safe to start again after a pause. This happens when sessions start
+  # together, such as many pull requests opened at once.
   def ask_model(prompt)
-    @engine == 'rubyllm' ? ask_rubyllm(prompt) : ask_copilot(prompt)
+    return ask_rubyllm(prompt) if @engine == 'rubyllm'
+
+    COPILOT_RETRY_DELAYS.each do |delay|
+      response = ask_copilot(prompt)
+      return response if response || @tool_ledger.fetch('calls', 0).positive? || @tool_ledger['decision']
+
+      report("Copilot called no tools; trying again in #{delay} seconds.")
+      pause(delay)
+    end
+    ask_copilot(prompt)
+  end
+
+  def pause(seconds)
+    sleep(seconds)
   end
 
   # RubyLLM loads only for this engine; the Copilot engine needs no gems.
@@ -654,6 +671,8 @@ class IssueAssessment # :nodoc:
                                 "ledger present #{File.file?(ledger_path)})"
         details = redact(errors.strip)
         @model_failure_reason += "; #{details[0, 500]}" unless details.empty?
+        said = copilot_response(output) if status.success?
+        @model_failure_reason += "; final text: #{redact(said.to_s)[0, 300]}" unless said.to_s.strip.empty?
         report("Copilot produced no submitted decision: #{@model_failure_reason}.")
         next
       end
