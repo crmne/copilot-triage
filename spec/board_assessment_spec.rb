@@ -120,6 +120,17 @@ RSpec.describe IssueAssessment, 'with a project board' do
     expect(assessment).not_to be_failed
   end
 
+  it 'flags the card when the run leaves the item for a maintainer, since GitHub tells only who triggered it' do
+    allow(assessment).to receive(:ask_copilot).and_return('{"not": "a decision"}')
+
+    assessment.run
+    expect(assessment).to be_failed
+    expect(board).to have_received(:update).with(
+      'report-id', column: 'do', movable: [nil, 'theirs'],
+                   next_step: 'Triage could not assess the latest update: its decision was invalid'
+    )
+  end
+
   it 'fails the job on a board error but keeps the published reply complete' do
     allow(board).to receive(:update).and_raise(ProjectBoard::Error, 'project 3 is not visible to the project-token')
 
@@ -136,7 +147,8 @@ RSpec.describe IssueAssessment, 'with a project board' do
     assessment.run
     expect(assessment).to be_failed
     expect(assessment).not_to have_received(:mutate)
-    expect(board).not_to have_received(:update)
+    expect(board).to have_received(:update).once.with('report-id',
+                                                      hash_including(next_step: start_with('Triage could not')))
   end
 
   it 'rejects a multi-line next step' do
@@ -144,7 +156,8 @@ RSpec.describe IssueAssessment, 'with a project board' do
 
     assessment.run
     expect(assessment).to be_failed
-    expect(board).not_to have_received(:update)
+    expect(board).to have_received(:update).once.with('report-id',
+                                                      hash_including(next_step: start_with('Triage could not')))
   end
 
   it 'adds the board guidance and tool fields to the agent' do

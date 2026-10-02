@@ -94,14 +94,14 @@ permissions:
   discussions: write
   pull-requests: write
 
-concurrency:
-  group: >-
-    triage-${{ github.event.discussion && 'discussion' || 'issue' }}-${{ github.event.issue.number || github.event.discussion.number || github.event.pull_request.number }}-${{ github.event.discussion && (github.event.comment.parent_id || github.event.comment.id) || 'report' }}
-  cancel-in-progress: false
-
 jobs:
   triage:
     if: github.event.sender.type != 'Bot' || github.event_name == 'issues' || github.event_name == 'pull_request_review'
+    # On the job, so a bot comment's skipped run never replaces a queued one.
+    concurrency:
+      group: >-
+        triage-${{ github.event.discussion && 'discussion' || 'issue' }}-${{ github.event.issue.number || github.event.discussion.number || github.event.pull_request.number }}-${{ github.event.discussion && (github.event.comment.parent_id || github.event.comment.id) || 'report' }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

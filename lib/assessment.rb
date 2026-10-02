@@ -57,7 +57,7 @@ class IssueAssessment # :nodoc:
     @model_calls = @prompt_bytes = 0
     @usage = []
     @outcome = 'error'
-    @skip_reason = @related_snapshot = @follow_through_failed = @cost = @moved_issue = nil
+    @skip_reason = @related_snapshot = @follow_through_failed = @cost = @moved_issue = @item_id = nil
     @recovered_comments = []
     @tool_ledger = { 'calls' => 0, 'bytes' => 0, 'evidence' => {} }
     prepared = load_prepared_report || prepare_report
@@ -68,6 +68,7 @@ class IssueAssessment # :nodoc:
     return unless prepared
 
     item, labels = prepared
+    @item_id = item['id']
     labels = ensure_labels(labels)
     @allowed_labels = labels.map { |label| label.fetch('name') }
     @initial_recap_allowed = initial_recap_allowed?(item)
@@ -105,12 +106,15 @@ class IssueAssessment # :nodoc:
     update_board(item, decision, reply_posted: posted) if board? && (@kind != 'discussion' || @moved_issue)
   rescue Skipped => e
     skip("#{e.message}; left for a maintainer")
+    flag_on_board(e.message)
   rescue Failed => e
     fail_assessment("#{e.message}; left for a maintainer")
+    flag_on_board(e.message)
   rescue JSON::ParserError, KeyError, ArgumentError => e
     location = e.backtrace_locations.first
     fail_assessment("invalid assessment (#{e.class} in #{location.base_label} at " \
                     "#{File.basename(location.path)}:#{location.lineno}); left for a maintainer")
+    flag_on_board('its decision was invalid')
   ensure
     report_metrics unless @outcome == 'prepared'
   end
@@ -275,6 +279,19 @@ class IssueAssessment # :nodoc:
     @skip_reason = reason
     report("Skipped: #{reason}.")
     nil
+  end
+
+  # GitHub notifies only whoever triggered a run, so a run that leaves the item
+  # for the maintainer says so on its card, and a card waiting on others comes
+  # back to the maintainer.
+  def flag_on_board(reason)
+    return unless @item_id && board? && !dry_run? && !@environment['TRIAGE_PROJECT_TOKEN'].to_s.empty?
+
+    board.update(@item_id, column: 'do', movable: [nil, 'theirs'],
+                           next_step: "Triage could not assess the latest update: #{reason}"[0, 150])
+    report('Board: flagged the card for a maintainer.')
+  rescue RuntimeError => e
+    report("Board note failed: #{e.message}.")
   end
 
   def fail_assessment(reason)
