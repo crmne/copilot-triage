@@ -203,7 +203,8 @@ class BoardSweep
                   'closedByPullRequestsReferences(first: 3, includeClosedPrs: false) { totalCount nodes { number } }'
               else
                 "isDraft mergeable reviewDecision #{CopilotReview::FIELDS} " \
-                  'commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }'
+                  'commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 100) { nodes { ' \
+                  '... on CheckRun { name conclusion } ... on StatusContext { context state } } } } } } }'
               end
     <<~GRAPHQL
       query($owner: String!, $name: String!, $after: String) {

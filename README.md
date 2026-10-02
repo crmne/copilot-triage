@@ -374,6 +374,10 @@ work you consider finished. Archived cards stay searchable in the project, and
 one comes back onto the board when its issue or pull request is reopened or
 someone comments on it.
 
+Your own comments move cards too, without a reply: ask the reporter for a pull
+request and the card goes to **Their move**, say "not now" and it goes to **Not
+now**, take the work and it goes to **Do**.
+
 In **Sign off**, an issue is a closure triage proposes: close it if you agree,
 or answer in the issue if you don't. Triage never proposes closing an issue
 that was reopened or that you have commented on, and the sweep places such a

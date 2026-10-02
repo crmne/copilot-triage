@@ -102,7 +102,7 @@ class IssueAssessment # :nodoc:
     @state.data['initial_assessed'] = true if @initial_recap_allowed
     @state.save unless dry_run? || quiet?
     request_review(item) if pull_request? && decision['review'] && reviews? && substantial_change?(item) && !quiet?
-    posted = !body.nil? && !quiet?
+    posted = (!body.nil? && !quiet?) || maintainer_comment?
     update_board(item, decision, reply_posted: posted) if board? && (@kind != 'discussion' || @moved_issue)
   rescue Skipped => e
     skip("#{e.message}; left for a maintainer")
@@ -138,6 +138,8 @@ class IssueAssessment # :nodoc:
     if event.dig('issue', 'pull_request') && !pull_request?
       return 'pull request comments are triaged only as pull requests'
     end
+
+    return 'a maintainer commented' if maintainer_comment? && !board?
 
     TriageEvent.skip_reason(@environment['GITHUB_EVENT_NAME'], event)
   end
@@ -370,7 +372,7 @@ class IssueAssessment # :nodoc:
     unless latest && latest['id'] == event.fetch('comment').fetch('node_id')
       return 'a newer comment superseded this event'
     end
-    return 'a maintainer or bot has already answered' if answered?(item)
+    return 'a maintainer or bot has already answered' if answered?(item) && !maintainer_comment?
 
     nil
   end
@@ -461,7 +463,9 @@ class IssueAssessment # :nodoc:
   end
 
   def assessment_kind
-    if review_event?
+    if maintainer_comment?
+      'maintainer comment: place the card by what the maintainer just said, never reply'
+    elsif review_event?
       'review update: judge copilot_review and other_reviews for the board; ' \
         'reply only if the author needs something new'
     elsif comment_event?
@@ -905,7 +909,7 @@ class IssueAssessment # :nodoc:
       return skip('own pull request; no board to update')
     end
 
-    commit = { 'statusCheckRollup' => { 'state' => check_state(item) } }
+    commit = { 'statusCheckRollup' => check_rollup(item) }
     column = BoardRules.pull_request_column(item.merge('commits' => { 'nodes' => [{ 'commit' => commit }] }))
     return skip("own pull request; would move its card to #{board.column_name(column)}") if dry_run?
 
@@ -919,13 +923,14 @@ class IssueAssessment # :nodoc:
   # Reading checks needs checks and statuses access, which the workflow token
   # of a private repository may lack. Their state then stays unknown, so the
   # pull request is not taken for green.
-  def check_state(item)
+  def check_rollup(item)
     query = 'query($id: ID!) { node(id: $id) { ... on PullRequest { ' \
-            'commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } } }'
+            'commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 100) { nodes { ' \
+            '... on CheckRun { name conclusion } ... on StatusContext { context state } } } } } } } } } }'
     github('graphql', query: query, variables: { id: item.fetch('id') })
-      &.dig('data', 'node', 'commits', 'nodes', 0, 'commit', 'statusCheckRollup', 'state')
+      &.dig('data', 'node', 'commits', 'nodes', 0, 'commit', 'statusCheckRollup')
   rescue RuntimeError
-    'UNKNOWN'
+    { 'state' => 'UNKNOWN' }
   end
 
   def review_event?
@@ -1288,8 +1293,15 @@ class IssueAssessment # :nodoc:
 
   # Quiet assessments, such as a backfill of existing reports, write only to the
   # private board: no comments, labels, closures, moves, or Copilot reviews.
+  # A maintainer's own comment only updates the board: the agent places the
+  # card by what they said, and nothing is posted.
   def quiet?
-    @environment['TRIAGE_QUIET'] == 'true'
+    @environment['TRIAGE_QUIET'] == 'true' || maintainer_comment?
+  end
+
+  def maintainer_comment?
+    @environment['GITHUB_EVENT_PATH'] && comment_event? && maintainer?(event.dig('comment', 'author_association')) &&
+      !TriageEvent.command(event.dig('comment', 'body'))
   end
 
   def report(message)

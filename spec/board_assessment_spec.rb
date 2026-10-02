@@ -103,6 +103,27 @@ RSpec.describe IssueAssessment, 'with a project board' do
     expect(assessment).to have_received(:puts).with(include('"outcome":"quiet"'))
   end
 
+  it "places the card by the maintainer's own comment without posting anything" do
+    File.write('comment.json', JSON.generate(
+                                 'action' => 'created', 'issue' => { 'number' => 123, 'state' => 'open' },
+                                 'comment' => { 'node_id' => 'c1', 'author_association' => 'OWNER',
+                                                'body' => 'Not now, after the redesign.',
+                                                'user' => { 'login' => 'crmne' } },
+                                 'sender' => { 'login' => 'crmne', 'type' => 'User' }
+                               ))
+    environment.merge!('GITHUB_EVENT_NAME' => 'issue_comment', 'GITHUB_EVENT_PATH' => 'comment.json',
+                       'TRIAGE_DEBOUNCE_SECONDS' => '0')
+    item['comments']['nodes'] << { 'id' => 'c1', 'createdAt' => '2026-10-03T00:00:00Z',
+                                   'body' => 'Not now, after the redesign.',
+                                   'author' => { 'login' => 'crmne' }, 'authorAssociation' => 'OWNER' }
+    decision.merge!(next_move: 'not_now', comment: nil)
+
+    assessment.run
+    expect(assessment).to have_received(:ask_copilot).with(include('maintainer comment: place the card'))
+    expect(assessment).not_to have_received(:mutate)
+    expect(board).to have_received(:update).with('report-id', hash_including(column: 'not_now'))
+  end
+
   it 'reports the board proposal in a dry run without writing' do
     environment['TRIAGE_DRY_RUN'] = 'true'
 

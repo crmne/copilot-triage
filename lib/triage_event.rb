@@ -51,9 +51,6 @@ module TriageEvent
     return 'comment was posted by a bot' if bot?(event['sender']) || bot?(event.dig('comment', 'user'))
     return 'report is closed' if event.dig('issue', 'state') == 'closed' || event.dig('discussion', 'closed')
 
-    comment = event.fetch('comment')
-    return 'a maintainer commented' if maintainer?(comment['author_association']) && !command(comment['body'])
-
     nil
   end
 end

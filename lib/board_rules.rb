@@ -16,11 +16,11 @@ module BoardRules
     yours_or_theirs = own ? 'do' : 'theirs'
     return yours_or_theirs if pull['isDraft']
 
-    checks = pull.dig('commits', 'nodes', 0, 'commit', 'statusCheckRollup', 'state')
+    checks = check_state(pull.dig('commits', 'nodes', 0, 'commit', 'statusCheckRollup'))
     green = [nil, 'SUCCESS'].include?(checks)
     ready = green && pull['mergeable'] == 'MERGEABLE'
     return yours_or_theirs if %w[FAILURE ERROR].include?(checks) || pull['mergeable'] == 'CONFLICTING' ||
-                              (!own && pull['reviewDecision'] == 'CHANGES_REQUESTED')
+                              (!own && pull['reviewDecision'] == 'CHANGES_REQUESTED' && !pushed_since_changes?(pull))
     return 'sign_off' if pull['reviewDecision'] == 'APPROVED' && ready
 
     reviewer = reviewer_state(pull)
@@ -68,6 +68,34 @@ module BoardRules
     return unless current == 'theirs' && human && !maintainer?(human)
 
     yours if status_updated_at.nil? || human.fetch('createdAt') > status_updated_at
+  end
+
+  # Triage's own jobs, and runs cancelled or skipped, say nothing about the
+  # change, so they are left out of the checks' state.
+  OWN_CHECKS = %w[assess sweep].freeze
+  FAILED = %w[FAILURE TIMED_OUT STARTUP_FAILURE ACTION_REQUIRED ERROR].freeze
+
+  def check_state(rollup)
+    return rollup&.dig('state') unless rollup&.key?('contexts')
+
+    states = rollup.dig('contexts', 'nodes').to_a.filter_map do |check|
+      next if OWN_CHECKS.include?(check['name'])
+
+      check['context'] ? check['state'] : (check['conclusion'] || 'PENDING')
+    end
+    return 'FAILURE' if states.intersect?(FAILED)
+    return 'PENDING' if states.intersect?(%w[PENDING EXPECTED])
+
+    states.empty? ? nil : 'SUCCESS'
+  end
+
+  # The author pushed after a person asked for changes: it is the reviewer's
+  # move again.
+  def pushed_since_changes?(pull)
+    asked = pull.dig('reviews', 'nodes').to_a.select do |review|
+      review['state'] == 'CHANGES_REQUESTED' && !bot_login?(review.dig('author', 'login'))
+    end.last
+    asked && asked.dig('commit', 'oid') != pull['headRefOid']
   end
 
   # Another review bot, such as CodeRabbit, commented on the latest commit:

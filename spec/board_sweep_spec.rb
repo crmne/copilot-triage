@@ -174,6 +174,34 @@ RSpec.describe BoardSweep do
       expect(dispatched.map { |_, _, body| body.dig(:inputs, :number) }).to eq(%w[1])
     end
 
+    it "ignores triage's own jobs and cancelled runs in the checks" do
+      rollup = lambda do |*checks|
+        { 'state' => 'FAILURE', 'contexts' => { 'nodes' => checks.map do |name, conclusion|
+          { 'name' => name, 'conclusion' => conclusion }
+        end } }
+      end
+      clean = pull(1, review: 'APPROVED')
+      clean['commits']['nodes'][0]['commit']['statusCheckRollup'] = rollup.call(%w[test SUCCESS], %w[assess CANCELLED],
+                                                                                %w[lint CANCELLED])
+      broken = pull(2, review: 'APPROVED')
+      broken['commits']['nodes'][0]['commit']['statusCheckRollup'] = rollup.call(%w[test FAILURE])
+      pulls.push(clean, broken)
+
+      sweep.run
+      expect(moves.map(&:last)).to eq(%w[sign_off theirs])
+    end
+
+    it 'gives a pull request back to the maintainer once its author pushed after changes were requested' do
+      asked = lambda do |commit|
+        { 'author' => { 'login' => 'crmne' }, 'state' => 'CHANGES_REQUESTED', 'commit' => { 'oid' => commit } }
+      end
+      pulls.push(pull(1, review: 'CHANGES_REQUESTED', copilot: asked.call('older')),
+                 pull(2, review: 'CHANGES_REQUESTED', copilot: asked.call('head')))
+
+      sweep.run
+      expect(moves.map(&:last)).to eq(%w[do theirs])
+    end
+
     it "sends CodeRabbit's requested changes to the agent, and takes its approval of a ready pull request" do
       rabbit = lambda { |state|
         { 'author' => { 'login' => 'coderabbitai' }, 'state' => state, 'commit' => { 'oid' => 'head' } }
