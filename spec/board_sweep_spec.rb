@@ -174,14 +174,16 @@ RSpec.describe BoardSweep do
       expect(dispatched.map { |_, _, body| body.dig(:inputs, :number) }).to eq(%w[1])
     end
 
-    it 'follows a decisive review by another bot, such as CodeRabbit' do
+    it "sends CodeRabbit's requested changes to the agent, and takes its approval of a ready pull request" do
       rabbit = lambda { |state|
         { 'author' => { 'login' => 'coderabbitai' }, 'state' => state, 'commit' => { 'oid' => 'head' } }
       }
       pulls.push(pull(1, copilot: rabbit.call('CHANGES_REQUESTED')), pull(2, copilot: rabbit.call('APPROVED')))
 
       sweep.run
-      expect(moves.map(&:last)).to eq(%w[theirs sign_off])
+      expect(moves.map(&:last)).to eq(%w[do sign_off])
+      dispatched = requests.select { |_, path, _| path.end_with?('/dispatches') }
+      expect(dispatched.map { |_, _, body| body.dig(:inputs, :number) }).to eq(%w[1])
     end
 
     it 'treats the maintainer own pull requests as work to finish or merge' do

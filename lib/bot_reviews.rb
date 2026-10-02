@@ -12,7 +12,7 @@ module BotReviews
   UNREVIEWED = /unable to review|quota limit|reached (?:their|your) (?:monthly )?quota/i
   # The latest reviews with their inline comments, under an alias so it can sit
   # beside CopilotReview::FIELDS in one query.
-  FIELDS = 'findings: reviews(last: 20) { nodes { author { login } body submittedAt commit { oid } ' \
+  FIELDS = 'findings: reviews(last: 20) { nodes { author { login } state body submittedAt commit { oid } ' \
            'comments(first: 30) { nodes { path body } } } }'
   MAX_FINDINGS = 30
   EXCERPT = 400
@@ -23,8 +23,9 @@ module BotReviews
     REVIEWERS.include?(login.to_s.delete_suffix('[bot]'))
   end
 
-  # { bot => { 'submitted_at', 'reviewed', 'findings' } } for each review bot
-  # with a review of the latest commit.
+  # { bot => { 'state', 'submitted_at', 'reviewed', 'findings' } } for each
+  # review bot with a review of the latest commit; state is its latest verdict,
+  # such as APPROVED or CHANGES_REQUESTED.
   def current(pull)
     reviews = pull.dig('findings', 'nodes').to_a.select do |review|
       reviewer?(review.dig('author', 'login')) && review.dig('commit', 'oid') == pull['headRefOid']
@@ -32,7 +33,8 @@ module BotReviews
     reviews.group_by { |review| review.dig('author', 'login').delete_suffix('[bot]') }.to_h do |bot, list|
       findings = list.flat_map { |review| review.dig('comments', 'nodes').to_a }.map { |comment| finding(comment) }
       reviewed = !(findings.empty? && list.all? { |review| review['body'].to_s.match?(UNREVIEWED) })
-      [bot, { 'submitted_at' => list.map { |review| review['submittedAt'] }.max, 'reviewed' => reviewed,
+      latest = list.max_by { |review| review['submittedAt'].to_s }
+      [bot, { 'state' => latest['state'], 'submitted_at' => latest['submittedAt'], 'reviewed' => reviewed,
               'findings' => findings.first(MAX_FINDINGS) }]
     end
   end

@@ -63,6 +63,10 @@ The rules below decide the rest.
   labels, process reminders, or pinning actions in workflows to commits.
 - Several findings that repeat one point are one finding.
 
+A bot's state is its verdict: APPROVED with no findings means it found
+nothing to fix, and CHANGES_REQUESTED only means it left findings, which you
+weigh by the rules above.
+
 When no finding holds, the review supports the maintainer's next step:
 "sign_off" for a narrow, tested change, "do" when it deserves a close read.
 

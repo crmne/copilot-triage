@@ -454,10 +454,12 @@ you.
 Pull requests follow GitHub's facts on their latest commit, without a model.
 Drafts, failing checks, conflicts, and requested changes are the author's move
 (**Do** for your own), and an approved, green, mergeable pull request goes to
-**Sign off**. A decisive review from another review bot, such as CodeRabbit,
-counts too: requested changes go back to the author, and an approval of a ready
-pull request goes to **Sign off**. When another review bot leaves findings, the agent judges
-them. Copilot's **Approval recommended** goes to
+**Sign off**. Another review bot's approval of a ready pull request, such as
+CodeRabbit's when it found nothing, also goes to **Sign off**; when it requests
+changes or leaves findings, the agent weighs them, since bots ask for changes
+over nitpicks too. With CodeRabbit, set `request_changes_workflow: true` in
+`.coderabbit.yaml` so it approves clean pull requests instead of only
+summarizing them. Copilot's **Approval recommended** goes to
 **Sign off**, **Changes recommended** to **Their move**, and a pull request
 whose review or checks are still running waits, including right after a new
 push. **Needs a closer look** is the agent's call, because it means two things:

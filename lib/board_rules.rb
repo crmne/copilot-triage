@@ -24,7 +24,10 @@ module BoardRules
     return 'sign_off' if pull['reviewDecision'] == 'APPROVED' && ready
 
     reviewer = reviewer_state(pull)
-    return yours_or_theirs if reviewer == 'CHANGES_REQUESTED'
+    # A bot asks for changes even for findings that should not hold a pull
+    # request back, so the agent weighs them; its approval of a ready pull
+    # request is enough.
+    return own ? 'do' : :agent if reviewer == 'CHANGES_REQUESTED'
     return 'sign_off' if reviewer == 'APPROVED' && ready
     return 'theirs' if CopilotReview.requested?(pull) || %w[PENDING EXPECTED].include?(checks)
 
