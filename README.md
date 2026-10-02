@@ -38,8 +38,12 @@ through [RubyLLM](https://rubyllm.com): a company key, OpenRouter, a cloud
 provider, or any OpenAI-compatible endpoint. We [measure models](#evaluations)
 before recommending them, and publish the results.
 
-Built for [RubyLLM](https://github.com/crmne/ruby_llm) and
-[Spotifast](https://github.com/crmne/spotifast), reusable in your repositories.
+It runs on every one of our repositories, and was shaped by the ones that get
+the most issues and pull requests:
+[RubyLLM](https://github.com/crmne/ruby_llm) (about 900),
+[Spotifast](https://github.com/crmne/spotifast) (about 500), and
+[ZapFast](https://github.com/crmne/zapfast) (about 350), more than one
+maintainer can read. It works the same in yours.
 
 ## Why this exists
 
