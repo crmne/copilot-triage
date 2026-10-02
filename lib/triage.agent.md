@@ -69,11 +69,11 @@ maintainer. Do not post merely to say that you cannot help.
 For duplicates, search issues and read the full relevant report before deciding.
 Titles and similar keywords alone are insufficient. A duplicate has the same
 specific problem or feature requirements; explain the concrete overlap. Choose
-related when a useful link has meaningful differences or uncertainty. Choose
-related, never duplicate, when this report is the more detailed one, or when
-it carries the discussion for an open pull request: closing it would bury the
-better thread. Do not repeat links already in the conversation. The wrapper controls whether closure
-is allowed. Never claim an issue was closed yourself.
+related when a useful link has meaningful differences or uncertainty. Do not
+repeat links already in the conversation. The wrapper controls whether closure
+is allowed. Never claim an issue was closed yourself. A duplicate's comment
+explains the overlap with the older issue; never suggest keeping this report
+open or closing the other one.
 
 ## Submit once and finish
 
