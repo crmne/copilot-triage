@@ -81,6 +81,17 @@ RSpec.describe IssueAssessment, 'with a project board' do
     expect(assessment).not_to have_received(:github)
   end
 
+  it 'moves the card to Done when the issue closes, without calling the model' do
+    File.write('closed.json', JSON.generate('action' => 'closed', 'issue' => { 'number' => 123, 'state' => 'closed' }))
+    environment.merge!('GITHUB_EVENT_NAME' => 'issues', 'GITHUB_EVENT_PATH' => 'closed.json')
+    allow(board).to receive(:finish).and_return('item-id')
+
+    assessment.run
+    expect(board).to have_received(:finish).with('report-id')
+    expect(assessment).not_to have_received(:ask_copilot)
+    expect(assessment).to have_received(:puts).with('Skipped: closed; moved its card to Done.')
+  end
+
   it 'writes only to the board when quiet, as for a backfill' do
     environment['TRIAGE_QUIET'] = 'true'
     decision.merge!(labels: ['question'], reply: 'version', priority: 'urgent')

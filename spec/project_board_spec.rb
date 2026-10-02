@@ -16,6 +16,7 @@ RSpec.describe ProjectBoard do
   let(:writes) { [] }
   let(:mutations) { [] }
   let(:inputs) { [] }
+  let(:content_items) { [] }
 
   before do
     allow(board).to receive(:graphql) do |query, **variables|
@@ -26,6 +27,8 @@ RSpec.describe ProjectBoard do
       if query.include?('projectV2(number')
         { 'data' => { 'user' => { 'projectV2' => { 'id' => 'project-id', 'fields' => { 'nodes' => fields },
                                                    'views' => { 'nodes' => views } } } } }
+      elsif query.include?('node(id:')
+        { 'data' => { 'node' => { 'projectItems' => { 'nodes' => content_items } } } }
       elsif query.include?('createProjectV2View')
         { 'data' => { 'createProjectV2View' => { 'projectV2View' => { 'id' => 'new-view' } } } }
       elsif query.include?('addProjectV2ItemById')
@@ -55,6 +58,14 @@ RSpec.describe ProjectBoard do
     end
   end
 
+  it 'brings an archived card back when its issue reopens' do
+    item['isArchived'] = true
+    item['status'] = { 'name' => 'Done' }
+
+    expect(board.update('issue-id', column: 'decide')).to eq('column' => 'Answer or decide')
+    expect(mutations).to eq(%w[addProjectV2ItemById unarchiveProjectV2Item updateProjectV2ItemFieldValue])
+  end
+
   it 'moves cards between its own columns' do
     item['status'] = { 'name' => 'Approve' }
 
@@ -63,7 +74,7 @@ RSpec.describe ProjectBoard do
 
   it 'sorts what needs the maintainer by effort, then the rest' do
     expect(ProjectBoard::COLUMNS.values)
-      .to eq(['Approve', 'Answer or decide', 'Review', 'Fix', 'Waiting on others', 'Backlog'])
+      .to eq(['Approve', 'Answer or decide', 'Review', 'Fix', 'Waiting on others', 'Backlog', 'Done'])
   end
 
   it 'changes nothing when the project already has the board shape' do
@@ -94,6 +105,14 @@ RSpec.describe ProjectBoard do
     views << { 'id' => 'view-spotifast', 'name' => 'spotifast' }
     board.instance_variable_set(:@project, nil)
     expect(board.ensure_repository_view('crmne/spotifast')).to be_nil
+  end
+
+  it 'moves the card of a closed issue or pull request on this board only to Done' do
+    content_items.push({ 'id' => 'other-item', 'project' => { 'id' => 'other-project' } },
+                       { 'id' => 'our-item', 'project' => { 'id' => 'project-id' } })
+
+    expect(board.finish('issue-id')).to eq('our-item')
+    expect(writes).to eq([{ fieldId: 'status-field', value: { singleSelectOptionId: 'option-Done' } }])
   end
 
   it 'archives finished items' do

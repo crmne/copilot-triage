@@ -3,16 +3,17 @@
 require 'json'
 require 'open3'
 
-# The maintainer's project board. Five columns sort what needs the maintainer by
+# The maintainer's project board. Four columns sort what needs the maintainer by
 # effort (approve, answer or decide, review, fix); everything else waits on
-# someone else or sits in the backlog. Finished work is archived, not kept.
-# Backlog and any column of the maintainer's own are never overridden.
+# someone else or sits in the backlog. Finished work goes to Done and is
+# archived after a while. Backlog and any column of the maintainer's own are
+# never overridden.
 class ProjectBoard
   class Error < RuntimeError; end
 
   COLUMNS = {
     'approve' => 'Approve', 'decide' => 'Answer or decide', 'review' => 'Review', 'fix' => 'Fix',
-    'waiting' => 'Waiting on others', 'backlog' => 'Backlog'
+    'waiting' => 'Waiting on others', 'backlog' => 'Backlog', 'done' => 'Done'
   }.freeze
   DESCRIPTIONS = {
     'approve' => 'A quick yes: merge, accept, or confirm',
@@ -20,13 +21,14 @@ class ProjectBoard
     'review' => 'A change worth reading closely',
     'fix' => 'Work for you to do or finish',
     'waiting' => 'Someone else has the next move',
-    'backlog' => 'Valid, nobody has to act now'
+    'backlog' => 'Valid, nobody has to act now',
+    'done' => 'Finished; archived after a while'
   }.freeze
-  COLORS = { 'approve' => 'GREEN', 'decide' => 'PURPLE', 'review' => 'BLUE', 'fix' => 'ORANGE',
-             'waiting' => 'YELLOW', 'backlog' => 'GRAY' }.freeze
+  COLORS = { 'approve' => 'GREEN', 'decide' => 'PINK', 'review' => 'BLUE', 'fix' => 'ORANGE',
+             'waiting' => 'YELLOW', 'backlog' => 'GRAY', 'done' => 'PURPLE' }.freeze
   # Columns from earlier versions, removed when the board is set up again.
-  RETIRED = ['Needs me', 'Waiting on them', 'Blocked', 'Ready to merge', 'In progress', 'Done'].freeze
-  MOVABLE = [nil, 'approve', 'decide', 'review', 'fix', 'waiting'].freeze
+  RETIRED = ['Needs me', 'Waiting on them', 'Blocked', 'Ready to merge', 'In progress'].freeze
+  MOVABLE = [nil, 'approve', 'decide', 'review', 'fix', 'waiting', 'done'].freeze
   PRIORITIES = { 'urgent' => 'Urgent', 'high' => 'High', 'normal' => 'Normal' }.freeze
   STATUS_FIELD = 'Status'
   PRIORITY_FIELD = 'Priority'
@@ -52,7 +54,10 @@ class ProjectBoard
       (columns.keys - COLUMNS.keys).empty?
 
     @columns = COLUMNS.merge(columns)
+    @archive_after = Integer(settings.fetch('archive_after_days', 7))
   end
+
+  attr_reader :archive_after
 
   def id
     project.fetch('id')
@@ -94,14 +99,23 @@ class ProjectBoard
       mutation($project: ID!, $content: ID!) {
         addProjectV2ItemById(input: { projectId: $project, contentId: $content }) {
           item {
-            id
+            id isArchived
             status: fieldValueByName(name: "#{STATUS_FIELD}") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
             priority: fieldValueByName(name: "#{PRIORITY_FIELD}") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
           }
         }
       }
     GRAPHQL
-    graphql(query, project: id, content: content_id).fetch('data').fetch('addProjectV2ItemById').fetch('item')
+    item = graphql(query, project: id, content: content_id).fetch('data').fetch('addProjectV2ItemById').fetch('item')
+    unarchive(item.fetch('id')) if item['isArchived']
+    item
+  end
+
+  # A reopened issue or pull request comes back from the archive.
+  def unarchive(item_id)
+    query = 'mutation($input: UnarchiveProjectV2ItemInput!) ' \
+            '{ unarchiveProjectV2Item(input: $input) { clientMutationId } }'
+    graphql(query, input: { projectId: id, itemId: item_id })
   end
 
   def set_column(item_id, column)
@@ -112,6 +126,25 @@ class ProjectBoard
   def archive(item_id)
     graphql('mutation($input: ArchiveProjectV2ItemInput!) { archiveProjectV2Item(input: $input) { clientMutationId } }',
             input: { projectId: id, itemId: item_id })
+  end
+
+  # Moves the card of a closed issue or pull request to Done, if it has one on
+  # this board, and returns the item's ID.
+  def finish(content_id)
+    query = <<~GRAPHQL
+      query($id: ID!) {
+        node(id: $id) {
+          ... on Issue { projectItems(first: 20) { nodes { id project { id } } } }
+          ... on PullRequest { projectItems(first: 20) { nodes { id project { id } } } }
+        }
+      }
+    GRAPHQL
+    items = graphql(query, id: content_id).dig('data', 'node', 'projectItems', 'nodes').to_a
+    item = items.find { |entry| entry.dig('project', 'id') == id }
+    return unless item
+
+    set_column(item.fetch('id'), 'done')
+    item.fetch('id')
   end
 
   # Brings the project to the board's shape: the columns in order, the Priority

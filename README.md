@@ -72,7 +72,7 @@ tickets: problems go to the job summary.
 name: Triage
 on:
   issues:
-    types: [opened, reopened]
+    types: [opened, reopened, closed]
   issue_comment:
     types: [created]
   discussion:
@@ -80,7 +80,7 @@ on:
   discussion_comment:
     types: [created]
   pull_request_target:
-    types: [opened, reopened, ready_for_review, synchronize]
+    types: [opened, reopened, ready_for_review, synchronize, closed]
   pull_request_review:
     types: [submitted]
 
@@ -320,9 +320,12 @@ save **Review** and **Fix** for focus time:
 | **Fix** | Hours | A confirmed bug, or your own pull request that still needs work |
 | **Waiting on others** | Nothing | The reporter or author owes an answer or changes, Copilot is still reviewing, or checks are running |
 | **Backlog** | Nothing | Valid, nobody has to act now; yours to set |
+| **Done** | Nothing | Closed or merged, archived after a week |
 
-Finished work does not stay: closed issues and closed or merged pull requests
-are archived, still searchable in the project. Each card also gets a
+Finished work moves to **Done** the moment it closes or merges, so you can see
+what got done this week, and is archived after `archive_after_days` there (7 by
+default; 30 keeps a month). Archived cards stay searchable in the project, and
+a reopened issue or pull request comes back onto the board. Each card also gets a
 **Priority** (Urgent, High, Normal) and a **Next step** written for you, such as
 "Reproduce from the Windows backtrace; likely the path join in loader.rb".
 
@@ -341,7 +344,8 @@ are archived, still searchable in the project. Each card also gets a
 ```yaml
 board:
   project: https://github.com/users/your-name/projects/1
-  maintainer: your-name # requests your review and assigns urgent issues
+  maintainer: your-name   # requests your review and assigns urgent issues
+  archive_after_days: 7   # optional: how long finished work stays in Done
 ```
 
 4. Pass the token to the triage step with `project-token:
@@ -380,7 +384,7 @@ jobs:
 ```
 
 Run it once by hand with `dry_run` turned off. It builds the board on the empty
-project: the six columns in order with their colors, the Priority and Next step
+project: the seven columns in order with their colors, the Priority and Next step
 fields, an **All repositories** board view, and a board view for each
 repository once it has cards. Every sweep keeps that shape, archives finished
 work, and fixes nothing that is already right. A column of your own survives;

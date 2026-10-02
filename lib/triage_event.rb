@@ -34,7 +34,7 @@ module TriageEvent
     author && (author['__typename'] == 'Bot' || author['type'] == 'Bot' || author['login']&.end_with?('[bot]'))
   end
 
-  PULL_REQUEST_ACTIONS = %w[opened reopened ready_for_review synchronize].freeze
+  PULL_REQUEST_ACTIONS = %w[opened reopened ready_for_review synchronize closed].freeze
 
   # Pull request events pass through; the policy decides whether to triage them.
   # Of review events, only Copilot's reviews of same-repository pull requests
@@ -43,7 +43,7 @@ module TriageEvent
     return if name == 'workflow_dispatch'
     return review_skip_reason(event) if name == 'pull_request_review'
     if %w[pull_request pull_request_target].include?(name) && !PULL_REQUEST_ACTIONS.include?(event['action'])
-      return 'only opened, reopened, ready, or updated pull requests trigger triage'
+      return 'only opened, reopened, ready, updated, or closed pull requests trigger triage'
     end
     return unless %w[issue_comment discussion_comment].include?(name)
     return 'only new comments trigger triage' unless event['action'] == 'created'

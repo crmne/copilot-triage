@@ -8,6 +8,7 @@ RSpec.describe BoardSweep do
       'TRIAGE_WORKFLOW' => 'issue-assessment.yml' }
   end
   let(:settings) { { 'project' => 'https://github.com/users/crmne/projects/1', 'maintainer' => 'crmne' } }
+  # archive_after comes from the real board; ProjectBoard is partially stubbed below.
   let(:sweep) { described_class.new(environment) }
   let(:board) { sweep.instance_variable_get(:@board) }
   let(:issues) { [] }
@@ -173,13 +174,28 @@ RSpec.describe BoardSweep do
     end
   end
 
-  it 'archives finished issues and pull requests on this board only' do
+  it 'moves finished work to Done and archives it after a week there' do
+    old = (Time.now.utc - (8 * 86_400)).iso8601
+    recent = (Time.now.utc - 86_400).iso8601
     finished['issues'] = [{ 'number' => 1, 'projectItems' => { 'nodes' => card(1, 'Fix') } },
-                          { 'number' => 2, 'projectItems' => { 'nodes' => [] } }]
-    finished['pullRequests'] = [{ 'number' => 3, 'projectItems' => { 'nodes' => card(3, 'Approve') } }]
+                          { 'number' => 2, 'projectItems' => { 'nodes' => [] } },
+                          { 'number' => 4, 'projectItems' => { 'nodes' => card(4, 'Done', updated_at: old) } }]
+    finished['pullRequests'] = [{ 'number' => 3, 'projectItems' => { 'nodes' => card(3, 'Approve') } },
+                                { 'number' => 5, 'projectItems' => { 'nodes' => card(5, 'Done', updated_at: recent) } }]
 
     sweep.run
-    expect(archived).to eq(%w[item-1 item-3])
+    expect(moves).to eq([%w[item-1 done], %w[item-3 done]])
+    expect(archived).to eq(%w[item-4])
+  end
+
+  it 'places a reopened card again, bringing it back from the archive' do
+    archived_card = issue(2, status: 'Done')
+    archived_card['projectItems']['nodes'].first['isArchived'] = true
+    issues.push(issue(1, status: 'Done', labels: ['bug']), archived_card)
+
+    sweep.run
+    expect(moves).to eq([%w[item-1 fix], %w[new-issue-2 decide]])
+    expect(board).to have_received(:add).with('issue-2')
   end
 
   it 'adds a board view for the repository once it has cards' do
@@ -192,7 +208,8 @@ RSpec.describe BoardSweep do
   it 'only reports proposed changes in a dry run' do
     environment['TRIAGE_DRY_RUN'] = 'true'
     issues.push(issue(1))
-    finished['issues'] = [{ 'number' => 9, 'projectItems' => { 'nodes' => card(9, 'Fix') } }]
+    finished['issues'] =
+      [{ 'number' => 9, 'projectItems' => { 'nodes' => card(9, 'Done', updated_at: '2026-01-01T00:00:00Z') } }]
 
     sweep.run
     expect(moves).to be_empty

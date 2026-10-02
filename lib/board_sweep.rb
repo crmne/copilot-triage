@@ -2,6 +2,7 @@
 
 require 'json'
 require 'open3'
+require 'time'
 require 'yaml'
 require_relative 'copilot_review'
 require_relative 'project_board'
@@ -43,7 +44,7 @@ class BoardSweep
         sweep(connection, node)
       end
     end
-    archive_finished
+    finish_work
     report("Board view added for #{@repository}.") if @cards.positive? && !dry_run? &&
                                                       @board.ensure_repository_view(@repository)
     report("Board sweep: #{@changes} change#{'s' unless @changes == 1}#{' proposed' if dry_run?}.")
@@ -98,6 +99,8 @@ class BoardSweep
     item = node.dig('projectItems', 'nodes').find { |entry| entry.dig('project', 'id') == @board.id }
     status = item&.fetch('status', nil)
     current = @board.column_key(status&.fetch('name', nil))
+    reopened = item && (item['isArchived'] || current == 'done')
+    current = nil if reopened
     pull = connection == 'pullRequests'
     column = pull ? pull_request_column(node) : issue_column(node, current, status&.fetch('updatedAt', nil))
     if column == :agent
@@ -137,7 +140,9 @@ class BoardSweep
     @changes += 1
     return if dry_run?
 
-    @board.set_column((item || @board.add(node.fetch('id'))).fetch('id'), column)
+    # add brings an archived card back before it is placed.
+    target = item.nil? || item['isArchived'] ? @board.add(node.fetch('id')) : item
+    @board.set_column(target.fetch('id'), column)
   end
 
   # The maintainer's review is requested while a pull request waits in Approve
@@ -157,27 +162,38 @@ class BoardSweep
     rest(wanted ? 'POST' : 'DELETE', path, reviewers: [@maintainer])
   end
 
-  # Closed issues and closed or merged pull requests leave the board.
-  def archive_finished
+  # Closed issues and closed or merged pull requests go to Done, and leave the
+  # board once they have been there for archive_after_days.
+  def finish_work
     owner, name = @repository.split('/', 2)
+    card = 'nodes { number projectItems(first: 20, includeArchived: false) { nodes { id project { id } ' \
+           "status: fieldValueByName(name: \"#{ProjectBoard::STATUS_FIELD}\") " \
+           '{ ... on ProjectV2ItemFieldSingleSelectValue { name updatedAt } } } } }'
     query = <<~GRAPHQL
       query($owner: String!, $name: String!) {
         repository(owner: $owner, name: $name) {
-          issues(states: CLOSED, last: 50, orderBy: { field: UPDATED_AT, direction: ASC }) {
-            nodes { number projectItems(first: 20) { nodes { id project { id } } } }
-          }
-          pullRequests(states: [CLOSED, MERGED], last: 50, orderBy: { field: UPDATED_AT, direction: ASC }) {
-            nodes { number projectItems(first: 20) { nodes { id project { id } } } }
-          }
+          issues(states: CLOSED, last: 100, orderBy: { field: UPDATED_AT, direction: ASC }) { #{card} }
+          pullRequests(states: [CLOSED, MERGED], last: 100, orderBy: { field: UPDATED_AT, direction: ASC }) { #{card} }
         }
       }
     GRAPHQL
     repository = @board.graphql(query, owner: owner, name: name).fetch('data').fetch('repository')
+    cutoff = (Time.now.utc - (@board.archive_after * 86_400)).iso8601
     (repository.dig('issues', 'nodes') + repository.dig('pullRequests', 'nodes')).each do |node|
       item = node.dig('projectItems', 'nodes').find { |entry| entry.dig('project', 'id') == @board.id }
       next unless item
 
-      report("##{node.fetch('number')}: finished, archived")
+      finish(node, item, cutoff)
+    end
+  end
+
+  def finish(node, item, cutoff)
+    status = item['status'] || {}
+    if @board.column_key(status['name']) != 'done'
+      report("##{node.fetch('number')}: finished, to #{@board.column_name('done')}")
+      @board.set_column(item.fetch('id'), 'done') unless dry_run?
+    elsif status['updatedAt'].to_s < cutoff
+      report("##{node.fetch('number')}: done for #{@board.archive_after} days, archived")
       @board.archive(item.fetch('id')) unless dry_run?
     end
   end
@@ -214,7 +230,7 @@ class BoardSweep
               #{details}
               projectItems(first: 20) {
                 nodes {
-                  id project { id }
+                  id isArchived project { id }
                   status: fieldValueByName(name: "#{ProjectBoard::STATUS_FIELD}") {
                     ... on ProjectV2ItemFieldSingleSelectValue { name updatedAt }
                   }

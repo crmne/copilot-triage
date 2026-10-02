@@ -136,6 +136,8 @@ class IssueAssessment # :nodoc:
 
     sleep(delay) if comment_event?
     item, labels = read_report
+    return leave_board(item) if close_event?
+
     @state = ConversationState.new(@environment['TRIAGE_STATE_DIR'], state_scope(item))
     recover_history(item)
     comments = item.fetch('comments').fetch('nodes')
@@ -825,6 +827,23 @@ class IssueAssessment # :nodoc:
 
   def push_event?
     %w[pull_request pull_request_target].include?(@environment['GITHUB_EVENT_NAME']) && event['action'] == 'synchronize'
+  end
+
+  def close_event?
+    %w[issues pull_request pull_request_target].include?(@environment['GITHUB_EVENT_NAME']) &&
+      event['action'] == 'closed'
+  end
+
+  # Finished work moves to Done the moment it closes, without a model call; the
+  # sweep archives it later.
+  def leave_board(item)
+    return skip('closed; no board to update') unless board? && !@environment['TRIAGE_PROJECT_TOKEN'].to_s.empty?
+    return skip('closed; would move its card to Done') if dry_run?
+
+    skip(board.finish(item.fetch('id')) ? 'closed; moved its card to Done' : 'closed; it had no card')
+  rescue RuntimeError => e
+    @follow_through_failed = true
+    skip("closed, but moving its card failed: #{e.message}")
   end
 
   def review_event?
