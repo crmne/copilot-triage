@@ -3,9 +3,9 @@
 **A maintainer's copilot for GitHub: it triages issues, discussions, and pull
 requests, and keeps a board of what actually needs you.**
 
-https://github.com/user-attachments/assets/a4bc3196-d48b-4e94-b8a0-96642be6b34f
+https://github.com/user-attachments/assets/ef16d22c-c08d-4f1a-803f-828b9ad8dfcf
 
-[Download the video](https://github.com/crmne/copilot-triage/releases/download/v0.9.0/copilot-triage-launch-board-v09-1080p60.mp4)
+[Download the video](https://github.com/crmne/copilot-triage/releases/download/v0.11.0/copilot-triage-launch-board-v011-1080p60.mp4)
 
 Open source maintenance is mostly reading. Copilot Triage reads for you. When
 someone opens an issue, starts a discussion, sends a pull request, or comments,
