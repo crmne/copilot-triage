@@ -8,6 +8,8 @@ require_relative 'triage_tools'
 # and tools as the Copilot CLI agent, and the same limits.
 #
 #   agent = TriageAgent.new(toolbox:, system_prompt:, model: 'gpt-5.6-luna')
+#   agent = TriageAgent.new(toolbox:, system_prompt:, model: 'openai/gpt-oss-120b', provider: :openrouter,
+#                           tool_choice: :auto)
 #   agent.triage(report)
 #   toolbox.ledger['decision']
 class TriageAgent < RubyLLM::Agent
@@ -54,16 +56,19 @@ class TriageAgent < RubyLLM::Agent
   class ReadEvidence < Tool; end
   class SubmitDecision < Tool; end
 
-  inputs :toolbox, :system_prompt
+  inputs :toolbox, :system_prompt, :tool_choice
 
   instructions { system_prompt }
   tools do
     [SearchRepository, SearchIssues, ListReleases, ReadEvidence, SubmitDecision].map { |tool| tool.new(toolbox) }
   end
-  tool_options choice: :required
+  # Requiring a tool call keeps most models on task, but OpenRouter's hosts of
+  # gpt-oss answer a required call with an empty error turn, so it can be
+  # relaxed; a model that stops without submitting is reminded once.
+  tool_options { { choice: tool_choice || :required } }
   max_output_tokens 4000
 
-  def initialize(toolbox:, **)
+  def initialize(toolbox:, tool_choice: nil, **)
     @toolbox = toolbox
     super
   end
@@ -73,13 +78,22 @@ class TriageAgent < RubyLLM::Agent
   def triage(report)
     ask_later(report)
     deadline = now + TIME_LIMIT
-    until complete? || submitted?
+    reminded = false
+    until submitted?
+      if complete?
+        break if reminded
+
+        ask_later(REMINDER)
+        reminded = true
+      end
       raise Exhausted, "no decision after #{MAX_TURNS} model turns" if turns >= MAX_TURNS
       raise Exhausted, "no decision within #{TIME_LIMIT} seconds" if now > deadline
 
       step
     end
   end
+
+  REMINDER = 'Finish now by calling submit_decision with your decision. A plain-text answer is not a submission.'
 
   def submitted?
     @toolbox.ledger.key?('decision')

@@ -33,6 +33,8 @@ class IssueAssessment # :nodoc:
               %r{(?:\A|/)(?:package-lock\.json|pnpm-lock\.yaml|go\.sum)\z}].freeze
 
   COPILOT_RETRY_DELAYS = [20, 40].freeze
+  # Premium requests kept back before triage switches to its fallback model.
+  COPILOT_RESERVE = 50
 
   def initialize(environment = ENV)
     @environment = environment
@@ -610,15 +612,48 @@ class IssueAssessment # :nodoc:
   # together, such as many pull requests opened at once.
   def ask_model(prompt)
     return ask_rubyllm(prompt) if @engine == 'rubyllm'
+    return ask_fallback(prompt) if copilot_exhausted?
 
     COPILOT_RETRY_DELAYS.each do |delay|
       response = ask_copilot(prompt)
       return response if response || @tool_ledger.fetch('calls', 0).positive? || @tool_ledger['decision']
+      return ask_fallback(prompt) if copilot_exhausted?(recheck: true)
 
       report("Copilot called no tools; trying again in #{delay} seconds.")
       pause(delay)
     end
     ask_copilot(prompt)
+  end
+
+  # When the Copilot allowance is nearly spent and overage is off, triage runs
+  # on the fallback model instead, if one is configured. Unknown quota data
+  # never counts as spent.
+  def copilot_exhausted?(recheck: false)
+    return false if @environment['TRIAGE_FALLBACK_API_KEY'].to_s.empty?
+    return @copilot_exhausted if defined?(@copilot_exhausted) && !recheck
+
+    @copilot_exhausted = begin
+      token = { 'GH_TOKEN' => @environment['COPILOT_GITHUB_TOKEN'], 'GITHUB_TOKEN' => nil }
+      output, _errors, status = Open3.capture3(token, 'gh', 'api', 'copilot_internal/user')
+      quota = status.success? ? JSON.parse(output).dig('quota_snapshots', 'premium_interactions') : nil
+      !quota.nil? && !quota['unlimited'] && !quota['overage_permitted'] && quota['remaining'].to_i < COPILOT_RESERVE
+    rescue JSON::ParserError
+      false
+    end
+  end
+
+  # The fallback model judges cards well but replies less reliably than the
+  # default, so a fallback run only updates the board; nothing is posted.
+  def ask_fallback(prompt)
+    report('Copilot allowance is spent; placing the card with the fallback model, posting nothing.')
+    @fallback = true
+    @engine = 'rubyllm'
+    @environment = @environment.merge('TRIAGE_PROVIDER' => @environment.fetch('TRIAGE_FALLBACK_PROVIDER', 'openrouter'),
+                                      'TRIAGE_MODEL' => @environment.fetch('TRIAGE_FALLBACK_MODEL',
+                                                                           'openai/gpt-oss-120b'),
+                                      'TRIAGE_API_KEY' => @environment['TRIAGE_FALLBACK_API_KEY'],
+                                      'TRIAGE_API_BASE' => nil)
+    ask_rubyllm(prompt)
   end
 
   def pause(seconds)
@@ -665,7 +700,8 @@ class IssueAssessment # :nodoc:
       config.public_send(:"#{provider}_api_key=", key) unless key.empty?
       config.public_send(:"#{provider}_api_base=", base) unless base.empty?
     end
-    { model: model_id, provider: provider.to_sym, assume_model_exists: !base.empty?, context: }
+    tool_choice = :auto if provider == 'openrouter'
+    { model: model_id, provider: provider.to_sym, assume_model_exists: !base.empty?, context:, tool_choice: }
   rescue NoMethodError
     raise Failed, "RubyLLM has no #{provider} provider with that setting"
   end
@@ -680,7 +716,7 @@ class IssueAssessment # :nodoc:
 
   def redact(text)
     %w[GH_TOKEN GITHUB_TOKEN COPILOT_GITHUB_TOKEN TRIAGE_PROJECT_TOKEN TRIAGE_API_KEY
-       TRIAGE_REVIEW_TOKEN].reduce(text) do |result, key|
+       TRIAGE_REVIEW_TOKEN TRIAGE_FALLBACK_API_KEY].reduce(text) do |result, key|
       token = @environment[key]
       token && !token.empty? ? result.gsub(token, '[REDACTED]') : result
     end
@@ -706,7 +742,7 @@ class IssueAssessment # :nodoc:
       environment = {
         'COPILOT_GITHUB_TOKEN' => @environment.fetch('COPILOT_GITHUB_TOKEN'),
         'COPILOT_HOME' => directory, 'GH_TOKEN' => nil, 'GITHUB_TOKEN' => nil, 'TRIAGE_PROJECT_TOKEN' => nil,
-        'TRIAGE_API_KEY' => nil, 'TRIAGE_REVIEW_TOKEN' => nil
+        'TRIAGE_API_KEY' => nil, 'TRIAGE_REVIEW_TOKEN' => nil, 'TRIAGE_FALLBACK_API_KEY' => nil
       }
       output, errors, status = Open3.capture3(
         environment, 'timeout', '--kill-after=5s', '90s', 'copilot',
@@ -942,9 +978,11 @@ class IssueAssessment # :nodoc:
   end
 
   def reviews?
-    pull_request_policy.fetch('reviews', 'copilot').tap do |mode|
-      raise ArgumentError, 'pull_requests.reviews must be copilot or off' unless %w[copilot off].include?(mode)
-    end == 'copilot'
+    mode = pull_request_policy.fetch('reviews', 'copilot')
+    mode = 'off' if mode == false # YAML reads a bare off as false
+    raise ArgumentError, 'pull_requests.reviews must be copilot or off' unless %w[copilot off].include?(mode)
+
+    mode == 'copilot'
   end
 
   def substantial_change?(item)
@@ -1296,7 +1334,7 @@ class IssueAssessment # :nodoc:
   # A maintainer's own comment only updates the board: the agent places the
   # card by what they said, and nothing is posted.
   def quiet?
-    @environment['TRIAGE_QUIET'] == 'true' || maintainer_comment?
+    @environment['TRIAGE_QUIET'] == 'true' || maintainer_comment? || @fallback == true
   end
 
   def maintainer_comment?

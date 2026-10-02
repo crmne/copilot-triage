@@ -50,6 +50,24 @@ RSpec.describe TriageAgent do
     expect(toolbox.ledger['decision']).to eq(silence)
   end
 
+  it 'reminds a model that stopped without submitting, once' do
+    allow(agent).to receive(:complete?).and_return(true, false)
+    allow(agent).to receive(:ask_later).and_call_original
+    allow(agent).to receive(:step) { toolbox.call('submit_decision', silence) }
+
+    agent.triage('Report')
+    expect(agent).to have_received(:ask_later).with(described_class::REMINDER)
+    expect(toolbox.ledger['decision']).to eq(silence)
+  end
+
+  it 'gives up when the reminded model still does not submit' do
+    allow(agent).to receive_messages(complete?: true)
+    allow(agent).to receive(:step)
+
+    agent.triage('Report')
+    expect(toolbox.ledger['decision']).to be_nil
+  end
+
   it 'gives up after the turn budget' do
     allow(agent).to receive_messages(complete?: false, turns: described_class::MAX_TURNS)
     allow(agent).to receive(:step)

@@ -24,6 +24,15 @@ inputs:
   model:
     description: Model ID; for the rubyllm engine, as the provider names it.
     default: gpt-5.6-luna
+  fallback-provider:
+    description: RubyLLM provider for the fallback model, used when the copilot engine's allowance is spent.
+    default: openrouter
+  fallback-model:
+    description: Fallback model ID, as the fallback provider names it.
+    default: openai/gpt-oss-120b
+  fallback-api-key:
+    description: API key for the fallback provider. Without it, triage has no fallback.
+    default: ''
   engine:
     description: copilot runs Copilot CLI with your Copilot allowance; rubyllm uses a provider API key through RubyLLM.
     default: copilot
@@ -119,18 +128,18 @@ runs:
       run: npm install --prefix "$RUNNER_TEMP/copilot-triage-cli" --no-audit --no-fund @github/copilot@1.0.83
     - name: Check Ruby
       id: ruby
-      if: steps.report.outputs.eligible == 'true' && inputs.engine == 'rubyllm'
+      if: steps.report.outputs.eligible == 'true' && (inputs.engine == 'rubyllm' || inputs.fallback-api-key != '')
       shell: bash
       run: echo "version=$(ruby -e 'print RUBY_VERSION')" >> "$GITHUB_OUTPUT"
     - name: Restore RubyLLM
       id: gems
-      if: steps.report.outputs.eligible == 'true' && inputs.engine == 'rubyllm'
+      if: steps.report.outputs.eligible == 'true' && (inputs.engine == 'rubyllm' || inputs.fallback-api-key != '')
       uses: actions/cache@v6
       with:
         path: ${{ runner.temp }}/copilot-triage-gems
         key: rubyllm-${{ runner.os }}-${{ runner.arch }}-ruby-${{ steps.ruby.outputs.version }}-2.0.0
     - name: Install RubyLLM
-      if: steps.report.outputs.eligible == 'true' && inputs.engine == 'rubyllm' && steps.gems.outputs.cache-hit != 'true'
+      if: steps.report.outputs.eligible == 'true' && (inputs.engine == 'rubyllm' || inputs.fallback-api-key != '') && steps.gems.outputs.cache-hit != 'true'
       shell: bash
       run: gem install ruby_llm --version 2.0.0 --install-dir "$RUNNER_TEMP/copilot-triage-gems" --no-document
     - name: Assess the report
@@ -153,6 +162,9 @@ runs:
         TRIAGE_PROVIDER: ${{ inputs.provider }}
         TRIAGE_API_KEY: ${{ inputs.api-key }}
         TRIAGE_API_BASE: ${{ inputs.api-base }}
+        TRIAGE_FALLBACK_PROVIDER: ${{ inputs.fallback-provider }}
+        TRIAGE_FALLBACK_MODEL: ${{ inputs.fallback-model }}
+        TRIAGE_FALLBACK_API_KEY: ${{ inputs.fallback-api-key }}
         TRIAGE_DRY_RUN: ${{ inputs.dry-run }}
         TRIAGE_QUIET: ${{ inputs.quiet }}
         TRIAGE_STATE_DIR: ${{ runner.temp }}/copilot-triage-state

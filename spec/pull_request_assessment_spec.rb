@@ -89,6 +89,14 @@ RSpec.describe IssueAssessment, 'with a pull request' do
     end
   end
 
+  context 'when reviews are off, written as a bare YAML off' do
+    let(:policy) { { 'reviews' => false } }
+
+    it 'requests no Copilot review' do
+      expect(run_with).not_to have_received(:mutate).with('requestReviewsByLogin', anything)
+    end
+  end
+
   it 'prefers a dedicated review token' do
     environment['TRIAGE_REVIEW_TOKEN'] = 'owner-review-token'
 

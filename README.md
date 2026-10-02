@@ -131,6 +131,26 @@ tokens over a few model turns, around a cent or less at
 [GitHub's listed price](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing).
 Change it with the `model` input.
 
+### When the Copilot allowance runs out
+
+Give the action a fallback key and triage keeps the board current after your
+Copilot allowance is spent:
+
+```yaml
+      - uses: crmne/copilot-triage@v0
+        with:
+          copilot-token: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          fallback-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+```
+
+Before each run, triage checks the remaining premium requests. When fewer than
+50 are left and overage is off, it uses the fallback model instead,
+`openai/gpt-oss-120b` through OpenRouter by default (`fallback-provider` and
+`fallback-model` change it). A fallback run only places the card on the board
+and posts nothing: in our evaluation the fallback judged pull requests and
+cards as well as the default, but replied less reliably (16 of 23 cases, about
+a cent for all of them).
+
 ### Your own API key
 
 Set `engine: rubyllm` to run a [RubyLLM](https://rubyllm.com) agent with the same
@@ -552,6 +572,7 @@ Action inputs:
 | `model` | `gpt-5.6-luna` | Model ID; for `rubyllm`, as the provider names it |
 | `reasoning-effort` | `low` | Copilot reasoning effort, `none` or `low`; `default` for models without it, such as Claude Haiku |
 | `provider`, `api-key`, `api-base` | | Provider, key, and optional endpoint for `rubyllm` |
+| `fallback-api-key`, `fallback-provider`, `fallback-model` | `openrouter`, `openai/gpt-oss-120b` | Board-only fallback once the Copilot allowance is spent |
 | `review-token` | `copilot-token` | Token that requests Copilot reviews, billed to its owner |
 | `project-token` | | Classic token with the `project` scope, for the board |
 | `triage-workflow` | `triage.yml` | For the sweep, the triage workflow to run on fork pull requests Copilot asks a human to look at |
