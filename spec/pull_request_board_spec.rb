@@ -25,7 +25,7 @@ RSpec.describe IssueAssessment, 'with a pull request on the board' do
   let(:labels) { [{ 'id' => 'enhancement-id', 'name' => 'enhancement' }] }
   let(:decision) do
     { labels: ['enhancement'], reply: nil, comment: nil, sources: [], related_issue: nil, relationship: nil,
-      mute: false, review: false, out_of_scope: false, next_move: 'approve', priority: 'normal',
+      mute: false, review: false, out_of_scope: false, next_move: 'sign_off', priority: 'normal',
       next_step: 'Merge it; Copilot only flagged the breadth of the change' }
   end
   let(:board) { instance_double(ProjectBoard, update: {}) }
@@ -65,10 +65,10 @@ RSpec.describe IssueAssessment, 'with a pull request on the board' do
                                                                '"current":true', 'Broad change'))
   end
 
-  it 'puts an approvable pull request in Approve and requests the maintainer review' do
+  it 'puts an approvable pull request in Sign off and requests the maintainer review' do
     runner = run_with
 
-    expect(board).to have_received(:update).with('pr-id', hash_including(column: 'approve'))
+    expect(board).to have_received(:update).with('pr-id', hash_including(column: 'sign_off'))
     expect(runner).to have_received(:github).with(
       'graphql', query: include('requestReviewsByLogin'),
                  variables: { input: { pullRequestId: 'pr-id', userLogins: ['crmne'], union: true } }
@@ -76,11 +76,11 @@ RSpec.describe IssueAssessment, 'with a pull request on the board' do
   end
 
   it 'sends a pull request with real problems back to its author and withdraws the review request' do
-    decision[:next_move] = 'others'
+    decision[:next_move] = 'theirs'
     item['reviewRequests']['nodes'] << { 'requestedReviewer' => { '__typename' => 'User', 'login' => 'crmne' } }
     runner = run_with
 
-    expect(board).to have_received(:update).with('pr-id', hash_including(column: 'waiting'))
+    expect(board).to have_received(:update).with('pr-id', hash_including(column: 'theirs'))
     expect(runner).to have_received(:github).with(
       'graphql', query: include('requestReviewsByLogin'),
                  variables: { input: { pullRequestId: 'pr-id', union: false, userLogins: [], botLogins: [],
@@ -88,11 +88,13 @@ RSpec.describe IssueAssessment, 'with a pull request on the board' do
     )
   end
 
-  it "never requests a review from the pull request's own author" do
-    item['author']['login'] = 'crmne'
-    item['authorAssociation'] = 'OWNER'
+  it "places the maintainer's own pull request without the model or a review request" do
+    item.merge!('author' => { 'login' => 'crmne' }, 'authorAssociation' => 'OWNER', 'mergeable' => 'MERGEABLE')
     runner = run_with
 
+    expect(runner).not_to have_received(:ask_copilot)
+    expect(board).to have_received(:update).with('pr-id', column: 'sign_off',
+                                                          movable: ProjectBoard::MOVABLE - ['decide'])
     expect(runner).not_to have_received(:github).with('graphql',
                                                       hash_including(query: include('requestReviewsByLogin')))
   end
@@ -105,13 +107,13 @@ RSpec.describe IssueAssessment, 'with a pull request on the board' do
     expect(runner).to have_received(:ask_copilot).with(include('Copilot review update', 'Approval recommended'))
   end
 
-  it 'parks the pull request in Waiting on others after a push, until Copilot reviews it' do
+  it 'parks the pull request in Their move after a push, until Copilot reviews it' do
     decision[:review] = true
     run_with
     item['headRefOid'] = 'b' * 40
     pushed = run_with(event_name: 'pull_request_target', action: 'synchronize')
 
     expect(pushed).not_to have_received(:ask_copilot)
-    expect(board).to have_received(:update).with('pr-id', column: 'waiting')
+    expect(board).to have_received(:update).with('pr-id', column: 'theirs')
   end
 end

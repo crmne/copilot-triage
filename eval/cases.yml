@@ -401,7 +401,7 @@
 
     `bundle exec rspec --tag ~generator`: 4663 examples, 0 failures. RuboCop, ArchSpec, and Flay pass.
   pull_request:
-    association: OWNER
+    association: CONTRIBUTOR
     files:
     - path: docs/_core_features/mcp.md
       additions: 31
@@ -435,8 +435,8 @@
     - silent
     - reply
     next_move:
-    - approve
-    - review
+    - sign_off
+    - do
     max_calls: 8
     min_calls: 1
   decision:
@@ -449,7 +449,7 @@
     mute: false
     review: false
     out_of_scope: false
-    next_move: approve
+    next_move: sign_off
     priority: normal
     next_step: Read the change; Copilot only flagged its breadth
   tools: []
@@ -536,8 +536,8 @@
     - silent
     - reply
     next_move:
-    - approve
-    - review
+    - sign_off
+    - do
     max_calls: 8
     min_calls: 1
   decision:
@@ -550,7 +550,7 @@
     mute: false
     review: false
     out_of_scope: false
-    next_move: approve
+    next_move: sign_off
     priority: normal
     next_step: Read the change; Copilot only flagged its breadth
   tools: []
@@ -694,8 +694,8 @@
     - silent
     - reply
     next_move:
-    - approve
-    - review
+    - sign_off
+    - do
     max_calls: 8
     min_calls: 1
   decision:
@@ -708,7 +708,7 @@
     mute: false
     review: false
     out_of_scope: false
-    next_move: approve
+    next_move: sign_off
     priority: normal
     next_step: Read the change; Copilot only flagged its breadth
   tools: []
@@ -786,8 +786,8 @@
     - silent
     - reply
     next_move:
-    - approve
-    - review
+    - sign_off
+    - do
     max_calls: 8
     min_calls: 1
   decision:
@@ -800,7 +800,7 @@
     mute: false
     review: false
     out_of_scope: false
-    next_move: approve
+    next_move: sign_off
     priority: normal
     next_step: Read the change; Copilot only flagged its breadth
   tools: []
@@ -934,7 +934,7 @@
     - silent
     - reply
     next_move:
-    - others
+    - theirs
     max_calls: 8
     min_calls: 1
   decision:
@@ -947,7 +947,7 @@
     mute: false
     review: false
     out_of_scope: false
-    next_move: others
+    next_move: theirs
     priority: normal
     next_step: Wait for the author to fix the issues Copilot found
   tools: []
@@ -1048,7 +1048,7 @@
     - silent
     - reply
     next_move:
-    - others
+    - theirs
     max_calls: 8
     min_calls: 1
   decision:
@@ -1061,7 +1061,7 @@
     mute: false
     review: false
     out_of_scope: false
-    next_move: others
+    next_move: theirs
     priority: normal
     next_step: Wait for the author to fix the issues Copilot found
   tools: []
@@ -1152,7 +1152,7 @@
     - silent
     - reply
     next_move:
-    - others
+    - theirs
     max_calls: 8
     min_calls: 1
   decision:
@@ -1165,7 +1165,7 @@
     mute: false
     review: false
     out_of_scope: false
-    next_move: others
+    next_move: theirs
     priority: normal
     next_step: Wait for the author to fix the issues Copilot found
   tools: []
@@ -1350,7 +1350,7 @@
     - silent
     - reply
     next_move:
-    - others
+    - theirs
     max_calls: 8
     min_calls: 1
   decision:
@@ -1363,7 +1363,7 @@
     mute: false
     review: false
     out_of_scope: false
-    next_move: others
+    next_move: theirs
     priority: normal
     next_step: Wait for the author to fix the issues Copilot found
   tools: []

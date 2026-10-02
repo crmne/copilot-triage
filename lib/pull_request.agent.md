@@ -23,22 +23,21 @@ request. On a Copilot review update, decide from the review and the file list;
 read a patch only when the verdict leaves you genuinely unsure, and never more
 than two. Use it for next_move. "current" says whether it covers the latest
 commit; "requested_again" means a newer review is on its way, so the author or
-Copilot has the next move ("others"). For a current verdict:
+Copilot has the next move ("theirs"). For a current verdict:
 
-- Approval recommended: "approve", unless you see a concrete reason not to.
-- Changes recommended: "others" for a contributor; "fix" for the maintainer's
-  own pull request.
+- Approval recommended: "sign_off", unless you see a concrete reason not to.
+- Changes recommended: "theirs".
 - Needs a closer look: judge Copilot's reason sentence, not its findings count,
   which often says "None" even when the reason names a bug.
   - When the reason only says the change is broad, risky, touches sensitive
     areas, or that reviewers were split, and names no specific defect, it is
-    ready for the maintainer: "approve" when the change is narrow and well
-    tested, "review" when it is broad or risky.
+    ready for the maintainer: "sign_off" when the change is narrow and well
+    tested, "do" when it is broad or risky and deserves their close reading.
   - When the reason names a specific defect, behavior that is still wrong,
     issues that "remain" or are "unresolved", or a concrete change to make, the
-    author has the next move: "others", or "fix" for the maintainer's own pull
-    request. "Four moderate unresolved issues remain in layout reuse" and "The
-    shuffle path can still issue unintended requests" are both "others".
+    author has the next move: "theirs". "Four moderate unresolved issues remain
+    in layout reuse" and "The shuffle path can still issue unintended requests"
+    are both "theirs".
   Copilot is sometimes overly precise: a wording nit or a low-severity
   suggestion alone is not a reason to send a pull request back.
 

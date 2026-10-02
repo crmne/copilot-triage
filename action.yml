@@ -166,6 +166,7 @@ runs:
       run: ruby "$TRIAGE_ACTION_PATH/lib/board_sweep.rb"
       env:
         TRIAGE_ACTION_PATH: ${{ github.action_path }}
+        GH_TOKEN: ${{ inputs.github-token }}
         TRIAGE_CONFIG: ${{ inputs.config }}
         TRIAGE_DRY_RUN: ${{ inputs.dry-run }}
         TRIAGE_PROJECT_TOKEN: ${{ inputs.project-token }}

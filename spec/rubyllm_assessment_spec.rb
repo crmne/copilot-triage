@@ -17,7 +17,7 @@ RSpec.describe IssueAssessment, 'with the RubyLLM engine' do
   let(:labels) { [{ 'id' => 'bug-id', 'name' => 'bug' }] }
   let(:decision) do
     { 'labels' => ['bug'], 'reply' => nil, 'comment' => nil, 'sources' => [], 'related_issue' => nil,
-      'relationship' => nil, 'mute' => false }
+      'relationship' => nil, 'mute' => false, 'close_as' => nil }
   end
   let(:agent) do
     instance_double(TriageAgent, turns: 3, tokens: RubyLLM::Tokens.new(input: 9000, output: 120),

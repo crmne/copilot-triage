@@ -1,4 +1,6 @@
 duplicates: suggest
+# Closing issues a release fixed, the reporter resolved, or scope rules out.
+closing: suggest
 followups: selective
 
 labels:

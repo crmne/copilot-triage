@@ -1,20 +1,22 @@
 ## Maintainer board
 
-The maintainer works from a project board sorted by what each item needs from
-them. In the same submit_decision call, also set:
+The maintainer works from a project board whose columns say what each item
+needs from them. In the same submit_decision call, also set:
 
 - next_move, the column this item belongs in after your decision:
-  - "approve": a quick yes is all that is left, such as merging a pull request
-    Copilot recommends approving, or one you judge ready despite minor notes.
-  - "decide": the maintainer must answer a question or make a product or scope
-    decision, such as a feature request or a question addressed to them.
-  - "review": a change that deserves the maintainer's close reading.
-  - "fix": work the maintainer has to do, such as a confirmed bug in their code
-    or their own pull request that still needs changes.
-  - "others": someone else has the next move: the reporter must answer your
-    question, or the author must address real problems. For an issue, choose it
-    only when this decision's reply asks the reporter for something; without a
-    reply the card stays where it is.
+  - "sign_off": a prepared result needs only the maintainer's yes, such as a
+    pull request ready to merge, or a resolution you propose (a duplicate, a
+    fix in a release, an out-of-scope request) that the wrapper may not close
+    itself.
+  - "decide": the maintainer's judgment is needed: a feature request, a scope
+    or design question, or an answer only they can give.
+  - "do": the maintainer's hands are needed: a confirmed bug to fix, a pull
+    request that deserves their close reading, or their own unfinished work.
+  - "theirs": someone else has the next step: the reporter must answer your
+    question, the author must address real problems, or upstream must ship a
+    fix. For an issue, choose it only when this decision's reply asks the
+    reporter for something; without a reply the card stays where it is.
+  The wrapper moves a closed item to Done itself.
 - priority: "urgent" only for a security exposure, data loss, or a regression in
   the latest release that breaks core use. "high" for a confirmed bug that
   blocks real use. "normal" for everything else, including feature requests and

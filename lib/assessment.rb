@@ -6,6 +6,7 @@ require 'fileutils'
 require 'open3'
 require 'tmpdir'
 require 'yaml'
+require_relative 'board_rules'
 require_relative 'conversation_state'
 require_relative 'copilot_review'
 require_relative 'project_board'
@@ -79,6 +80,8 @@ class IssueAssessment # :nodoc:
                  'duplicate_closed'
                elsif decision['close_pull_request']
                  'closed_out_of_scope'
+               elsif decision['close_issue']
+                 "closed_as_#{decision['close_as']}"
                elsif decision['move_to_issue']
                  'moved_to_issue'
                else
@@ -137,6 +140,7 @@ class IssueAssessment # :nodoc:
     sleep(delay) if comment_event?
     item, labels = read_report
     return leave_board(item) if close_event?
+    return place_own_pull_request(item) if pull_request? && maintainer?(item['authorAssociation']) && !item['closed']
 
     @state = ConversationState.new(@environment['TRIAGE_STATE_DIR'], state_scope(item))
     recover_history(item)
@@ -302,6 +306,7 @@ class IssueAssessment # :nodoc:
     end
     decision['comment'] = decision['comment']&.gsub(/\[\[([^\]]+)\]\]/) { evidence_link(Regexp.last_match(1)) }
     decision['close_pull_request'] = close_pull_request?(item, decision)
+    decision['close_issue'] = close_issue?(item, decision)
     decision
   end
 
@@ -369,8 +374,9 @@ class IssueAssessment # :nodoc:
   end
 
   def pull_request_fields
-    "isDraft changedFiles additions deletions #{CopilotReview::FIELDS} " \
-      'files(first: 100) { nodes { path additions deletions changeType } }'
+    "isDraft mergeable reviewDecision changedFiles additions deletions #{CopilotReview::FIELDS} " \
+      'files(first: 100) { nodes { path additions deletions changeType } } ' \
+      'commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }'
   end
 
   def comment_fields
@@ -416,7 +422,7 @@ class IssueAssessment # :nodoc:
       This is a #{assessment_kind}.
       Initial issue recap permitted: #{@initial_recap_allowed}.
       Duplicate policy: #{duplicate_mode}.
-      Follow-up policy: #{@config.fetch('followups', 'selective')}.#{board_prompt}#{pull_request_prompt}#{move_prompt}
+      Follow-up policy: #{@config.fetch('followups', 'selective')}.#{board_prompt}#{pull_request_prompt}#{issue_prompt}#{move_prompt}
       Allowed labels: #{JSON.generate(allowed)}
       Configured replies: #{JSON.generate(@config.fetch('replies'))}
       These are optional templates, not a checklist of missing information to request.
@@ -446,6 +452,12 @@ class IssueAssessment # :nodoc:
 
     "\nPull request: also submit review and out_of_scope. Copilot code review is #{reviews? ? 'available' : 'off'}; " \
       "out-of-scope changes are #{out_of_scope_mode == 'close' ? 'closed after your explanation' : 'left open'}."
+  end
+
+  def issue_prompt
+    return unless @kind == 'issue'
+
+    "\nIssue: also submit close_as. Closing is #{closing_mode == 'auto' ? 'automatic' : 'proposed to the maintainer'}."
   end
 
   def board_prompt
@@ -534,6 +546,7 @@ class IssueAssessment # :nodoc:
 
   def system_prompt
     prompt = File.read(File.join(__dir__, 'triage.agent.md'))
+    prompt += "\n#{File.read(File.join(__dir__, 'issue.agent.md'))}" if @kind == 'issue'
     prompt += "\n#{File.read(File.join(__dir__, 'pull_request.agent.md'))}" if pull_request?
     prompt += "\n#{File.read(File.join(__dir__, 'discussion.agent.md'))}" if move?
     prompt += "\n#{File.read(File.join(__dir__, 'board.agent.md'))}" if board?
@@ -545,7 +558,7 @@ class IssueAssessment # :nodoc:
     config = @config.merge('labels' => @config.fetch('labels').slice(*allowed))
     { root: Dir.pwd, repository: @repository, config: config,
       ledger_path: File.join(directory, 'evidence.json'), token: @environment['GH_TOKEN'], board: board?,
-      pull_request: (@number if pull_request?), move: move? }
+      pull_request: (@number if pull_request?), move: move?, issue: @kind == 'issue' }
   end
 
   def tools_command(settings_path)
@@ -760,6 +773,7 @@ class IssueAssessment # :nodoc:
     keys += TriageTools::BOARD_PROPERTIES.keys.map(&:to_s) if board?
     keys += TriageTools::PULL_REQUEST_PROPERTIES.keys.map(&:to_s) if pull_request?
     keys += TriageTools::MOVE_PROPERTIES.keys.map(&:to_s) if move?
+    keys += TriageTools::CLOSE_PROPERTIES.keys.map(&:to_s) if @kind == 'issue'
     raise ArgumentError unless decision.is_a?(Hash) && (decision.keys - keys).empty?
     raise ArgumentError unless (%w[labels reply] - decision.keys).empty?
 
@@ -767,6 +781,8 @@ class IssueAssessment # :nodoc:
     validate_pull_request(decision) if pull_request?
     raise ArgumentError if move? && ![true, false].include?(decision['move_to_issue'])
     raise ArgumentError if decision['move_to_issue'] && (decision['related_issue'] || decision['mute'])
+    raise ArgumentError unless TriageTools::CLOSE_PROPERTIES[:close_as][:enum].include?(decision['close_as'])
+    raise ArgumentError if decision['close_as'] && (decision['comment'].nil? || decision['related_issue'])
 
     validate_labels(decision['labels'], allowed, moving: decision['move_to_issue'] == true)
     raise ArgumentError unless decision['reply'].nil? || @config.fetch('replies').key?(decision['reply'])
@@ -813,7 +829,7 @@ class IssueAssessment # :nodoc:
   end
 
   def schema_options
-    { board: board?, pull_request: pull_request?, move: move? }
+    { board: board?, pull_request: pull_request?, move: move?, issue: @kind == 'issue' }
   end
 
   # Only a newly assessed discussion can move, never a comment thread.
@@ -846,6 +862,23 @@ class IssueAssessment # :nodoc:
     skip("closed, but moving its card failed: #{e.message}")
   end
 
+  # The maintainer's own pull requests need no model: their checks, conflicts,
+  # and reviews place them, and nobody is asked to review their own work.
+  def place_own_pull_request(item)
+    unless board? && !@environment['TRIAGE_PROJECT_TOKEN'].to_s.empty?
+      return skip('own pull request; no board to update')
+    end
+
+    column = BoardRules.pull_request_column(item)
+    return skip("own pull request; would move its card to #{board.column_name(column)}") if dry_run?
+
+    changes = board.update(item.fetch('id'), column: column, movable: ProjectBoard::MOVABLE - ['decide'])
+    skip("own pull request; board #{changes.empty? ? 'unchanged' : JSON.generate(changes)}")
+  rescue RuntimeError => e
+    @follow_through_failed = true
+    skip("own pull request, but placing its card failed: #{e.message}")
+  end
+
   def review_event?
     @environment['GITHUB_EVENT_NAME'] == 'pull_request_review'
   end
@@ -863,6 +896,27 @@ class IssueAssessment # :nodoc:
   def out_of_scope_mode
     pull_request_policy.fetch('out_of_scope', 'suggest').tap do |mode|
       raise ArgumentError, 'pull_requests.out_of_scope must be suggest or close' unless %w[suggest close].include?(mode)
+    end
+  end
+
+  # The bot closes an issue only with closing: auto, after its explanation, and
+  # only when nothing argues for a person: never a maintainer's own issue, one
+  # a maintainer joined, or a reopened one. Resolved means the reporter said
+  # so. Without these, the closure is proposed to the maintainer instead.
+  def close_issue?(item, decision)
+    return false unless @kind == 'issue' && decision['close_as'] && decision['comment']
+    return false unless closing_mode == 'auto' && !maintainer?(item['authorAssociation'])
+    return false if item['stateReason'] == 'REOPENED' || @state.data['maintainer_replied'] ||
+                    item.fetch('comments').fetch('nodes').any? { |comment| maintainer?(comment['authorAssociation']) }
+    return true unless decision['close_as'] == 'resolved'
+
+    latest = item.fetch('comments').fetch('nodes').reject { |comment| bot?(comment['author']) }.last
+    latest && latest.dig('author', 'login') == item.dig('author', 'login')
+  end
+
+  def closing_mode
+    @config.fetch('closing', 'suggest').tap do |mode|
+      raise ArgumentError, 'closing must be suggest or auto' unless %w[suggest auto].include?(mode)
     end
   end
 
@@ -889,8 +943,8 @@ class IssueAssessment # :nodoc:
   def wait_for_review(item)
     return unless board? && !dry_run? && !@environment['TRIAGE_PROJECT_TOKEN'].to_s.empty?
 
-    changes = board.update(item.fetch('id'), column: 'waiting')
-    keep_review_request(item, board.column_name('waiting'))
+    changes = board.update(item.fetch('id'), column: 'theirs')
+    keep_review_request(item, board.column_name('theirs'))
     report("Board: #{changes.empty? ? 'unchanged' : JSON.generate(changes)}")
   rescue RuntimeError => e
     @follow_through_failed = true
@@ -929,10 +983,7 @@ class IssueAssessment # :nodoc:
   # Pull requests wait on others whenever the agent says so, such as after
   # Copilot found real problems.
   def update_board(item, decision, reply_posted:)
-    move = decision.fetch('next_move')
-    column = if move != 'others' then move
-             elsif pull_request? || reply_posted then 'waiting'
-             end
+    column = board_column(decision, reply_posted)
     proposed = { column: column, priority: decision.fetch('priority'), next_step: decision.fetch('next_step').strip }
     assignee = maintainer_login
     assign = proposed[:priority] == 'urgent' && assignee && item.dig('assignees', 'totalCount').to_i.zero?
@@ -943,7 +994,8 @@ class IssueAssessment # :nodoc:
 
     return report('Board: skipped; no project-token is set.') if @environment['TRIAGE_PROJECT_TOKEN'].to_s.empty?
 
-    changes = board.update((@moved_issue || item).fetch('id'), **proposed)
+    movable = column == 'done' ? [nil, *ProjectBoard::COLUMNS.keys] : ProjectBoard::MOVABLE
+    changes = board.update((@moved_issue || item).fetch('id'), **proposed, movable: movable)
     number = @moved_issue ? @moved_issue.fetch('number') : @number
     github("repos/#{@repository}/issues/#{number}/assignees", assignees: [assignee]) if assign
     changes['assigned'] = assignee if assign
@@ -971,6 +1023,19 @@ class IssueAssessment # :nodoc:
     end
   end
 
+  # A closed item is done; a closure the bot could only propose is the
+  # maintainer's to sign off; otherwise the agent's next move decides. An issue
+  # waits on its reporter only after this run asked them something.
+  def board_column(decision, reply_posted)
+    return 'done' if decision['close'] || decision['close_pull_request'] || decision['close_issue']
+    return 'sign_off' if decision['close_as'] || decision['out_of_scope'] || decision['relationship'] == 'duplicate'
+
+    move = decision.fetch('next_move')
+    return move unless move == 'theirs'
+
+    'theirs' if pull_request? || reply_posted
+  end
+
   def maintainer_login
     settings = @config.fetch('board') || {}
     settings['maintainer'] || settings['assign_urgent_to']
@@ -983,7 +1048,7 @@ class IssueAssessment # :nodoc:
     login = maintainer_login
     return unless login && column_name && item.dig('author', 'login') != login
 
-    wanted = %w[approve review].map { |key| board.column_name(key) }.include?(column_name)
+    wanted = %w[sign_off do].map { |key| board.column_name(key) }.include?(column_name)
     requested = CopilotReview.reviewers(item).any? { |reviewer| reviewer['login'] == login }
     return if wanted == requested
 
@@ -1066,6 +1131,10 @@ class IssueAssessment # :nodoc:
     end
     close_duplicate(item) if decision['close']
     mutate('closePullRequest', pullRequestId: item.fetch('id')) if decision['close_pull_request']
+    if decision['close_issue']
+      mutate('closeIssue', issueId: item.fetch('id'),
+                           stateReason: decision['close_as'] == 'out_of_scope' ? 'NOT_PLANNED' : 'COMPLETED')
+    end
     mutate('addReaction', subjectId: item.fetch('id'), content: 'HOORAY')
   end
 

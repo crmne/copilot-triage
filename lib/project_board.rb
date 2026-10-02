@@ -3,32 +3,35 @@
 require 'json'
 require 'open3'
 
-# The maintainer's project board. Four columns sort what needs the maintainer by
-# effort (approve, answer or decide, review, fix); everything else waits on
-# someone else or sits in the backlog. Finished work goes to Done and is
-# archived after a while. Backlog and any column of the maintainer's own are
-# never overridden.
+# The maintainer's project board. The first three columns are the maintainer's
+# moves, by effort: sign off on a prepared result, decide, do the work. The
+# rest need nothing from them: someone else's move, not now, done. Finished
+# work is archived after a while. Not now and any column of the maintainer's
+# own are never overridden.
 class ProjectBoard
   class Error < RuntimeError; end
 
   COLUMNS = {
-    'approve' => 'Approve', 'decide' => 'Answer or decide', 'review' => 'Review', 'fix' => 'Fix',
-    'waiting' => 'Waiting on others', 'backlog' => 'Backlog', 'done' => 'Done'
+    'sign_off' => 'Sign off', 'decide' => 'Decide', 'do' => 'Do', 'theirs' => 'Their move',
+    'not_now' => 'Not now', 'done' => 'Done'
   }.freeze
   DESCRIPTIONS = {
-    'approve' => 'A quick yes: merge, accept, or confirm',
-    'decide' => 'A question to answer or a decision to make',
-    'review' => 'A change worth reading closely',
-    'fix' => 'Work for you to do or finish',
-    'waiting' => 'Someone else has the next move',
-    'backlog' => 'Valid, nobody has to act now',
-    'done' => 'Finished; archived after a while'
+    'sign_off' => 'Say yes to a prepared result: merge a ready pull request or accept a resolution',
+    'decide' => 'Use your judgment: scope, feature requests, design, answers only you can give',
+    'do' => 'Use your hands: review a pull request waiting on you, fix a bug, finish your own work',
+    'theirs' => 'Someone else has the next step: a contributor, a reporter, a reviewer, or upstream',
+    'not_now' => 'Nobody acts until you choose: accepted but not scheduled, your roadmap',
+    'done' => 'Closed or merged; archived after a while'
   }.freeze
-  COLORS = { 'approve' => 'GREEN', 'decide' => 'PINK', 'review' => 'BLUE', 'fix' => 'ORANGE',
-             'waiting' => 'YELLOW', 'backlog' => 'GRAY', 'done' => 'PURPLE' }.freeze
-  # Columns from earlier versions, removed when the board is set up again.
-  RETIRED = ['Needs me', 'Waiting on them', 'Blocked', 'Ready to merge', 'In progress'].freeze
-  MOVABLE = [nil, 'approve', 'decide', 'review', 'fix', 'waiting', 'done'].freeze
+  COLORS = { 'sign_off' => 'GREEN', 'decide' => 'PINK', 'do' => 'ORANGE', 'theirs' => 'YELLOW',
+             'not_now' => 'GRAY', 'done' => 'PURPLE' }.freeze
+  # Columns of v0.8 renamed in place, keeping their IDs so cards stay put.
+  RENAMED = { 'Approve' => 'sign_off', 'Answer or decide' => 'decide', 'Fix' => 'do',
+              'Waiting on others' => 'theirs', 'Backlog' => 'not_now' }.freeze
+  # Columns from earlier versions, removed when the board is set up again;
+  # their cards are placed again.
+  RETIRED = ['Needs me', 'Waiting on them', 'Blocked', 'Ready to merge', 'In progress', 'Review'].freeze
+  MOVABLE = [nil, 'sign_off', 'decide', 'do', 'theirs', 'done'].freeze
   PRIORITIES = { 'urgent' => 'Urgent', 'high' => 'High', 'normal' => 'Normal' }.freeze
   STATUS_FIELD = 'Status'
   PRIORITY_FIELD = 'Priority'
@@ -147,6 +150,44 @@ class ProjectBoard
     item.fetch('id')
   end
 
+  # Draft cards of this board by title, such as the one for a failing main
+  # branch: { title => item ID }.
+  def drafts
+    cursor = nil
+    found = {}
+    loop do
+      query = <<~GRAPHQL
+        query($id: ID!, $after: String) {
+          node(id: $id) { ... on ProjectV2 { items(first: 100, after: $after) {
+            pageInfo { hasNextPage endCursor }
+            nodes { id isArchived content { ... on DraftIssue { title } } }
+          } } }
+        }
+      GRAPHQL
+      page = graphql(query, id: id, after: cursor).dig('data', 'node', 'items')
+      page.fetch('nodes').each do |node|
+        title = node.dig('content', 'title')
+        found[title] = node.fetch('id') if title && !node['isArchived']
+      end
+      break unless page.dig('pageInfo', 'hasNextPage')
+
+      cursor = page.dig('pageInfo', 'endCursor')
+    end
+    found
+  end
+
+  # Adds a draft card and places it; returns its item ID.
+  def add_draft(title, body:, column:, priority: nil, next_step: nil)
+    query = 'mutation($input: AddProjectV2DraftIssueInput!) ' \
+            '{ addProjectV2DraftIssue(input: $input) { projectItem { id } } }'
+    item = graphql(query, input: { projectId: id, title: title, body: body })
+           .dig('data', 'addProjectV2DraftIssue', 'projectItem', 'id')
+    set_column(item, column)
+    set_option(item, PRIORITY_FIELD, PRIORITIES.fetch(priority)) if priority && field(PRIORITY_FIELD)
+    set_value(item, NEXT_STEP_FIELD, text: next_step) if next_step && field(NEXT_STEP_FIELD)
+    item
+  end
+
   # Brings the project to the board's shape: the columns in order, the Priority
   # and Next step fields, and the All repositories view. Changes nothing that is
   # already right, keeps columns of the maintainer's own, and returns what it did.
@@ -180,20 +221,22 @@ class ProjectBoard
 
   def ensure_columns
     status = field(STATUS_FIELD)
-    current = status.fetch('options').map { |option| option.fetch('name') }
+    existing = status.fetch('options')
+    current = existing.map { |option| option.fetch('name') }
     wanted = COLUMNS.keys.map { |key| column_name(key) }
-    own = current - wanted - RETIRED
+    own = current - wanted - RETIRED - RENAMED.keys
     return if current == wanted + own
 
     # An option sent without its ID is recreated, which clears it from every
-    # card; existing columns keep their IDs, so cards keep their places.
-    existing = status.fetch('options').to_h { |option| [option.fetch('name'), option] }
+    # card; existing and renamed columns keep their IDs, so cards keep their places.
     options = COLUMNS.keys.map do |key|
-      { id: existing.dig(column_name(key), 'id'), name: column_name(key), color: COLORS.fetch(key),
+      option = existing.find { |entry| entry['name'] == column_name(key) } ||
+               existing.find { |entry| RENAMED[entry['name']] == key }
+      { id: option&.fetch('id'), name: column_name(key), color: COLORS.fetch(key),
         description: DESCRIPTIONS.fetch(key) }.compact
     end
     options += own.map do |name|
-      option = existing.fetch(name)
+      option = existing.find { |entry| entry['name'] == name }
       { id: option['id'], name: name, color: option['color'] || 'GRAY', description: option['description'].to_s }
     end
     graphql('mutation($input: UpdateProjectV2FieldInput!) { updateProjectV2Field(input: $input) { clientMutationId } }',

@@ -18,6 +18,8 @@ RSpec.describe BoardSweep do
   let(:archived) { [] }
   let(:requests) { [] }
   let(:review_requests) { [] }
+  let(:drafts) { {} }
+  let(:main_checks) { +'SUCCESS' }
 
   def comment(association, created_at = '2026-09-02T00:00:00Z', login: 'someone')
     { 'createdAt' => created_at, 'authorAssociation' => association, 'author' => { 'login' => login } }
@@ -64,17 +66,17 @@ RSpec.describe BoardSweep do
     File.write('board.yml', YAML.dump('board' => settings))
     allow(sweep).to receive(:puts)
     allow(sweep).to receive(:rest) { |method, path, **body| requests << [method, path, body] }
-    allow(board).to receive_messages(id: 'project-id', set_up: [], ensure_repository_view: nil)
+    allow(sweep).to receive(:repository_graphql) { |_query, **variables| review_requests << variables.fetch(:input) }
+    allow(board).to receive_messages(id: 'project-id', set_up: [], ensure_repository_view: nil, drafts: drafts)
+    allow(board).to receive(:add_draft)
     allow(board).to receive(:add) { |content| { 'id' => "new-#{content}" } }
     allow(board).to receive(:set_column) { |item, column| moves << [item, column] }
     allow(board).to receive(:archive) { |item| archived << item }
-    allow(board).to receive(:graphql) do |query, **variables|
-      if query.include?('requestReviewsByLogin')
-        review_requests << variables.fetch(:input)
-        next { 'data' => {} }
-      end
+    allow(board).to receive(:graphql) do |query, **_variables|
       if query.include?('defaultBranchRef')
-        { 'data' => { 'repository' => { 'defaultBranchRef' => { 'name' => 'main' } } } }
+        { 'data' => { 'repository' => { 'defaultBranchRef' => {
+          'name' => 'main', 'target' => { 'statusCheckRollup' => { 'state' => main_checks } }
+        } } } }
       elsif query.include?('states: CLOSED')
         { 'data' => { 'repository' => finished.transform_values { |nodes| { 'nodes' => nodes } } } }
       else
@@ -97,27 +99,49 @@ RSpec.describe BoardSweep do
                 issue(6, comments: [comment('OWNER'), comment('NONE', login: 'github-actions[bot]')]))
 
     expect(sweep.run).to be(true)
-    expect(moves).to eq([%w[new-issue-1 decide], %w[new-issue-2 waiting], %w[new-issue-3 fix],
-                         %w[new-issue-4 backlog], %w[new-issue-5 waiting], %w[new-issue-6 waiting]])
+    expect(moves).to eq([%w[new-issue-1 decide], %w[new-issue-2 theirs], %w[new-issue-3 do],
+                         %w[new-issue-4 not_now], %w[new-issue-5 theirs], %w[new-issue-6 theirs]])
   end
 
   it 'brings a waiting issue back when the reporter answered after it moved' do
-    issues.push(issue(1, status: 'Waiting on others', updated_at: '2026-09-01T00:00:00Z', comments: [comment('NONE')]),
-                issue(2, status: 'Waiting on others', updated_at: '2026-09-03T00:00:00Z', comments: [comment('NONE')]),
-                issue(3, status: 'Waiting on others', updated_at: '2026-09-01T00:00:00Z', labels: ['bug'],
+    issues.push(issue(1, status: 'Their move', updated_at: '2026-09-01T00:00:00Z', comments: [comment('NONE')]),
+                issue(2, status: 'Their move', updated_at: '2026-09-03T00:00:00Z', comments: [comment('NONE')]),
+                issue(3, status: 'Their move', updated_at: '2026-09-01T00:00:00Z', labels: ['bug'],
                          comments: [comment('NONE')]),
-                issue(4, status: 'Answer or decide', comments: [comment('OWNER')]))
+                issue(4, status: 'Decide', comments: [comment('OWNER')]))
 
     sweep.run
-    expect(moves).to eq([%w[item-1 decide], %w[item-3 fix]])
+    expect(moves).to eq([%w[item-1 decide], %w[item-3 do]])
   end
 
-  it 'never moves cards out of the backlog or a column of the maintainer own' do
-    issues.push(issue(1, status: 'Backlog', linked: 1), issue(2, status: 'Someday', comments: [comment('NONE')]),
-                issue(3, status: 'Answer or decide', linked: 1))
+  it 'never moves cards out of Not now or a column of the maintainer own' do
+    issues.push(issue(1, status: 'Not now', linked: 1), issue(2, status: 'Someday', comments: [comment('NONE')]),
+                issue(3, status: 'Decide', linked: 1))
 
     sweep.run
-    expect(moves).to eq([%w[item-3 waiting]])
+    expect(moves).to eq([%w[item-3 theirs]])
+  end
+
+  it 'moves an issue with the pull request that would close it' do
+    pulls.push(pull(7, copilot: copilot(:approve)))
+    linked = issue(1, linked: 1)
+    linked['closedByPullRequestsReferences']['nodes'] = [{ 'number' => 7 }]
+    issues.push(linked)
+
+    sweep.run
+    expect(moves).to eq([%w[new-pr-7 sign_off], %w[new-issue-1 sign_off]])
+  end
+
+  it 'adds an urgent card while the default branch fails, and archives it once it passes' do
+    main_checks.replace('FAILURE')
+    sweep.run
+    expect(board).to have_received(:add_draft)
+      .with('main is failing in crmne/spotifast', hash_including(column: 'do', priority: 'urgent'))
+
+    main_checks.replace('SUCCESS')
+    drafts['main is failing in crmne/spotifast'] = 'draft-item'
+    sweep.run
+    expect(archived).to eq(['draft-item'])
   end
 
   it 'gives a card without a column one, such as after retired columns are removed' do
@@ -135,8 +159,17 @@ RSpec.describe BoardSweep do
                  pull(9, copilot: copilot(:approve, commit: 'older')), pull(10, mergeable: 'CONFLICTING'))
 
       sweep.run
-      expect(moves.map(&:last)).to eq(%w[approve waiting approve review waiting waiting waiting waiting review
-                                         waiting])
+      expect(moves.map(&:last)).to eq(%w[sign_off theirs sign_off do theirs theirs theirs theirs do theirs])
+    end
+
+    it 'follows a decisive review by another bot, such as CodeRabbit' do
+      rabbit = lambda { |state|
+        { 'author' => { 'login' => 'coderabbitai' }, 'state' => state, 'commit' => { 'oid' => 'head' } }
+      }
+      pulls.push(pull(1, copilot: rabbit.call('CHANGES_REQUESTED')), pull(2, copilot: rabbit.call('APPROVED')))
+
+      sweep.run
+      expect(moves.map(&:last)).to eq(%w[theirs sign_off])
     end
 
     it 'treats the maintainer own pull requests as work to finish or merge' do
@@ -145,16 +178,16 @@ RSpec.describe BoardSweep do
                  pull(3, association: 'OWNER', author: 'crmne', draft: true))
 
       sweep.run
-      expect(moves.map(&:last)).to eq(%w[approve fix fix])
+      expect(moves.map(&:last)).to eq(%w[sign_off do do])
     end
 
     it 'leaves a closer look to the agent and sends an unjudged review to triage once' do
       pulls.push(pull(1, copilot: copilot(:closer)),
-                 pull(2, status: 'Approve', copilot: copilot(:closer), next_at: '2026-10-01T09:00:00Z'),
-                 pull(3, status: 'Approve', copilot: copilot(:closer), next_at: '2026-10-01T11:00:00Z'))
+                 pull(2, status: 'Sign off', copilot: copilot(:closer), next_at: '2026-10-01T09:00:00Z'),
+                 pull(3, status: 'Sign off', copilot: copilot(:closer), next_at: '2026-10-01T11:00:00Z'))
 
       sweep.run
-      expect(moves).to eq([%w[new-pr-1 review]])
+      expect(moves).to eq([%w[new-pr-1 do]])
       dispatched = requests.select { |_, path, _| path.end_with?('/dispatches') }
       expect(dispatched.map { |_, _, body| body.dig(:inputs, :number) }).to eq(%w[1 2])
       expect(dispatched.first).to eq(['POST', 'repos/crmne/spotifast/actions/workflows/issue-assessment.yml/dispatches',
@@ -162,17 +195,17 @@ RSpec.describe BoardSweep do
     end
 
     it 'keeps a question the agent put to the maintainer' do
-      pulls.push(pull(1, status: 'Answer or decide', copilot: copilot(:approve)))
+      pulls.push(pull(1, status: 'Decide', copilot: copilot(:approve)))
 
       sweep.run
       expect(moves).to be_empty
     end
 
-    it 'requests the maintainer review in Approve and Review and withdraws it elsewhere' do
+    it 'requests the maintainer review in Sign off and Do and withdraws it elsewhere' do
       pulls.push(pull(1, copilot: copilot(:approve)),
-                 pull(2, status: 'Waiting on others', requested: %w[crmne copilot-pull-request-reviewer],
+                 pull(2, status: 'Their move', requested: %w[crmne copilot-pull-request-reviewer],
                          copilot: copilot(:changes, commit: 'older')),
-                 pull(3, status: 'Review', requested: 'crmne'),
+                 pull(3, status: 'Do', requested: 'crmne'),
                  pull(4, association: 'OWNER', author: 'crmne'))
 
       sweep.run
@@ -187,10 +220,10 @@ RSpec.describe BoardSweep do
   it 'moves finished work to Done and archives it after a week there' do
     old = (Time.now.utc - (8 * 86_400)).iso8601
     recent = (Time.now.utc - 86_400).iso8601
-    finished['issues'] = [{ 'number' => 1, 'projectItems' => { 'nodes' => card(1, 'Fix') } },
+    finished['issues'] = [{ 'number' => 1, 'projectItems' => { 'nodes' => card(1, 'Do') } },
                           { 'number' => 2, 'projectItems' => { 'nodes' => [] } },
                           { 'number' => 4, 'projectItems' => { 'nodes' => card(4, 'Done', updated_at: old) } }]
-    finished['pullRequests'] = [{ 'number' => 3, 'projectItems' => { 'nodes' => card(3, 'Approve') } },
+    finished['pullRequests'] = [{ 'number' => 3, 'projectItems' => { 'nodes' => card(3, 'Sign off') } },
                                 { 'number' => 5, 'projectItems' => { 'nodes' => card(5, 'Done', updated_at: recent) } }]
 
     sweep.run
@@ -204,7 +237,7 @@ RSpec.describe BoardSweep do
     issues.push(issue(1, status: 'Done', labels: ['bug']), archived_card)
 
     sweep.run
-    expect(moves).to eq([%w[item-1 fix], %w[new-issue-2 decide]])
+    expect(moves).to eq([%w[item-1 do], %w[new-issue-2 decide]])
     expect(board).to have_received(:add).with('issue-2')
   end
 
@@ -225,7 +258,7 @@ RSpec.describe BoardSweep do
     expect(moves).to be_empty
     expect(archived).to be_empty
     expect(board).not_to have_received(:set_up)
-    expect(sweep).to have_received(:puts).with('#1: new card to Answer or decide')
+    expect(sweep).to have_received(:puts).with('#1: new card to Decide')
     expect(sweep).to have_received(:puts).with('Board sweep: 1 change proposed.')
   end
 

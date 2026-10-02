@@ -61,7 +61,7 @@ class TriageTools
   }.freeze
   # Extra submit_decision arguments when the repository keeps a project board.
   BOARD_PROPERTIES = {
-    next_move: { type: 'string', enum: %w[approve decide review fix others] },
+    next_move: { type: 'string', enum: %w[sign_off decide do theirs] },
     priority: { type: 'string', enum: %w[urgent high normal] },
     next_step: { type: 'string', maxLength: 160 }
   }.freeze
@@ -73,15 +73,18 @@ class TriageTools
   }.freeze
   # Extra submit_decision argument for a new discussion when the policy moves reports to issues.
   MOVE_PROPERTIES = { move_to_issue: { type: 'boolean' } }.freeze
+  # Extra submit_decision argument for an issue: a proposed closure.
+  CLOSE_PROPERTIES = { close_as: { type: %w[string null], enum: ['fixed', 'resolved', 'out_of_scope', nil] } }.freeze
   DIFF_HINT = ' For the pull request being assessed, diff:path reads the patch of a changed file.'
 
   attr_reader :ledger
 
-  def self.schemas(board: false, pull_request: false, move: false)
+  def self.schemas(board: false, pull_request: false, move: false, issue: false)
     extra = {}
     extra.merge!(BOARD_PROPERTIES) if board
     extra.merge!(PULL_REQUEST_PROPERTIES) if pull_request
     extra.merge!(MOVE_PROPERTIES) if move
+    extra.merge!(CLOSE_PROPERTIES) if issue
     submit = SCHEMAS.fetch('submit_decision')
     schemas = SCHEMAS.merge('submit_decision' => submit.merge(
       properties: submit.fetch(:properties).merge(extra), required: submit.fetch(:required) + extra.keys.map(&:to_s)
@@ -92,8 +95,8 @@ class TriageTools
     schemas.merge('read_evidence' => read.merge(description: read.fetch(:description) + DIFF_HINT))
   end
 
-  def self.definitions(board: false, pull_request: false, move: false)
-    schemas(board:, pull_request:, move:).map do |name, schema|
+  def self.definitions(board: false, pull_request: false, move: false, issue: false)
+    schemas(board:, pull_request:, move:, issue:).map do |name, schema|
       { name: name, description: schema.fetch(:description),
         inputSchema: { type: 'object', properties: schema.fetch(:properties),
                        required: schema.fetch(:required), additionalProperties: false },
@@ -102,11 +105,12 @@ class TriageTools
   end
 
   def initialize(root:, repository:, config:, ledger_path: nil, token: nil, board: false, pull_request: nil,
-                 move: false)
+                 move: false, issue: false)
     @root = File.realpath(root)
     @board = board
     @pull_request = pull_request
     @move = move
+    @issue = issue
     @repository = repository
     raise ArgumentError, 'Invalid repository' unless repository.match?(%r{\A[\w.-]+/[\w.-]+\z})
 
@@ -122,7 +126,7 @@ class TriageTools
   end
 
   def schema_options
-    { board: @board, pull_request: !@pull_request.nil?, move: @move }
+    { board: @board, pull_request: !@pull_request.nil?, move: @move, issue: @issue }
   end
 
   def call(name, arguments)
@@ -237,9 +241,11 @@ class TriageTools
     if sources.any? { |source| source.start_with?('diff:') }
       raise ArgumentError, 'Diffs are evidence for you, not citations.'
     end
-    if decision[:out_of_scope] && !decision[:comment]
-      raise ArgumentError, 'Explain in comment why the change is out of scope.'
+    if (decision[:out_of_scope] || decision[:close_as]) && !decision[:comment]
+      raise ArgumentError, 'Explain in comment why it can be closed.'
     end
+
+    close_evidence!(decision) if decision[:close_as]
 
     if decision[:related_issue]
       reference = "issue:#{decision[:related_issue]}"
@@ -257,6 +263,15 @@ class TriageTools
 
     @ledger['decision'] = decision.transform_keys(&:to_s)
     { accepted: true }
+  end
+
+  # A closure must rest on evidence the agent read: release notes for a fix,
+  # documented scope for out of scope.
+  def close_evidence!(decision)
+    kind = { 'fixed' => 'release:', 'out_of_scope' => 'file:' }[decision[:close_as]]
+    return if kind.nil? || decision.fetch(:sources).any? { |source| source.start_with?(kind) }
+
+    raise ArgumentError, "Cite the #{kind.delete(':')} you read that establishes close_as #{decision[:close_as]}."
   end
 
   # Also used by the publisher to recheck cited remote evidence before mutation.

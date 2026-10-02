@@ -4,6 +4,7 @@ require 'json'
 require 'open3'
 require 'time'
 require 'yaml'
+require_relative 'board_rules'
 require_relative 'copilot_review'
 require_relative 'project_board'
 require_relative 'triage_event'
@@ -19,7 +20,8 @@ class BoardSweep
   # A pull request is never moved out of a question the agent put to the
   # maintainer, or out of the backlog; facts decide everything else.
   PULL_REQUEST_MOVABLE = (ProjectBoard::MOVABLE - ['decide']).freeze
-  REVIEW_COLUMNS = %w[approve review].freeze
+  # The maintainer's review is requested while a pull request waits on them.
+  REVIEW_COLUMNS = %w[sign_off do].freeze
 
   def initialize(environment = ENV)
     @environment = environment
@@ -37,7 +39,9 @@ class BoardSweep
       report("Board set up: #{setup.join(', ')}.") if setup.any?
     end
     @cards = 0
-    %w[issues pullRequests].each do |connection|
+    @pull_columns = {}
+    # Pull requests first, so an issue can follow the card of its fix.
+    %w[pullRequests issues].each do |connection|
       each_open(connection) do |node|
         break if @changes >= MAX_CHANGES
 
@@ -45,6 +49,7 @@ class BoardSweep
       end
     end
     finish_work
+    watch_default_branch
     report("Board view added for #{@repository}.") if @cards.positive? && !dry_run? &&
                                                       @board.ensure_repository_view(@repository)
     report("Board sweep: #{@changes} change#{'s' unless @changes == 1}#{' proposed' if dry_run?}.")
@@ -53,44 +58,6 @@ class BoardSweep
   rescue ProjectBoard::Error => e
     report("Failed: #{e.message}.")
     false
-  end
-
-  def issue_column(issue, current, status_updated_at)
-    return 'waiting' if issue.dig('closedByPullRequestsReferences', 'totalCount').to_i.positive?
-
-    human = issue.dig('comments', 'nodes').reject { |comment| TriageEvent.bot?(comment['author']) }.last
-    yours = bug?(issue) ? 'fix' : 'decide'
-    if current.nil?
-      return 'backlog' if maintainer?(issue) && (human.nil? || maintainer?(human))
-
-      return human && maintainer?(human) ? 'waiting' : yours
-    end
-    return unless current == 'waiting' && human && !maintainer?(human)
-
-    yours if status_updated_at.nil? || human.fetch('createdAt') > status_updated_at
-  end
-
-  # Returns a column, or :agent for a Copilot "needs a closer look" verdict,
-  # which triage judges when the review arrives.
-  def pull_request_column(pull)
-    own = maintainer?(pull)
-    yours_or_theirs = own ? 'fix' : 'waiting'
-    return yours_or_theirs if pull['isDraft']
-
-    checks = pull.dig('commits', 'nodes', 0, 'commit', 'statusCheckRollup', 'state')
-    return yours_or_theirs if %w[FAILURE ERROR].include?(checks) || pull['mergeable'] == 'CONFLICTING' ||
-                              (!own && pull['reviewDecision'] == 'CHANGES_REQUESTED')
-    return 'approve' if pull['reviewDecision'] == 'APPROVED' && [nil, 'SUCCESS'].include?(checks) &&
-                        pull['mergeable'] == 'MERGEABLE'
-    return 'waiting' if CopilotReview.requested?(pull) || %w[PENDING EXPECTED].include?(checks)
-
-    review = CopilotReview.latest(pull)
-    case review && review['current'] && review['verdict']
-    when 'approve' then 'approve'
-    when 'changes' then yours_or_theirs
-    when 'closer_look' then :agent
-    else own ? 'approve' : 'review'
-    end
   end
 
   private
@@ -102,16 +69,24 @@ class BoardSweep
     reopened = item && (item['isArchived'] || current == 'done')
     current = nil if reopened
     pull = connection == 'pullRequests'
-    column = pull ? pull_request_column(node) : issue_column(node, current, status&.fetch('updatedAt', nil))
+    updated_at = status&.fetch('updatedAt', nil)
+    column = if pull then BoardRules.pull_request_column(node)
+             else BoardRules.issue_column(node, current, updated_at, linked_column: linked_column(node))
+             end
     if column == :agent
       judge(node, item) unless dry_run?
-      column = current || 'review'
+      column = current || 'do'
     end
     movable = pull ? PULL_REQUEST_MOVABLE : ProjectBoard::MOVABLE
     final = item && (column.nil? || column == current || !movable.include?(current)) ? current : column
     @cards += 1 if final
+    @pull_columns[node.fetch('number')] = final if pull
     move(node, item, current, final, pull) unless item && final == current
     keep_review_request(node, final) if pull
+  end
+
+  def linked_column(issue)
+    issue.dig('closedByPullRequestsReferences', 'nodes').to_a.filter_map { |pull| @pull_columns[pull['number']] }.first
   end
 
   # A "needs a closer look" verdict is the agent's call. Triage runs on Copilot's
@@ -161,7 +136,7 @@ class BoardSweep
     input = if wanted then CopilotReview.request_input(pull.fetch('id'), @maintainer)
             else CopilotReview.withdraw_input(pull, pull.fetch('id'), @maintainer)
             end
-    @board.graphql(CopilotReview::REQUEST_MUTATION, input: input)
+    repository_graphql(CopilotReview::REQUEST_MUTATION, input: input)
   end
 
   # Closed issues and closed or merged pull requests go to Done, and leave the
@@ -217,7 +192,7 @@ class BoardSweep
     details = if connection == 'issues'
                 'labels(first: 20) { nodes { name } } ' \
                   'comments(last: 5) { nodes { createdAt authorAssociation author { __typename login } } } ' \
-                  'closedByPullRequestsReferences(first: 1, includeClosedPrs: false) { totalCount }'
+                  'closedByPullRequestsReferences(first: 3, includeClosedPrs: false) { totalCount nodes { number } }'
               else
                 "isDraft mergeable reviewDecision #{CopilotReview::FIELDS} " \
                   'commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }'
@@ -248,28 +223,59 @@ class BoardSweep
     GRAPHQL
   end
 
+  # Actions on a repository, such as review requests and dispatches, come from
+  # the workflow's own token, so they appear as the bot rather than the
+  # maintainer; the project token only reaches the board.
+  def repository_token
+    token = @environment['GH_TOKEN'].to_s
+    token.empty? ? @environment['TRIAGE_PROJECT_TOKEN'] : token
+  end
+
+  def repository_graphql(query, **variables)
+    _output, _errors, status = Open3.capture3({ 'GH_TOKEN' => repository_token, 'GITHUB_TOKEN' => nil },
+                                              'gh', 'api', 'graphql', '--input', '-',
+                                              stdin_data: JSON.generate(query: query, variables: variables))
+    report('GitHub refused a review request change.') unless status.success?
+  end
+
   def rest(method, path, **body)
-    environment = { 'GH_TOKEN' => @environment['TRIAGE_PROJECT_TOKEN'], 'GITHUB_TOKEN' => nil }
+    environment = { 'GH_TOKEN' => repository_token, 'GITHUB_TOKEN' => nil }
     _output, _errors, status = Open3.capture3(environment, 'gh', 'api', '--method', method, path, '--input', '-',
                                               stdin_data: JSON.generate(body))
     report("GitHub refused #{method} #{path}.") unless status.success?
   end
 
   def default_branch
-    @default_branch ||= begin
+    branch_state.fetch('name')
+  end
+
+  def branch_state
+    @branch_state ||= begin
       owner, name = @repository.split('/', 2)
-      @board.graphql('query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) ' \
-                     '{ defaultBranchRef { name } } }', owner: owner, name: name)
-            .dig('data', 'repository', 'defaultBranchRef', 'name') || 'main'
+      ref = @board.graphql('query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) ' \
+                           '{ defaultBranchRef { name target { ... on Commit { statusCheckRollup { state } } } } } }',
+                           owner: owner, name: name).dig('data', 'repository', 'defaultBranchRef') || {}
+      { 'name' => ref['name'] || 'main', 'checks' => ref.dig('target', 'statusCheckRollup', 'state') }
     end
   end
 
-  def bug?(issue)
-    issue.dig('labels', 'nodes').to_a.any? { |label| label['name'] == 'bug' }
-  end
-
-  def maintainer?(node)
-    TriageEvent.maintainer?(node['authorAssociation'])
+  # A failing default branch makes every pull request look broken, so it gets
+  # an urgent card of its own in Do until it passes again.
+  def watch_default_branch
+    title = "#{default_branch} is failing in #{@repository}"
+    failing = %w[FAILURE ERROR].include?(branch_state['checks'])
+    card = @board.drafts[title]
+    if failing && !card
+      report("#{title}: urgent card added")
+      unless dry_run?
+        @board.add_draft(title, body: 'Every pull request inherits these failures until the default branch passes.',
+                                column: 'do', priority: 'urgent',
+                                next_step: "Fix the failing checks on #{default_branch} first")
+      end
+    elsif !failing && card
+      report("#{title.sub('is failing', 'passes again')}: card archived")
+      @board.archive(card) unless dry_run?
+    end
   end
 
   def dry_run?

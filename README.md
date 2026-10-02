@@ -20,12 +20,16 @@ an agent investigates with read-only tools and decides what helps:
   reads Copilot's verdict when it arrives, checks your contribution policy
   (screenshots, an issue first, scope), and explains or closes changes your
   documented scope rules out.
+- **Closing.** Closes what is plainly finished, each time with a comment that
+  says why: duplicates, issues a release fixed, issues the reporter says are
+  resolved, and requests your documented scope rules out. Merging and every
+  judgment call stay with you.
 - **Your board.** Every issue and pull request lands on a GitHub project board
-  sorted by what it needs from you: Approve, Answer or decide, Review, Fix, or
-  nothing yet because it waits on someone else. Each card has a priority and a
-  one-line next step, your review is requested on the pull requests that need
-  it, and urgent issues are assigned to you. Triage builds the board itself on
-  an empty project.
+  sorted by what it needs from you: Sign off, Decide, Do, or nothing because
+  it is someone else's move. Each card has a priority and a one-line next
+  step, your review is requested on the pull requests that need it, and urgent
+  issues are assigned to you. Triage builds the board itself on an empty
+  project.
 
 So you can turn off GitHub's email for everything and open the board instead.
 
@@ -230,6 +234,26 @@ only against an older issue, never a reopened or maintainer-authored one, and
 never after a maintainer has joined the conversation. Both reports are fetched
 again before anything changes.
 
+### Closing finished issues
+
+```yaml
+closing: suggest # or auto
+```
+
+The agent proposes closing an issue for one of three reasons, always with a
+comment that explains it:
+
+- **Fixed:** a published release fixed it, citing the release notes that name
+  the fix. A fix on `main` that no release contains is not enough.
+- **Resolved:** the reporter says it is solved, in their latest comment.
+- **Out of scope:** your documented scope rules out the request itself, citing
+  the document.
+
+`suggest` posts the comment and puts the issue in **Sign off** on your board.
+`auto` also closes it, as completed or, for out of scope, as not planned, but
+never an issue a maintainer opened, joined, or reopened; those go to **Sign
+off** instead.
+
 ### Follow-ups and commands
 
 Every eligible human comment reaches the agent, which decides whether a reply
@@ -296,7 +320,11 @@ what makes `pull_request_target` safe here.
   requests still waiting on a process step are skipped. GitHub bills a Copilot
   review to whoever requests it: the `review-token` input, or `copilot-token`.
   After a new push, a fresh review of the new commit is requested without
-  calling the model, once per commit. Drafts wait until they are ready.
+  calling the model, once per commit. Drafts wait until they are ready. How
+  thorough Copilot's review is, and what it costs, is a setting in GitHub:
+  Lite costs less than the default.
+- **Your own pull requests** are not assessed and never cost a model call: the
+  board places them from their checks, conflicts, and reviews.
 - **Policy.** Replies only when the author needs something: a requirement from
   your contribution policy, one essential question, or a scope explanation. It
   does not summarize changes or review code line by line.
@@ -308,18 +336,17 @@ what makes `pull_request_target` safe here.
 ## The board
 
 A GitHub project board of everything that needs you, across every repository
-that uses it, public and private. Its first four columns sort your work by how
-much of you it takes, so you can clear **Approve** in minutes on your phone and
-save **Review** and **Fix** for focus time:
+that uses it, public and private. Each column names what an item needs from
+you, so you can clear **Sign off** in minutes on your phone and save **Do** for
+focus time:
 
-| Column | What it takes | What lands there |
+| Column | What it asks of you | What lands there |
 | --- | --- | --- |
-| **Approve** | Seconds | Pull requests Copilot recommends approving, approved and green ones, and anything else where a quick yes is all that is left |
-| **Answer or decide** | Minutes | A question for you, a feature request, a scope call |
-| **Review** | Focus time | A change worth reading closely |
-| **Fix** | Hours | A confirmed bug, or your own pull request that still needs work |
-| **Waiting on others** | Nothing | The reporter or author owes an answer or changes, Copilot is still reviewing, or checks are running |
-| **Backlog** | Nothing | Valid, nobody has to act now; yours to set |
+| **Sign off** | Say yes to a prepared result | Pull requests ready to merge, and closures triage proposes but may not make itself |
+| **Decide** | Use your judgment | Feature requests, scope and design calls, answers only you can give |
+| **Do** | Use your hands | A confirmed bug, a pull request worth reading closely, your own unfinished work, a failing default branch |
+| **Their move** | Nothing | A contributor, reporter, reviewer, or upstream has the next step, or checks are still running |
+| **Not now** | Nothing until you choose | Accepted but not scheduled, your own notes and roadmap; yours to set |
 | **Done** | Nothing | Closed or merged, archived after a week |
 
 Finished work moves to **Done** the moment it closes or merges, so you can see
@@ -365,6 +392,8 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write # requests your review
+  actions: write       # sends fork pull requests to triage
 
 concurrency:
   group: board
@@ -384,42 +413,54 @@ jobs:
 ```
 
 Run it once by hand with `dry_run` turned off. It builds the board on the empty
-project: the seven columns in order with their colors, the Priority and Next step
+project: the six columns in order with their colors, the Priority and Next step
 fields, an **All repositories** board view, and a board view for each
 repository once it has cards. Every sweep keeps that shape, archives finished
-work, and fixes nothing that is already right. A column of your own survives;
-the columns of earlier versions are replaced, and their cards placed again.
+work, and fixes nothing that is already right. A column of your own survives.
+Columns of earlier versions are renamed in place, so their cards stay put:
+Approve becomes Sign off, Answer or decide becomes Decide, Fix becomes Do,
+Waiting on others becomes Their move, and Backlog becomes Not now. Review is
+retired, and its cards are placed again.
 
 ### How cards move
 
 On each assessment, the agent picks the item's next move, a priority, and the
-next step. An issue moves to **Waiting on others** only when that run asked the
-reporter something. Priority only rises. Urgent issues are assigned to
-`maintainer`, the one notification GitHub sends you.
+next step. An issue moves to **Their move** only when that run asked the
+reporter something, and a closed one goes to **Done**. Priority only rises.
+Urgent issues are assigned to `maintainer`, the one notification GitHub sends
+you.
 
-Pull requests follow Copilot's verdict on their latest commit, without a model:
-**Approval recommended** goes to **Approve**, **Changes recommended** to
-**Waiting on others** (your own pull requests to **Fix**), and a pull request
-whose review or checks are still running waits too, including right after a
-new push. **Needs a closer look** is the agent's call, because it means two
-things: when Copilot only says a change is broad or risky, the pull request is
-ready for you (**Approve** or **Review**); when Copilot names something still
-wrong, it goes back to its author. Triage runs when Copilot posts its review on
-a same-repository pull request; for forks, whose review runs get no secrets, the
-sweep sends the pull request to the workflow named by `triage-workflow`, once
-per review. That workflow needs a `workflow_dispatch` trigger with `kind`,
-`number`, and `dry_run` inputs, as in [Preview a report](#preview-a-report).
+Pull requests follow GitHub's facts on their latest commit, without a model.
+Drafts, failing checks, conflicts, and requested changes are the author's move
+(**Do** for your own), and an approved, green, mergeable pull request goes to
+**Sign off**. A decisive review from another review bot, such as CodeRabbit,
+counts too: requested changes go back to the author, and an approval of a ready
+pull request goes to **Sign off**. Copilot's **Approval recommended** goes to
+**Sign off**, **Changes recommended** to **Their move**, and a pull request
+whose review or checks are still running waits, including right after a new
+push. **Needs a closer look** is the agent's call, because it means two things:
+when Copilot only says a change is broad or risky, the pull request is ready
+for you (**Sign off**, or **Do** when it deserves a close read); when Copilot
+names something still wrong, it goes back to its author. Triage runs when
+Copilot posts its review on a same-repository pull request; for forks, whose
+review runs get no secrets, the sweep sends the pull request to the workflow
+named by `triage-workflow`, once per review. That workflow needs a
+`workflow_dispatch` trigger with `kind`, `number`, and `dry_run` inputs, as in
+[Preview a report](#preview-a-report).
 
-While a pull request sits in **Approve** or **Review**, your review is
-requested, so GitHub's review-requested list is your queue; it is withdrawn when
-the card moves on. Issues are not assigned to you outside urgent ones, since
-being assigned subscribes you to every comment.
+While a pull request sits in **Sign off** or **Do**, your review is requested
+by the workflow, so GitHub's review-requested list is your queue; it is
+withdrawn when the card moves on. Issues are not assigned to you outside urgent
+ones, since being assigned subscribes you to every comment.
 
-The sweep also places issues by GitHub facts: new ones go to **Answer or
-decide**, or **Fix** when labeled `bug`; to **Waiting on others** when a
-maintainer spoke last or a pull request is linked; and your own untouched
-issues to **Backlog**. A waiting card comes back when the reporter answers.
-Cards in **Backlog** or a column of your own stay where you put them.
+The sweep also places issues by GitHub facts: new ones go to **Decide**, or
+**Do** when labeled `bug`; to **Their move** when a maintainer spoke last; and
+your own untouched issues to **Not now**. An issue with an open pull request
+that would close it follows that pull request's card. A card in **Their move**
+comes back when the reporter answers. Cards in **Not now** or a column of your
+own stay where you put them. While the default branch fails its checks, an
+urgent card in **Do** says so, because every pull request inherits the failure;
+it is archived once the branch passes.
 
 ### Labels
 
@@ -485,8 +526,8 @@ Action inputs:
 Policy keys in `.github/triage.yml`: `labels` (at most two per issue),
 `replies` (optional reply templates), `sources` (globs the agent may read),
 `documentation` (links to your site), `instructions` (your project's policy),
-`duplicates`, `followups`, `report_bots`, `discussions`, `pull_requests`, and
-`board`. See [examples/triage.yml](examples/triage.yml).
+`duplicates`, `closing`, `followups`, `report_bots`, `discussions`,
+`pull_requests`, and `board`. See [examples/triage.yml](examples/triage.yml).
 
 ## Safety
 

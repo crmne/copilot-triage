@@ -175,7 +175,7 @@ RSpec.describe TriageTools do
 
       expect(tools.call('submit_decision', decision)[:content].first[:text])
         .to include('Missing required arguments: next_move, priority, next_step')
-      result = tools.call('submit_decision', decision.merge('next_move' => 'others', 'priority' => 'normal',
+      result = tools.call('submit_decision', decision.merge('next_move' => 'theirs', 'priority' => 'normal',
                                                             'next_step' => "Line one\nline two"))
       expect(result[:content].first[:text]).to include('next_step must be one non-empty line')
       expect(call('submit_decision', **decision, 'next_move' => 'decide', 'priority' => 'normal',
@@ -214,6 +214,26 @@ RSpec.describe TriageTools do
         .to include('Explain in comment')
       expect(tools.call('submit_decision', decision.except('review'))[:content].first[:text])
         .to include('Missing required arguments: review')
+    end
+  end
+
+  context 'with an issue' do
+    let(:tools) { described_class.new(root: Dir.pwd, repository: 'owner/project', config: config, issue: true) }
+    let(:decision) do
+      { 'labels' => [], 'reply' => nil, 'comment' => 'Closing, since this works now.', 'sources' => [],
+        'related_issue' => nil, 'relationship' => nil, 'mute' => false, 'close_as' => 'resolved' }
+    end
+
+    it 'closes only with an explanation, and on the evidence that establishes it' do
+      expect(tools.call('submit_decision', decision.merge('comment' => nil))[:content].first[:text])
+        .to include('Explain in comment')
+      expect(tools.call('submit_decision', decision.merge('close_as' => 'fixed'))[:content].first[:text])
+        .to include('Cite the release')
+      expect(tools.call('submit_decision', decision.merge('close_as' => 'out_of_scope'))[:content].first[:text])
+        .to include('Cite the file')
+      expect(tools.call('submit_decision', decision.except('close_as'))[:content].first[:text])
+        .to include('Missing required arguments: close_as')
+      expect(call('submit_decision', **decision).transform_keys(&:to_sym)).to eq(accepted: true)
     end
   end
 
