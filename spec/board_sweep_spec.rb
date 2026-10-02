@@ -17,6 +17,7 @@ RSpec.describe BoardSweep do
   let(:moves) { [] }
   let(:archived) { [] }
   let(:requests) { [] }
+  let(:review_requests) { [] }
 
   def comment(association, created_at = '2026-09-02T00:00:00Z', login: 'someone')
     { 'createdAt' => created_at, 'authorAssociation' => association, 'author' => { 'login' => login } }
@@ -46,7 +47,10 @@ RSpec.describe BoardSweep do
 
   def pull(number, status: nil, next_at: nil, **facts)
     checks = facts.key?(:checks) ? facts[:checks] : 'SUCCESS'
-    requested = Array(facts[:requested]).map { |login| { 'requestedReviewer' => { 'login' => login } } }
+    requested = Array(facts[:requested]).map do |login|
+      type = login.start_with?('copilot') ? 'Bot' : 'User'
+      { 'requestedReviewer' => { '__typename' => type, 'login' => login } }
+    end
     { 'id' => "pr-#{number}", 'number' => number, 'authorAssociation' => facts.fetch(:association, 'CONTRIBUTOR'),
       'author' => { 'login' => facts.fetch(:author, 'contributor') }, 'headRefOid' => 'head',
       'isDraft' => facts.fetch(:draft, false), 'mergeable' => facts.fetch(:mergeable, 'MERGEABLE'),
@@ -64,7 +68,11 @@ RSpec.describe BoardSweep do
     allow(board).to receive(:add) { |content| { 'id' => "new-#{content}" } }
     allow(board).to receive(:set_column) { |item, column| moves << [item, column] }
     allow(board).to receive(:archive) { |item| archived << item }
-    allow(board).to receive(:graphql) do |query, **|
+    allow(board).to receive(:graphql) do |query, **variables|
+      if query.include?('requestReviewsByLogin')
+        review_requests << variables.fetch(:input)
+        next { 'data' => {} }
+      end
       if query.include?('defaultBranchRef')
         { 'data' => { 'repository' => { 'defaultBranchRef' => { 'name' => 'main' } } } }
       elsif query.include?('states: CLOSED')
@@ -161,16 +169,18 @@ RSpec.describe BoardSweep do
     end
 
     it 'requests the maintainer review in Approve and Review and withdraws it elsewhere' do
-      pulls.push(pull(1, copilot: copilot(:approve)), pull(2, status: 'Waiting on others', requested: 'crmne',
-                                                              copilot: copilot(:changes)),
+      pulls.push(pull(1, copilot: copilot(:approve)),
+                 pull(2, status: 'Waiting on others', requested: %w[crmne copilot-pull-request-reviewer],
+                         copilot: copilot(:changes, commit: 'older')),
                  pull(3, status: 'Review', requested: 'crmne'),
                  pull(4, association: 'OWNER', author: 'crmne'))
 
       sweep.run
-      reviewers = requests.reject { |_, path, _| path.end_with?('/dispatches') }
-      expect(reviewers).to eq([['POST', 'repos/crmne/spotifast/pulls/1/requested_reviewers', { reviewers: ['crmne'] }],
-                               ['DELETE', 'repos/crmne/spotifast/pulls/2/requested_reviewers',
-                                { reviewers: ['crmne'] }]])
+      expect(review_requests).to eq([
+                                      { pullRequestId: 'pr-1', userLogins: ['crmne'], union: true },
+                                      { pullRequestId: 'pr-2', union: false, userLogins: [],
+                                        botLogins: ['copilot-pull-request-reviewer[bot]'], teamSlugs: [] }
+                                    ])
     end
   end
 

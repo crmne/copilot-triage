@@ -9,7 +9,7 @@ module CopilotReview
   # GraphQL fields every reader of a pull request asks for.
   FIELDS = 'headRefOid ' \
            'reviewRequests(first: 20) { nodes { requestedReviewer { __typename ... on Bot { login } ' \
-           '... on User { login } } } } ' \
+           '... on User { login } ... on Team { combinedSlug } } } } ' \
            'reviews(last: 20) { nodes { author { login } state body submittedAt commit { oid } } }'
 
   module_function
@@ -32,6 +32,25 @@ module CopilotReview
 
   def reviewers(pull)
     pull.dig('reviewRequests', 'nodes').to_a.filter_map { |request| request['requestedReviewer'] }
+  end
+
+  # Review requests go through GraphQL's requestReviewsByLogin. REST cannot
+  # remove a reviewer while a bot such as Copilot is among the requested ones,
+  # so a withdrawal sets the requested reviewers to those still pending,
+  # minus the maintainer, without adding anyone back.
+  REQUEST_MUTATION = 'mutation($input: RequestReviewsByLoginInput!) ' \
+                     '{ requestReviewsByLogin(input: $input) { clientMutationId } }'
+
+  def request_input(pull_id, login)
+    { pullRequestId: pull_id, userLogins: [login], union: true }
+  end
+
+  def withdraw_input(pull, pull_id, login)
+    pending = reviewers(pull).group_by { |reviewer| reviewer['__typename'] }
+    users = pending.fetch('User', []).map { |user| user['login'] } - [login]
+    bots = pending.fetch('Bot', []).map { |bot| "#{bot['login'].delete_suffix('[bot]')}[bot]" }
+    teams = pending.fetch('Team', []).map { |team| team['combinedSlug'] }
+    { pullRequestId: pull_id, union: false, userLogins: users, botLogins: bots, teamSlugs: teams }
   end
 
   def copilot?(author)

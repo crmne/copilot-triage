@@ -158,8 +158,10 @@ class BoardSweep
     report("PR ##{pull.fetch('number')}: #{wanted ? 'request' : 'withdraw'} @#{@maintainer}'s review")
     return if dry_run?
 
-    path = "repos/#{@repository}/pulls/#{pull.fetch('number')}/requested_reviewers"
-    rest(wanted ? 'POST' : 'DELETE', path, reviewers: [@maintainer])
+    input = if wanted then CopilotReview.request_input(pull.fetch('id'), @maintainer)
+            else CopilotReview.withdraw_input(pull, pull.fetch('id'), @maintainer)
+            end
+    @board.graphql(CopilotReview::REQUEST_MUTATION, input: input)
   end
 
   # Closed issues and closed or merged pull requests go to Done, and leave the

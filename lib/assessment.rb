@@ -987,8 +987,10 @@ class IssueAssessment # :nodoc:
     requested = CopilotReview.reviewers(item).any? { |reviewer| reviewer['login'] == login }
     return if wanted == requested
 
-    path = "repos/#{@repository}/pulls/#{@number}/requested_reviewers"
-    github(path, method: wanted ? 'POST' : 'DELETE', reviewers: [login])
+    input = if wanted then CopilotReview.request_input(item.fetch('id'), login)
+            else CopilotReview.withdraw_input(item, item.fetch('id'), login)
+            end
+    github('graphql', query: CopilotReview::REQUEST_MUTATION, variables: { input: input })
     report("Board: #{wanted ? 'requested' : 'withdrew'} @#{login}'s review.")
   end
 

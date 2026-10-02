@@ -69,18 +69,23 @@ RSpec.describe IssueAssessment, 'with a pull request on the board' do
     runner = run_with
 
     expect(board).to have_received(:update).with('pr-id', hash_including(column: 'approve'))
-    expect(runner).to have_received(:github).with('repos/crmne/ruby_llm/pulls/77/requested_reviewers',
-                                                  method: 'POST', reviewers: ['crmne'])
+    expect(runner).to have_received(:github).with(
+      'graphql', query: include('requestReviewsByLogin'),
+                 variables: { input: { pullRequestId: 'pr-id', userLogins: ['crmne'], union: true } }
+    )
   end
 
   it 'sends a pull request with real problems back to its author and withdraws the review request' do
     decision[:next_move] = 'others'
-    item['reviewRequests']['nodes'] << { 'requestedReviewer' => { 'login' => 'crmne' } }
+    item['reviewRequests']['nodes'] << { 'requestedReviewer' => { '__typename' => 'User', 'login' => 'crmne' } }
     runner = run_with
 
     expect(board).to have_received(:update).with('pr-id', hash_including(column: 'waiting'))
-    expect(runner).to have_received(:github).with('repos/crmne/ruby_llm/pulls/77/requested_reviewers',
-                                                  method: 'DELETE', reviewers: ['crmne'])
+    expect(runner).to have_received(:github).with(
+      'graphql', query: include('requestReviewsByLogin'),
+                 variables: { input: { pullRequestId: 'pr-id', union: false, userLogins: [], botLogins: [],
+                                       teamSlugs: [] } }
+    )
   end
 
   it "never requests a review from the pull request's own author" do
@@ -88,7 +93,8 @@ RSpec.describe IssueAssessment, 'with a pull request on the board' do
     item['authorAssociation'] = 'OWNER'
     runner = run_with
 
-    expect(runner).not_to have_received(:github).with(include('requested_reviewers'), anything)
+    expect(runner).not_to have_received(:github).with('graphql',
+                                                      hash_including(query: include('requestReviewsByLogin')))
   end
 
   it "assesses Copilot's review as a new update" do
