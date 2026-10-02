@@ -1,3 +1,5 @@
+duplicates: close
+closing: auto
 followups: selective
 
 report_bots:
@@ -22,6 +24,7 @@ sources:
   - src/*.py
   - src/*.js
   - src/*.ts
+  - AGENTS.md
 
 replies:
   version: Which version are you using?
@@ -69,7 +72,7 @@ instructions: |
 # github-automation: the account's board and pull request triage
 pull_requests:
   reviews: copilot
-  out_of_scope: suggest
+  out_of_scope: close
 
 board:
   project: https://github.com/users/crmne/projects/1
