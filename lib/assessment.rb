@@ -375,8 +375,7 @@ class IssueAssessment # :nodoc:
 
   def pull_request_fields
     "isDraft mergeable reviewDecision changedFiles additions deletions #{CopilotReview::FIELDS} " \
-      'files(first: 100) { nodes { path additions deletions changeType } } ' \
-      'commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }'
+      'files(first: 100) { nodes { path additions deletions changeType } }'
   end
 
   def comment_fields
@@ -869,7 +868,8 @@ class IssueAssessment # :nodoc:
       return skip('own pull request; no board to update')
     end
 
-    column = BoardRules.pull_request_column(item)
+    commit = { 'statusCheckRollup' => { 'state' => check_state(item) } }
+    column = BoardRules.pull_request_column(item.merge('commits' => { 'nodes' => [{ 'commit' => commit }] }))
     return skip("own pull request; would move its card to #{board.column_name(column)}") if dry_run?
 
     changes = board.update(item.fetch('id'), column: column, movable: ProjectBoard::MOVABLE - ['decide'])
@@ -877,6 +877,18 @@ class IssueAssessment # :nodoc:
   rescue RuntimeError => e
     @follow_through_failed = true
     skip("own pull request, but placing its card failed: #{e.message}")
+  end
+
+  # Reading checks needs checks and statuses access, which the workflow token
+  # of a private repository may lack. Their state then stays unknown, so the
+  # pull request is not taken for green.
+  def check_state(item)
+    query = 'query($id: ID!) { node(id: $id) { ... on PullRequest { ' \
+            'commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } } }'
+    github('graphql', query: query, variables: { id: item.fetch('id') })
+      &.dig('data', 'node', 'commits', 'nodes', 0, 'commit', 'statusCheckRollup', 'state')
+  rescue RuntimeError
+    'UNKNOWN'
   end
 
   def review_event?

@@ -99,6 +99,19 @@ RSpec.describe IssueAssessment, 'with a pull request on the board' do
                                                       hash_including(query: include('requestReviewsByLogin')))
   end
 
+  it "keeps the maintainer's own pull request out of Sign off when its checks cannot be read" do
+    item.merge!('author' => { 'login' => 'crmne' }, 'authorAssociation' => 'OWNER', 'mergeable' => 'MERGEABLE')
+    runner = described_class.new(environment)
+    allow(runner).to receive_messages(read_report: [item, labels], board: board)
+    allow(runner).to receive(:ask_copilot)
+    allow(runner).to receive(:puts)
+    allow(runner).to receive(:github).and_raise(RuntimeError, 'GitHub request failed')
+    runner.run
+
+    expect(runner).not_to have_received(:ask_copilot)
+    expect(board).to have_received(:update).with('pr-id', column: 'do', movable: ProjectBoard::MOVABLE - ['decide'])
+  end
+
   it "assesses Copilot's review as a new update" do
     run_with
     item['reviews']['nodes'] << copilot_review.merge('body' => "### 🟢 Approval recommended\n\nNarrow and tested.")
