@@ -108,7 +108,7 @@ RSpec.describe 'Comment assessments' do
     expect(TriageEvent.skip_reason('pull_request_target', 'action' => 'labeled')).to include('only opened')
   end
 
-  it 'passes only Copilot reviews of same-repository pull requests' do
+  it 'passes only review bots reviews of same-repository pull requests' do
     review = lambda do |login: 'copilot-pull-request-reviewer[bot]', head: 'crmne/spotifast', action: 'submitted'|
       { 'action' => action, 'review' => { 'user' => { 'login' => login } },
         'repository' => { 'full_name' => 'crmne/spotifast' },
@@ -116,7 +116,8 @@ RSpec.describe 'Comment assessments' do
     end
 
     expect(TriageEvent.skip_reason('pull_request_review', review.call)).to be_nil
-    expect(TriageEvent.skip_reason('pull_request_review', review.call(login: 'crmne'))).to include('only Copilot')
+    expect(TriageEvent.skip_reason('pull_request_review', review.call(login: 'coderabbitai[bot]'))).to be_nil
+    expect(TriageEvent.skip_reason('pull_request_review', review.call(login: 'crmne'))).to include('only review bots')
     expect(TriageEvent.skip_reason('pull_request_review', review.call(head: 'fork/x'))).to include('board sweep')
     expect(TriageEvent.skip_reason('pull_request_review', review.call(action: 'edited'))).to include('submitted')
   end

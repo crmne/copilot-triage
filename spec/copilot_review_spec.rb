@@ -67,4 +67,13 @@ RSpec.describe CopilotReview do
     expect(described_class.withdraw_input(requested.call({ '__typename' => 'Team' }), 'pr', 'crmne')).to be_nil
     expect(described_class::FIELDS).not_to include('combinedSlug')
   end
+
+  it 'reads a quota message as no review, never a clean one' do
+    pull = { 'headRefOid' => 'a', 'reviews' => { 'nodes' => [
+      review('Copilot was unable to review this pull request because the user who requested the review has ' \
+             'reached their quota limit.').merge('commit' => { 'oid' => 'a' })
+    ] } }
+
+    expect(described_class.latest(pull)).to include('verdict' => nil, 'reviewed' => false)
+  end
 end

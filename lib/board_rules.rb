@@ -9,8 +9,8 @@ require_relative 'triage_event'
 module BoardRules
   module_function
 
-  # Returns a column key, or :agent when Copilot asks for a closer look, which
-  # only triage can judge.
+  # Returns a column key, or :agent when Copilot asks for a closer look or
+  # another review bot left findings, which only triage can judge.
   def pull_request_column(pull)
     own = maintainer?(pull)
     yours_or_theirs = own ? 'do' : 'theirs'
@@ -33,7 +33,10 @@ module BoardRules
     when 'approve' then ready ? 'sign_off' : 'theirs'
     when 'changes' then yours_or_theirs
     when 'closer_look' then own ? own_column(ready) : :agent
-    else own ? own_column(ready) : 'do'
+    else
+      return own_column(ready) if own
+
+      findings?(pull) ? :agent : 'do'
     end
   end
 
@@ -53,6 +56,24 @@ module BoardRules
     return unless current == 'theirs' && human && !maintainer?(human)
 
     yours if status_updated_at.nil? || human.fetch('createdAt') > status_updated_at
+  end
+
+  # Another review bot, such as CodeRabbit, commented on the latest commit:
+  # whether its findings matter is the agent's call.
+  def findings?(pull)
+    pull.dig('reviews', 'nodes').to_a.any? do |review|
+      BotReviews.reviewer?(review.dig('author', 'login')) && !CopilotReview.copilot?(review['author']) &&
+        review['state'] == 'COMMENTED' && review.dig('commit', 'oid') == pull['headRefOid']
+    end
+  end
+
+  # When the latest bot review of the latest commit was submitted, so the
+  # sweep sends each review to the agent once.
+  def reviewed_at(pull)
+    reviews = pull.dig('reviews', 'nodes').to_a.select do |review|
+      BotReviews.reviewer?(review.dig('author', 'login')) && review.dig('commit', 'oid') == pull['headRefOid']
+    end
+    reviews.filter_map { |review| review['submittedAt'] }.max
   end
 
   def own_column(ready)

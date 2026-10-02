@@ -10,7 +10,8 @@ submit_decision call, also set:
   for documentation, typos, formatting, comments, generated files, or a
   dependency bump alone, and false while the pull request first needs a
   process step or a maintainer's scope decision. The wrapper requests the
-  review, again after new pushes; do not mention it.
+  review only for changes of enough code, as the prompt states, again after
+  new pushes; do not mention it.
 - out_of_scope: true only when the project's documented scope clearly rules
   out the change itself, so no revision could make it acceptable. Explain
   which policy in comment, briefly and kindly, citing the document you read.
@@ -40,6 +41,27 @@ Copilot has the next move ("theirs"). For a current verdict:
     are both "theirs".
   Copilot is sometimes overly precise: a wording nit or a low-severity
   suggestion alone is not a reason to send a pull request back.
+- "reviewed": false means Copilot could not review, for example because a
+  quota ran out. That is no review at all, never a clean one.
+
+Review bots' findings come in copilot_review.findings and other_reviews, such
+as CodeRabbit's, each with its file, the bot's severity label, and an excerpt.
+The bots catch different problems, so weigh every finding on its own. Read the
+patch when a finding could send the pull request back and you are unsure.
+
+- These send a pull request back to its author ("theirs") when they hold for
+  the current code: concurrency or async races, data loss or a broken
+  migration, security or leaked secrets, a Copilot finding labeled high, and a
+  CodeRabbit finding labeled critical or major about logic or data.
+- Read medium logic findings yourself: about half are real. Send the pull
+  request back only for one you can confirm in the patch.
+- Never send a pull request back for documentation, translations or
+  accessibility wording, style or naming, nitpicks, low, minor, or trivial
+  labels, process reminders, or pinning actions in workflows to commits.
+- Several findings that repeat one point are one finding.
+
+When no finding holds, the review supports the maintainer's next step:
+"sign_off" for a narrow, tested change, "do" when it deserves a close read.
 
 Reply only when the author needs something: a requirement from the project's
 policy that the pull request misses, one essential question, or the

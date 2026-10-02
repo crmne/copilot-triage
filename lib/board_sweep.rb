@@ -85,17 +85,18 @@ class BoardSweep
     issue.dig('closedByPullRequestsReferences', 'nodes').to_a.filter_map { |pull| @pull_columns[pull['number']] }.first
   end
 
-  # A "needs a closer look" verdict is the agent's call. Triage runs on Copilot's
-  # review for same-repository pull requests; for forks, whose review runs get
-  # no secrets, the sweep dispatches the triage workflow, once per review: a
-  # next step written after the review means it was already judged.
+  # A "needs a closer look" verdict, or another review bot's findings, is the
+  # agent's call. Triage runs on bot reviews of same-repository pull requests;
+  # for forks, whose review runs get no secrets, the sweep dispatches the triage
+  # workflow, once per review: a next step written after the latest review
+  # means it was already judged.
   def judge(pull, item)
-    review = CopilotReview.latest(pull)
+    reviewed = BoardRules.reviewed_at(pull)
     judged = item&.dig('next', 'updatedAt')
-    return if judged && review && judged > review['submitted_at'].to_s
+    return if judged && reviewed && judged > reviewed
 
     workflow = @environment.fetch('TRIAGE_WORKFLOW', 'triage.yml')
-    report("PR ##{pull.fetch('number')}: Copilot asks for a closer look; sending it to #{workflow}")
+    report("PR ##{pull.fetch('number')}: a review bot asks for judgment; sending it to #{workflow}")
     rest('POST', "repos/#{@repository}/actions/workflows/#{workflow}/dispatches",
          ref: default_branch,
          inputs: { kind: 'pull_request', number: pull.fetch('number').to_s, dry_run: 'false' })

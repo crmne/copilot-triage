@@ -162,6 +162,18 @@ RSpec.describe BoardSweep do
       expect(moves.map(&:last)).to eq(%w[sign_off theirs sign_off do theirs theirs theirs theirs do theirs])
     end
 
+    it 'sends a pull request with CodeRabbit findings on the latest commit to the agent, once per review' do
+      rabbit = { 'author' => { 'login' => 'coderabbitai' }, 'state' => 'COMMENTED', 'commit' => { 'oid' => 'head' },
+                 'submittedAt' => '2026-10-02T10:00:00Z' }
+      pulls.push(pull(1, copilot: rabbit), pull(2, status: 'Do', copilot: rabbit, next_at: '2026-10-02T11:00:00Z'),
+                 pull(3, association: 'OWNER', author: 'crmne', copilot: rabbit))
+
+      sweep.run
+      expect(moves).to eq([%w[new-pr-1 do], %w[new-pr-3 sign_off]])
+      dispatched = requests.select { |_, path, _| path.end_with?('/dispatches') }
+      expect(dispatched.map { |_, _, body| body.dig(:inputs, :number) }).to eq(%w[1])
+    end
+
     it 'follows a decisive review by another bot, such as CodeRabbit' do
       rabbit = lambda { |state|
         { 'author' => { 'login' => 'coderabbitai' }, 'state' => state, 'commit' => { 'oid' => 'head' } }

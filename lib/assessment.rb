@@ -7,6 +7,7 @@ require 'open3'
 require 'tmpdir'
 require 'yaml'
 require_relative 'board_rules'
+require_relative 'bot_reviews'
 require_relative 'conversation_state'
 require_relative 'copilot_review'
 require_relative 'project_board'
@@ -24,6 +25,13 @@ class IssueAssessment # :nodoc:
   LABEL_COLORS = { 'bug' => 'd73a4a', 'documentation' => '0075ca', 'enhancement' => 'a2eeef',
                    'question' => 'd876e3' }.freeze
   LONG_TEXT = 30_000
+  # Copilot pays off on changes of at least review_min_lines lines of code
+  # (100 by default), see substantial_change?. Documentation, translations,
+  # workflows, lockfiles, and media do not count.
+  NOT_CODE = [%r{\A(?:docs?|\.github)/}, %r{(?:\A|/)(?:locales?|i18n|l10n|translations)/},
+              /\.(?:md|mdx|rst|adoc|txt|po|pot|xliff?|strings|lock|png|jpe?g|gif|svg|ico|webp|mp4|pdf)\z/i,
+              %r{(?:\A|/)(?:package-lock\.json|pnpm-lock\.yaml|go\.sum)\z}].freeze
+
   COPILOT_RETRY_DELAYS = [20, 40].freeze
 
   def initialize(environment = ENV)
@@ -92,7 +100,7 @@ class IssueAssessment # :nodoc:
     @state.complete(report_fingerprint(item), body, reply_posted: !dry_run? && !body.nil?)
     @state.data['initial_assessed'] = true if @initial_recap_allowed
     @state.save unless dry_run? || quiet?
-    request_review(item) if pull_request? && decision['review'] && reviews? && !quiet?
+    request_review(item) if pull_request? && decision['review'] && reviews? && substantial_change?(item) && !quiet?
     posted = !body.nil? && !quiet?
     update_board(item, decision, reply_posted: posted) if board? && (@kind != 'discussion' || @moved_issue)
   rescue Skipped => e
@@ -161,10 +169,12 @@ class IssueAssessment # :nodoc:
     [@repository, @kind, @number, item['reply_to'] || 'report'].join('/')
   end
 
-  # A new Copilot review is an update worth assessing, like a new human comment.
+  # A new bot review is an update worth assessing, like a new human comment.
   def report_fingerprint(item)
     human = item.fetch('comments').fetch('nodes').reject { |comment| bot?(comment['author']) }.last
-    review = CopilotReview.latest(item) if pull_request?
+    if pull_request?
+      review = [CopilotReview.latest(item), BotReviews.current(item).transform_values { |entry| entry['submitted_at'] }]
+    end
     Digest::SHA256.hexdigest(JSON.generate([item['title'], item['body'], item['stateReason'], human, review].compact))
   end
 
@@ -375,6 +385,7 @@ class IssueAssessment # :nodoc:
 
   def pull_request_fields
     "isDraft mergeable reviewDecision changedFiles additions deletions #{CopilotReview::FIELDS} " \
+      "#{BotReviews::FIELDS} " \
       'files(first: 100) { nodes { path additions deletions changeType } }'
   end
 
@@ -421,7 +432,7 @@ class IssueAssessment # :nodoc:
       This is a #{assessment_kind}.
       Initial issue recap permitted: #{@initial_recap_allowed}.
       Duplicate policy: #{duplicate_mode}.
-      Follow-up policy: #{@config.fetch('followups', 'selective')}.#{board_prompt}#{pull_request_prompt}#{issue_prompt}#{move_prompt}
+      Follow-up policy: #{@config.fetch('followups', 'selective')}.#{board_prompt}#{pull_request_prompt(item)}#{issue_prompt}#{move_prompt}
       Allowed labels: #{JSON.generate(allowed)}
       Configured replies: #{JSON.generate(@config.fetch('replies'))}
       These are optional templates, not a checklist of missing information to request.
@@ -434,7 +445,8 @@ class IssueAssessment # :nodoc:
 
   def assessment_kind
     if review_event?
-      'Copilot review update: judge copilot_review for the board; reply only if the author needs something new'
+      'review update: judge copilot_review and other_reviews for the board; ' \
+        'reply only if the author needs something new'
     elsif comment_event?
       'follow-up: assess the latest_comment, not the original report again'
     else
@@ -446,10 +458,14 @@ class IssueAssessment # :nodoc:
     "\nDiscussion: also submit move_to_issue; labels apply only to the new issue." if move?
   end
 
-  def pull_request_prompt
+  def pull_request_prompt(item)
     return unless pull_request?
 
-    "\nPull request: also submit review and out_of_scope. Copilot code review is #{reviews? ? 'available' : 'off'}; " \
+    copilot = if !reviews? then 'off'
+              elsif substantial_change?(item) then 'available'
+              else "not used on changes under #{review_min_lines} lines of code"
+              end
+    "\nPull request: also submit review and out_of_scope. Copilot code review is #{copilot}; " \
       "out-of-scope changes are #{out_of_scope_mode == 'close' ? 'closed after your explanation' : 'left open'}."
   end
 
@@ -476,7 +492,11 @@ class IssueAssessment # :nodoc:
       context['files'] = item.dig('files', 'nodes').map do |file|
         "#{file['changeType']} #{file['path']} +#{file['additions']} -#{file['deletions']}"
       end
-      context['copilot_review'] = CopilotReview.latest(item)&.merge('requested_again' => CopilotReview.requested?(item))
+      found = BotReviews.current(item)
+      copilot = CopilotReview.latest(item)
+      context['copilot_review'] = copilot&.merge('requested_again' => CopilotReview.requested?(item),
+                                                 'findings' => found.dig(CopilotReview::LOGIN, 'findings').to_a)
+      context['other_reviews'] = found.except(CopilotReview::LOGIN)
     end
     JSON.generate(context)
   end
@@ -905,6 +925,15 @@ class IssueAssessment # :nodoc:
     end == 'copilot'
   end
 
+  def substantial_change?(item)
+    code = item.dig('files', 'nodes').to_a.reject { |file| NOT_CODE.any? { |pattern| file['path'].match?(pattern) } }
+    code.sum { |file| file['additions'].to_i + file['deletions'].to_i } >= review_min_lines
+  end
+
+  def review_min_lines
+    Integer(pull_request_policy.fetch('review_min_lines', 100))
+  end
+
   def out_of_scope_mode
     pull_request_policy.fetch('out_of_scope', 'suggest').tap do |mode|
       raise ArgumentError, 'pull_requests.out_of_scope must be suggest or close' unless %w[suggest close].include?(mode)
@@ -942,7 +971,7 @@ class IssueAssessment # :nodoc:
   # A new push needs no new assessment, only a fresh Copilot review when the
   # agent judged the pull request worth reviewing. No model call.
   def review_new_push(item)
-    if @state.data['review_wanted'] && reviews? && !item['isDraft']
+    if @state.data['review_wanted'] && reviews? && substantial_change?(item) && !item['isDraft']
       request_review(item)
       wait_for_review(item)
     end

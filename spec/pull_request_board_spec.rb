@@ -17,7 +17,7 @@ RSpec.describe IssueAssessment, 'with a pull request on the board' do
     { 'id' => 'pr-id', 'title' => 'Add streaming retries', 'body' => 'Retries dropped streams.', 'closed' => false,
       'author' => { 'login' => 'contributor' }, 'authorAssociation' => 'CONTRIBUTOR', 'isDraft' => false,
       'headRefOid' => 'a' * 40, 'changedFiles' => 1, 'additions' => 40, 'deletions' => 3,
-      'files' => { 'nodes' => [{ 'path' => 'lib/stream.rb', 'additions' => 40, 'deletions' => 3,
+      'files' => { 'nodes' => [{ 'path' => 'lib/stream.rb', 'additions' => 140, 'deletions' => 3,
                                  'changeType' => 'MODIFIED' }] },
       'reviews' => { 'nodes' => [copilot_review] }, 'reviewRequests' => { 'nodes' => [] },
       'assignees' => { 'totalCount' => 0 }, 'comments' => { 'nodes' => [] } }
@@ -117,7 +117,7 @@ RSpec.describe IssueAssessment, 'with a pull request on the board' do
     item['reviews']['nodes'] << copilot_review.merge('body' => "### 🟢 Approval recommended\n\nNarrow and tested.")
     runner = run_with(event_name: 'pull_request_review', action: 'submitted')
 
-    expect(runner).to have_received(:ask_copilot).with(include('Copilot review update', 'Approval recommended'))
+    expect(runner).to have_received(:ask_copilot).with(include('review update', 'Approval recommended'))
   end
 
   it 'parks the pull request in Their move after a push, until Copilot reviews it' do

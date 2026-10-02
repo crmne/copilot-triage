@@ -2,6 +2,7 @@
 
 require 'json'
 require 'digest'
+require_relative 'bot_reviews'
 
 # Checks available in the event payload, before checkout, caches, or CLI setup.
 module TriageEvent
@@ -18,8 +19,8 @@ module TriageEvent
 
   def review_skip_reason(event)
     return 'only submitted reviews trigger triage' unless event['action'] == 'submitted'
-    return 'only Copilot reviews trigger triage' unless
-      event.dig('review', 'user', 'login').to_s.delete_suffix('[bot]') == 'copilot-pull-request-reviewer'
+    return 'only review bots such as Copilot and CodeRabbit trigger triage' unless
+      BotReviews.reviewer?(event.dig('review', 'user', 'login'))
     return 'reviews of forked pull requests are sent by the board sweep' unless
       event.dig('pull_request', 'head', 'repo', 'full_name') == event.dig('repository', 'full_name')
 
@@ -37,7 +38,7 @@ module TriageEvent
   PULL_REQUEST_ACTIONS = %w[opened reopened ready_for_review synchronize closed].freeze
 
   # Pull request events pass through; the policy decides whether to triage them.
-  # Of review events, only Copilot's reviews of same-repository pull requests
+  # Of review events, only review bots' reviews of same-repository pull requests
   # count: review runs for forks get no secrets, so the board sweep sends those.
   def skip_reason(name, event)
     return if name == 'workflow_dispatch'

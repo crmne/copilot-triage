@@ -13,9 +13,9 @@ RSpec.describe IssueAssessment, 'with a pull request' do
   let(:item) do
     { 'id' => 'pr-id', 'title' => 'Add streaming retries', 'body' => 'Retries dropped streams.', 'closed' => false,
       'author' => { 'login' => 'contributor' }, 'authorAssociation' => 'CONTRIBUTOR', 'isDraft' => false,
-      'headRefOid' => 'a' * 40, 'changedFiles' => 2, 'additions' => 40, 'deletions' => 3,
+      'headRefOid' => 'a' * 40, 'changedFiles' => 2, 'additions' => 120, 'deletions' => 3,
       'files' => { 'nodes' => [
-        { 'path' => 'lib/ruby_llm/stream.rb', 'additions' => 38, 'deletions' => 3, 'changeType' => 'MODIFIED' },
+        { 'path' => 'lib/ruby_llm/stream.rb', 'additions' => 118, 'deletions' => 3, 'changeType' => 'MODIFIED' },
         { 'path' => 'spec/stream_spec.rb', 'additions' => 2, 'deletions' => 0, 'changeType' => 'ADDED' }
       ] }, 'assignees' => { 'totalCount' => 0 }, 'comments' => { 'nodes' => [] } }
   end
@@ -56,6 +56,39 @@ RSpec.describe IssueAssessment, 'with a pull request' do
     expect(runner).not_to be_failed
   end
 
+  it 'requests no Copilot review for a change under 100 lines of code, however much else it changes' do
+    item['files']['nodes'] = [
+      { 'path' => 'lib/ruby_llm/stream.rb', 'additions' => 60, 'deletions' => 3, 'changeType' => 'MODIFIED' },
+      { 'path' => 'docs/streaming.md', 'additions' => 300, 'deletions' => 0, 'changeType' => 'MODIFIED' },
+      { 'path' => 'config/locales/de.yml', 'additions' => 200, 'deletions' => 0, 'changeType' => 'MODIFIED' },
+      { 'path' => 'Gemfile.lock', 'additions' => 90, 'deletions' => 40, 'changeType' => 'MODIFIED' }
+    ]
+    runner = run_with
+
+    expect(runner).not_to have_received(:mutate).with('requestReviewsByLogin', anything)
+    expect(runner).to have_received(:ask_copilot).with(include('not used on changes under 100 lines of code'))
+  end
+
+  it 'gives the agent every review bot finding on the latest commit, and no stale ones' do
+    finding = lambda do |login, commit, body|
+      { 'author' => { 'login' => login }, 'body' => '', 'submittedAt' => '2026-10-02T10:00:00Z',
+        'commit' => { 'oid' => commit },
+        'comments' => { 'nodes' => [{ 'path' => 'lib/ruby_llm/stream.rb', 'body' => body }] } }
+    end
+    item['findings'] = { 'nodes' => [
+      finding.call('coderabbitai', 'a' * 40,
+                   "_⚠️ Potential issue_ | _🟠 Major_\n\n**Race on retry.** <details>long</details>"),
+      finding.call('coderabbitai', 'b' * 40, 'Stale finding on an older commit'),
+      finding.call('copilot-pull-request-reviewer', 'a' * 40, 'High: the retry loop never stops.')
+    ] }
+    runner = run_with
+
+    expect(runner).to have_received(:ask_copilot) do |prompt|
+      expect(prompt).to include('"other_reviews":{"coderabbitai":', '"severity":"major"', 'Race on retry.')
+      expect(prompt).not_to include('Stale finding', 'long')
+    end
+  end
+
   it 'prefers a dedicated review token' do
     environment['TRIAGE_REVIEW_TOKEN'] = 'owner-review-token'
 
@@ -67,7 +100,7 @@ RSpec.describe IssueAssessment, 'with a pull request' do
     runner = run_with
 
     prompt = runner.send(:build_prompt, item, labels)
-    expect(prompt).to include('pull request in crmne/ruby_llm', 'MODIFIED lib/ruby_llm/stream.rb +38 -3',
+    expect(prompt).to include('pull request in crmne/ruby_llm', 'MODIFIED lib/ruby_llm/stream.rb +118 -3',
                               '"changedFiles":2', 'also submit review and out_of_scope')
     expect(runner.send(:system_prompt)).to include('## Pull requests')
     expect(runner.send(:tools_settings, Dir.pwd)).to include(pull_request: 77)

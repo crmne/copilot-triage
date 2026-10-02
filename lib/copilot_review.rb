@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative 'bot_reviews'
+
 # Copilot code review as GitHub reports it: a review by the Copilot reviewer bot
 # whose body opens with a verdict, for one commit. Only a verdict on the pull
 # request's latest commit counts; a new push makes the old one stale.
@@ -21,6 +23,8 @@ module CopilotReview
     return unless review
 
     body = review['body'].to_s
+    return { 'verdict' => nil, 'reviewed' => false, 'summary' => summary(body) } if body.match?(BotReviews::UNREVIEWED)
+
     { 'verdict' => VERDICTS.find { |icon, _| body.match?(/^#+\s*#{icon}/) }&.last,
       'current' => review.dig('commit', 'oid') == pull['headRefOid'], 'submitted_at' => review['submittedAt'],
       'summary' => summary(body) }

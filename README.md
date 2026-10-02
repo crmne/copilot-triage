@@ -306,6 +306,7 @@ discussions:
 ```yaml
 pull_requests:
   reviews: copilot      # or off
+  review_min_lines: 100 # lines of code a change needs before Copilot reviews it
   out_of_scope: suggest # or close
 ```
 
@@ -315,14 +316,26 @@ reads patches on demand; it never checks out or runs contributor code, which is
 what makes `pull_request_target` safe here.
 
 - **Reviews.** When a change touches behavior, public API, security, data
-  handling, or non-trivial logic, the action requests a review from Copilot.
-  Documentation, typos, generated files, lone dependency bumps, and pull
-  requests still waiting on a process step are skipped. GitHub bills a Copilot
-  review to whoever requests it: the `review-token` input, or `copilot-token`.
+  handling, or non-trivial logic, and changes at least `review_min_lines`
+  lines of code, the action requests a review from Copilot. Documentation,
+  translations, workflows, lockfiles, and media do not count toward those
+  lines, and pull requests still waiting on a process step are skipped. In a
+  study of 693 review findings, Copilot found little that mattered on smaller
+  changes. GitHub bills a Copilot review to whoever requests it: the
+  `review-token` input, or `copilot-token`.
   After a new push, a fresh review of the new commit is requested without
   calling the model, once per commit. Drafts wait until they are ready. How
-  thorough Copilot's review is, and what it costs, is a setting in GitHub:
-  Lite costs less than the default.
+  thorough Copilot's review is, and what it costs, is a setting in GitHub;
+  on changes this size, Balanced found about twice as many real problems as
+  Lite.
+- **Findings.** The agent reads every finding Copilot and other review bots,
+  such as [CodeRabbit](https://coderabbit.ai), leave on the latest commit. The
+  bots catch different problems, so it weighs each one: races, data loss,
+  broken migrations, security problems, and findings the bots rate high or
+  major send the pull request back to its author; documentation, translation,
+  and style remarks, nitpicks, and low-rated findings do not. A review that
+  only says the bot ran out of quota counts as no review. A review from either
+  bot runs triage, like a new comment.
 - **Your own pull requests** are not assessed and never cost a model call: the
   board places them from their checks, conflicts, and reviews.
 - **Policy.** Replies only when the author needs something: a requirement from
@@ -439,7 +452,8 @@ Drafts, failing checks, conflicts, and requested changes are the author's move
 (**Do** for your own), and an approved, green, mergeable pull request goes to
 **Sign off**. A decisive review from another review bot, such as CodeRabbit,
 counts too: requested changes go back to the author, and an approval of a ready
-pull request goes to **Sign off**. Copilot's **Approval recommended** goes to
+pull request goes to **Sign off**. When another review bot leaves findings, the agent judges
+them. Copilot's **Approval recommended** goes to
 **Sign off**, **Changes recommended** to **Their move**, and a pull request
 whose review or checks are still running waits, including right after a new
 push. **Needs a closer look** is the agent's call, because it means two things:
