@@ -1055,6 +1055,8 @@ class IssueAssessment # :nodoc:
     input = if wanted then CopilotReview.request_input(item.fetch('id'), login)
             else CopilotReview.withdraw_input(item, item.fetch('id'), login)
             end
+    return report("Board: left @#{login}'s review request beside a team's.") unless input
+
     github('graphql', query: CopilotReview::REQUEST_MUTATION, variables: { input: input })
     report("Board: #{wanted ? 'requested' : 'withdrew'} @#{login}'s review.")
   end

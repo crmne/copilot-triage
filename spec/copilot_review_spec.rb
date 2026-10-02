@@ -53,4 +53,18 @@ RSpec.describe CopilotReview do
     expect(described_class.latest(pull)).to be_nil
     expect(described_class.requested?(pull)).to be(true)
   end
+
+  it 'withdraws the maintainer and keeps other pending reviewers, but leaves a team request alone' do
+    requested = lambda do |*reviewers|
+      { 'reviewRequests' => { 'nodes' => reviewers.map { |reviewer| { 'requestedReviewer' => reviewer } } } }
+    end
+    pull = requested.call({ '__typename' => 'User', 'login' => 'crmne' },
+                          { '__typename' => 'Bot', 'login' => 'copilot-pull-request-reviewer' })
+
+    expect(described_class.withdraw_input(pull, 'pr', 'crmne'))
+      .to eq(pullRequestId: 'pr', union: false, userLogins: [], botLogins: ['copilot-pull-request-reviewer[bot]'],
+             teamSlugs: [])
+    expect(described_class.withdraw_input(requested.call({ '__typename' => 'Team' }), 'pr', 'crmne')).to be_nil
+    expect(described_class::FIELDS).not_to include('combinedSlug')
+  end
 end
