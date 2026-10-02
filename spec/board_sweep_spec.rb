@@ -67,7 +67,7 @@ RSpec.describe BoardSweep do
     allow(sweep).to receive(:puts)
     allow(sweep).to receive(:rest) { |method, path, **body| requests << [method, path, body] }
     allow(sweep).to receive(:repository_graphql) { |_query, **variables| review_requests << variables.fetch(:input) }
-    allow(board).to receive_messages(id: 'project-id', set_up: [], ensure_repository_view: nil, drafts: drafts)
+    allow(board).to receive_messages(id: 'project-id', set_up: [], drafts: drafts)
     allow(board).to receive(:add_draft)
     allow(board).to receive(:add) { |content| { 'id' => "new-#{content}" } }
     allow(board).to receive(:set_column) { |item, column| moves << [item, column] }
@@ -239,13 +239,6 @@ RSpec.describe BoardSweep do
     sweep.run
     expect(moves).to eq([%w[item-1 do], %w[new-issue-2 decide]])
     expect(board).to have_received(:add).with('issue-2')
-  end
-
-  it 'adds a board view for the repository once it has cards' do
-    issues.push(issue(1))
-
-    sweep.run
-    expect(board).to have_received(:ensure_repository_view).with('crmne/spotifast')
   end
 
   it 'only reports proposed changes in a dry run' do

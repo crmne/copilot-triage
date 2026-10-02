@@ -414,13 +414,17 @@ jobs:
 
 Run it once by hand with `dry_run` turned off. It builds the board on the empty
 project: the six columns in order with their colors, the Priority and Next step
-fields, an **All repositories** board view, and a board view for each
-repository once it has cards. Every sweep keeps that shape, archives finished
-work, and fixes nothing that is already right. A column of your own survives.
+fields, and an **All repositories** board view. Every sweep keeps that shape,
+archives finished work, and fixes nothing that is already right. A column of your own survives.
 Columns of earlier versions are renamed in place, so their cards stay put:
 Approve becomes Sign off, Answer or decide becomes Decide, Fix becomes Do,
 Waiting on others becomes Their move, and Backlog becomes Not now. Review is
 retired, and its cards are placed again.
+
+To pick a repository from a list beside the board, open the view's menu and
+choose **Slice by** › **Repository**. GitHub's API cannot set a slice, so this
+one click is yours; the counts next to each repository show where work piles
+up.
 
 ### How cards move
 

@@ -196,12 +196,6 @@ class ProjectBoard
      ensure_field(NEXT_STEP_FIELD, 'TEXT'), ensure_view(ALL_VIEW, '')].compact
   end
 
-  # A board view of one repository, created when it first has cards. Returns the
-  # view's name when it was created.
-  def ensure_repository_view(repository)
-    ensure_view(repository.split('/', 2).last, "repo:#{repository}")
-  end
-
   def graphql(query, **variables)
     output, _errors, status = Open3.capture3({ 'GH_TOKEN' => @token, 'GITHUB_TOKEN' => nil },
                                              'gh', 'api', 'graphql', '--input', '-',

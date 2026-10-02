@@ -120,13 +120,6 @@ RSpec.describe ProjectBoard do
     expect(sent).to eq(ProjectBoard::COLUMNS.values + ['Someday'])
   end
 
-  it 'adds a view for a repository once' do
-    expect(board.ensure_repository_view('crmne/spotifast')).to eq('spotifast view')
-    views << { 'id' => 'view-spotifast', 'name' => 'spotifast' }
-    board.instance_variable_set(:@project, nil)
-    expect(board.ensure_repository_view('crmne/spotifast')).to be_nil
-  end
-
   it 'moves the card of a closed issue or pull request on this board only to Done' do
     content_items.push({ 'id' => 'other-item', 'project' => { 'id' => 'other-project' } },
                        { 'id' => 'our-item', 'project' => { 'id' => 'project-id' } })

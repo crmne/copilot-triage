@@ -38,7 +38,6 @@ class BoardSweep
       setup = @board.set_up
       report("Board set up: #{setup.join(', ')}.") if setup.any?
     end
-    @cards = 0
     @pull_columns = {}
     # Pull requests first, so an issue can follow the card of its fix.
     %w[pullRequests issues].each do |connection|
@@ -50,8 +49,6 @@ class BoardSweep
     end
     finish_work
     watch_default_branch
-    report("Board view added for #{@repository}.") if @cards.positive? && !dry_run? &&
-                                                      @board.ensure_repository_view(@repository)
     report("Board sweep: #{@changes} change#{'s' unless @changes == 1}#{' proposed' if dry_run?}.")
     report("Stopped at #{MAX_CHANGES} changes; the next run continues.") if @changes >= MAX_CHANGES
     true
@@ -79,7 +76,6 @@ class BoardSweep
     end
     movable = pull ? PULL_REQUEST_MOVABLE : ProjectBoard::MOVABLE
     final = item && (column.nil? || column == current || !movable.include?(current)) ? current : column
-    @cards += 1 if final
     @pull_columns[node.fetch('number')] = final if pull
     move(node, item, current, final, pull) unless item && final == current
     keep_review_request(node, final) if pull
@@ -136,7 +132,7 @@ class BoardSweep
     input = if wanted then CopilotReview.request_input(pull.fetch('id'), @maintainer)
             else CopilotReview.withdraw_input(pull, pull.fetch('id'), @maintainer)
             end
-    repository_graphql(CopilotReview::REQUEST_MUTATION, input: input)
+    repository_graphql(CopilotReview::REQUEST_MUTATION, input: input) if input
   end
 
   # Closed issues and closed or merged pull requests go to Done, and leave the
