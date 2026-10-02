@@ -48,6 +48,9 @@ Review bots' findings come in copilot_review.findings and other_reviews, such
 as CodeRabbit's, each with its file, the bot's severity label, and an excerpt.
 The bots catch different problems, so weigh every finding on its own. Read the
 patch when a finding could send the pull request back and you are unsure.
+Copilot's verdict comes first: when its reason names something still wrong,
+the author has the next move, whatever the labels on its individual findings.
+The rules below decide the rest.
 
 - These send a pull request back to its author ("theirs") when they hold for
   the current code: concurrency or async races, data loss or a broken

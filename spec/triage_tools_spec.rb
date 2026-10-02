@@ -237,6 +237,18 @@ RSpec.describe TriageTools do
     end
   end
 
+  it 'sends an inconsistent decision back to the agent instead of failing later' do
+    decision = { 'labels' => [], 'reply' => nil, 'comment' => nil, 'sources' => [], 'related_issue' => nil,
+                 'relationship' => 'related', 'mute' => false }
+    message = ->(changes) { tools.call('submit_decision', decision.merge(changes))[:content].first[:text] }
+
+    expect(message.call({})).to include('Set related_issue and relationship together')
+    expect(message.call('relationship' => nil, 'related_issue' => 136)).to include('together')
+    expect(message.call('relationship' => 'related', 'related_issue' => 136)).to include('Explain the relationship')
+    call('read_evidence', reference: 'file:docs/tools.md')
+    expect(message.call('relationship' => nil, 'sources' => ['file:docs/tools.md'])).to include('Cite sources only')
+  end
+
   it 'lets a discussion carry labels only when it moves to an issue' do
     tools = described_class.new(root: Dir.pwd, repository: 'owner/project', config: config, move: true)
     decision = { 'labels' => ['bug'], 'reply' => nil, 'comment' => nil, 'sources' => [], 'related_issue' => nil,

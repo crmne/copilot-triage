@@ -238,6 +238,16 @@ class TriageTools
 
     sources = decision.fetch(:sources)
     raise ArgumentError, 'Read the cited references first.' unless (sources - @ledger['evidence'].keys).empty?
+    if sources.any? && !decision[:comment]
+      raise ArgumentError,
+            'Cite sources only in a comment; with no comment, use [].'
+    end
+    if decision[:related_issue].nil? != decision[:relationship].nil?
+      raise ArgumentError, 'Set related_issue and relationship together, or leave both null.'
+    end
+    if decision[:related_issue] && !decision[:comment]
+      raise ArgumentError, 'Explain the relationship to the related issue in comment.'
+    end
     if sources.any? { |source| source.start_with?('diff:') }
       raise ArgumentError, 'Diffs are evidence for you, not citations.'
     end
