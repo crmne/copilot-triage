@@ -65,16 +65,17 @@ RSpec.describe IssueAssessment, 'closing issues' do
     assessment.run
 
     expect(assessment).not_to have_received(:mutate).with('closeIssue', anything)
-    expect(board).to have_received(:update).with('report-id', hash_including(column: 'sign_off'))
+    expect(board).to have_received(:update)
+      .with('report-id', hash_including(column: 'sign_off', next_step: start_with('Close it if you agree: ')))
   end
 
-  it 'leaves closing to the maintainer once they joined the conversation' do
+  it 'neither closes nor proposes closing once the maintainer joined the conversation' do
     item['comments']['nodes'].unshift(reporter_comment.merge('id' => 'c0', 'authorAssociation' => 'OWNER',
                                                              'author' => { 'login' => 'crmne' }))
     assessment.run
 
     expect(assessment).not_to have_received(:mutate).with('closeIssue', anything)
-    expect(board).to have_received(:update).with('report-id', hash_including(column: 'sign_off'))
+    expect(board).to have_received(:update).with('report-id', hash_including(column: 'theirs'))
   end
 
   it 'never closes a reopened issue or one a maintainer opened' do

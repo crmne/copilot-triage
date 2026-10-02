@@ -1041,8 +1041,10 @@ class IssueAssessment # :nodoc:
   # Pull requests wait on others whenever the agent says so, such as after
   # Copilot found real problems.
   def update_board(item, decision, reply_posted:)
-    column = board_column(decision, reply_posted)
-    proposed = { column: column, priority: decision.fetch('priority'), next_step: decision.fetch('next_step').strip }
+    column = board_column(item, decision, reply_posted)
+    next_step = decision.fetch('next_step').strip
+    next_step = "Close it if you agree: #{next_step}"[0, 150] if column == 'sign_off' && proposed_closure?(decision)
+    proposed = { column: column, priority: decision.fetch('priority'), next_step: next_step }
     assignee = maintainer_login
     assign = proposed[:priority] == 'urgent' && assignee && item.dig('assignees', 'totalCount').to_i.zero?
     if dry_run?
@@ -1084,14 +1086,26 @@ class IssueAssessment # :nodoc:
   # A closed item is done; a closure the bot could only propose is the
   # maintainer's to sign off; otherwise the agent's next move decides. An issue
   # waits on its reporter only after this run asked them something.
-  def board_column(decision, reply_posted)
+  # A closure the bot may not make itself is proposed in Sign off, unless a
+  # person has already weighed in: a reopened item, or one the maintainer
+  # joined, follows the agent's next move instead.
+  def board_column(item, decision, reply_posted)
     return 'done' if decision['close'] || decision['close_pull_request'] || decision['close_issue']
-    return 'sign_off' if decision['close_as'] || decision['out_of_scope'] || decision['relationship'] == 'duplicate'
+    return 'sign_off' if proposed_closure?(decision) && !decided_by_a_person?(item)
 
     move = decision.fetch('next_move')
     return move unless move == 'theirs'
 
     'theirs' if pull_request? || reply_posted
+  end
+
+  def proposed_closure?(decision)
+    decision['close_as'] || decision['out_of_scope'] || decision['relationship'] == 'duplicate'
+  end
+
+  def decided_by_a_person?(item)
+    item['stateReason'] == 'REOPENED' || @state.data['maintainer_replied'] ||
+      item.fetch('comments').fetch('nodes').any? { |comment| maintainer?(comment['authorAssociation']) }
   end
 
   def maintainer_login

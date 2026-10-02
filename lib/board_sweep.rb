@@ -63,10 +63,14 @@ class BoardSweep
     item = node.dig('projectItems', 'nodes').find { |entry| entry.dig('project', 'id') == @board.id }
     status = item&.fetch('status', nil)
     current = @board.column_key(status&.fetch('name', nil))
-    reopened = item && (item['isArchived'] || current == 'done')
-    current = nil if reopened
     pull = connection == 'pullRequests'
     updated_at = status&.fetch('updatedAt', nil)
+    finished = item && (item['isArchived'] || current == 'done')
+    # An open item in Done was put there by hand, or was closed and archived:
+    # it stays done until it is reopened or someone comments.
+    return dismiss(node, item) if finished && !BoardRules.revived?(node, updated_at)
+
+    current = nil if finished
     column = if pull then BoardRules.pull_request_column(node)
              else BoardRules.issue_column(node, current, updated_at, linked_column: linked_column(node))
              end
@@ -79,6 +83,13 @@ class BoardSweep
     @pull_columns[node.fetch('number')] = final if pull
     move(node, item, current, final, pull) unless item && final == current
     keep_review_request(node, final) if pull
+  end
+
+  def dismiss(node, item)
+    return if item['isArchived']
+
+    report("##{node.fetch('number')}: done by hand, archived")
+    @board.archive(item.fetch('id')) unless dry_run?
   end
 
   def linked_column(issue)
@@ -137,7 +148,8 @@ class BoardSweep
   end
 
   # Closed issues and closed or merged pull requests go to Done, and leave the
-  # board once they have been there for archive_after_days.
+  # board at the first sweep after archive_after_days there (0 by default, so
+  # Done shows what finished since the last sweep).
   def finish_work
     owner, name = @repository.split('/', 2)
     card = 'nodes { number projectItems(first: 20, includeArchived: false) { nodes { id project { id } ' \
@@ -166,8 +178,8 @@ class BoardSweep
     if @board.column_key(status['name']) != 'done'
       report("##{node.fetch('number')}: finished, to #{@board.column_name('done')}")
       @board.set_column(item.fetch('id'), 'done') unless dry_run?
-    elsif status['updatedAt'].to_s < cutoff
-      report("##{node.fetch('number')}: done for #{@board.archive_after} days, archived")
+    elsif status['updatedAt'].to_s <= cutoff
+      report("##{node.fetch('number')}: done, archived")
       @board.archive(item.fetch('id')) unless dry_run?
     end
   end
@@ -187,8 +199,7 @@ class BoardSweep
 
   def open_query(connection)
     details = if connection == 'issues'
-                'labels(first: 20) { nodes { name } } ' \
-                  'comments(last: 5) { nodes { createdAt authorAssociation author { __typename login } } } ' \
+                'stateReason labels(first: 20) { nodes { name } } ' \
                   'closedByPullRequestsReferences(first: 3, includeClosedPrs: false) { totalCount nodes { number } }'
               else
                 "isDraft mergeable reviewDecision #{CopilotReview::FIELDS} " \
@@ -201,6 +212,8 @@ class BoardSweep
             pageInfo { hasNextPage endCursor }
             nodes {
               id number authorAssociation author { __typename login }
+              comments(last: 5) { nodes { createdAt authorAssociation author { __typename login } } }
+              reopened: timelineItems(itemTypes: [REOPENED_EVENT], last: 1) { nodes { ... on ReopenedEvent { createdAt } } }
               #{details}
               projectItems(first: 20) {
                 nodes {

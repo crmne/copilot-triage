@@ -231,9 +231,9 @@ RSpec.describe BoardSweep do
     end
   end
 
-  it 'moves finished work to Done and archives it after a week there' do
+  it 'moves finished work to Done, and archives what was already there at the next sweep' do
     old = (Time.now.utc - (8 * 86_400)).iso8601
-    recent = (Time.now.utc - 86_400).iso8601
+    recent = (Time.now.utc - 3600).iso8601
     finished['issues'] = [{ 'number' => 1, 'projectItems' => { 'nodes' => card(1, 'Do') } },
                           { 'number' => 2, 'projectItems' => { 'nodes' => [] } },
                           { 'number' => 4, 'projectItems' => { 'nodes' => card(4, 'Done', updated_at: old) } }]
@@ -242,7 +242,48 @@ RSpec.describe BoardSweep do
 
     sweep.run
     expect(moves).to eq([%w[item-1 done], %w[item-3 done]])
-    expect(archived).to eq(%w[item-4])
+    expect(archived).to eq(%w[item-4 item-5])
+  end
+
+  context 'with archive_after_days' do
+    let(:settings) { super().merge('archive_after_days' => 7) }
+
+    it 'keeps finished work in Done that long' do
+      finished['issues'] = [{ 'number' => 4, 'projectItems' => {
+        'nodes' => card(4, 'Done', updated_at: (Time.now.utc - 86_400).iso8601)
+      } }]
+
+      sweep.run
+      expect(archived).to be_empty
+    end
+  end
+
+  it 'archives an open item put in Done by hand, and brings it back only when someone comments' do
+    issues.push(issue(1, status: 'Done', updated_at: '2026-10-02T10:00:00Z',
+                         comments: [comment('NONE', '2026-10-01T00:00:00Z')]))
+    dismissed = issue(2, status: 'Done', updated_at: '2026-10-02T10:00:00Z',
+                         comments: [comment('NONE', '2026-10-01T00:00:00Z')])
+    dismissed['projectItems']['nodes'].first['isArchived'] = true
+    revived = issue(3, status: 'Done', updated_at: '2026-10-02T10:00:00Z',
+                       comments: [comment('NONE', '2026-10-03T00:00:00Z')])
+    revived['projectItems']['nodes'].first['isArchived'] = true
+    issues.push(dismissed, revived)
+
+    sweep.run
+    expect(archived).to eq(%w[item-1])
+    expect(moves).to eq([%w[new-issue-3 decide]])
+  end
+
+  it 'places a proposed closure again once the issue is reopened or the maintainer joins' do
+    reopened = issue(1, status: 'Sign off', labels: ['bug'], comments: [comment('NONE')])
+    reopened['stateReason'] = 'REOPENED'
+    issues.push(reopened,
+                issue(2, status: 'Sign off', comments: [comment('NONE', '2026-09-01T00:00:00Z'),
+                                                        comment('OWNER', login: 'crmne')]),
+                issue(3, status: 'Sign off', comments: [comment('NONE')]))
+
+    sweep.run
+    expect(moves).to eq([%w[item-1 do], %w[item-2 theirs]])
   end
 
   it 'places a reopened card again, bringing it back from the archive' do

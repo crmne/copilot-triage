@@ -57,7 +57,8 @@ class ProjectBoard
       (columns.keys - COLUMNS.keys).empty?
 
     @columns = COLUMNS.merge(columns)
-    @archive_after = Integer(settings.fetch('archive_after_days', 7))
+    @archive_after = Integer(settings.fetch('archive_after_days', 0))
+    raise Error, 'board.archive_after_days must be 0 or more' if @archive_after.negative?
   end
 
   attr_reader :archive_after

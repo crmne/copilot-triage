@@ -44,13 +44,22 @@ module BoardRules
   end
 
   # An issue with an open pull request that would close it follows that pull
-  # request's card, so the two finish together.
+  # request's card, so the two finish together. A proposed closure in Sign off
+  # is stale once the issue is reopened or the maintainer joins: it is placed
+  # again from the conversation.
   def issue_column(issue, current, status_updated_at, linked_column: nil)
     linked = issue.dig('closedByPullRequestsReferences', 'totalCount').to_i.positive?
     return linked_column || 'theirs' if linked
 
-    human = issue.dig('comments', 'nodes').to_a.reject { |comment| TriageEvent.bot?(comment['author']) }.last
+    comments = issue.dig('comments', 'nodes').to_a
+    human = comments.reject { |comment| TriageEvent.bot?(comment['author']) }.last
     yours = bug?(issue) ? 'do' : 'decide'
+    if current == 'sign_off'
+      stale = issue['stateReason'] == 'REOPENED' || comments.any? { |comment| maintainer?(comment) }
+      return unless stale
+
+      return human && maintainer?(human) ? 'theirs' : yours
+    end
     if current.nil?
       return 'not_now' if maintainer?(issue) && (human.nil? || maintainer?(human))
 
@@ -95,6 +104,17 @@ module BoardRules
 
   def bot_login?(login)
     login.to_s.end_with?('[bot]') || %w[coderabbitai].include?(login.to_s)
+  end
+
+  # Something happened after a card was put in Done by hand or archived: the
+  # item was reopened or a person commented, so it needs placing again.
+  def revived?(node, since)
+    return true if since.nil?
+
+    reopened = node.dig('reopened', 'nodes').to_a.filter_map { |event| event['createdAt'] }.max
+    human = node.dig('comments', 'nodes').to_a.reject { |comment| TriageEvent.bot?(comment['author']) }
+                .filter_map { |comment| comment['createdAt'] }.max
+    [reopened, human].compact.any? { |time| time > since }
   end
 
   def bug?(issue)

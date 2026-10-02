@@ -364,12 +364,21 @@ focus time:
 | **Do** | Use your hands | A confirmed bug, a pull request worth reading closely, your own unfinished work, a failing default branch |
 | **Their move** | Nothing | A contributor, reporter, reviewer, or upstream has the next step, or checks are still running |
 | **Not now** | Nothing until you choose | Accepted but not scheduled, your own notes and roadmap; yours to set |
-| **Done** | Nothing | Closed or merged, archived after a week |
+| **Done** | Nothing | Closed or merged since the last daily sweep, which archives it |
 
-Finished work moves to **Done** the moment it closes or merges, so you can see
-what got done this week, and is archived after `archive_after_days` there (7 by
-default; 30 keeps a month). Archived cards stay searchable in the project, and
-a reopened issue or pull request comes back onto the board. Each card also gets a
+Finished work moves to **Done** the moment it closes or merges, and the daily
+sweep archives it, so **Done** shows what finished today. Set
+`archive_after_days` to keep it there longer (7 keeps a week). An open item you
+drag to **Done** yourself is archived the same way, without closing it, for
+work you consider finished. Archived cards stay searchable in the project, and
+one comes back onto the board when its issue or pull request is reopened or
+someone comments on it.
+
+In **Sign off**, an issue is a closure triage proposes: close it if you agree,
+or answer in the issue if you don't. Triage never proposes closing an issue
+that was reopened or that you have commented on, and the sweep places such a
+card again from its conversation: back to the reporter when you spoke last, to
+you when they did. Each card also gets a
 **Priority** (Urgent, High, Normal) and a **Next step** written for you, such as
 "Reproduce from the Windows backtrace; likely the path join in loader.rb".
 
@@ -389,7 +398,7 @@ a reopened issue or pull request comes back onto the board. Each card also gets 
 board:
   project: https://github.com/users/your-name/projects/1
   maintainer: your-name   # requests your review and assigns urgent issues
-  archive_after_days: 7   # optional: how long finished work stays in Done
+  archive_after_days: 0   # optional: days finished work stays in Done before the sweep archives it
 ```
 
 4. Pass the token to the triage step with `project-token:
