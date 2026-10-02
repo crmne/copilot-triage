@@ -185,11 +185,17 @@ class ProjectBoard
     own = current - wanted - RETIRED
     return if current == wanted + own
 
+    # An option sent without its ID is recreated, which clears it from every
+    # card; existing columns keep their IDs, so cards keep their places.
+    existing = status.fetch('options').to_h { |option| [option.fetch('name'), option] }
     options = COLUMNS.keys.map do |key|
-      { name: column_name(key), color: COLORS.fetch(key), description: DESCRIPTIONS.fetch(key) }
+      { id: existing.dig(column_name(key), 'id'), name: column_name(key), color: COLORS.fetch(key),
+        description: DESCRIPTIONS.fetch(key) }.compact
     end
-    options += status.fetch('options').select { |option| own.include?(option['name']) }
-                     .map { |option| { name: option['name'], color: 'GRAY', description: '' } }
+    options += own.map do |name|
+      option = existing.fetch(name)
+      { id: option['id'], name: name, color: option['color'] || 'GRAY', description: option['description'].to_s }
+    end
     graphql('mutation($input: UpdateProjectV2FieldInput!) { updateProjectV2Field(input: $input) { clientMutationId } }',
             input: { fieldId: status.fetch('id'), singleSelectOptions: options })
     reload
@@ -267,7 +273,7 @@ class ProjectBoard
               fields(first: 50) {
                 nodes {
                   ... on ProjectV2FieldCommon { id name dataType }
-                  ... on ProjectV2SingleSelectField { options { id name } }
+                  ... on ProjectV2SingleSelectField { options { id name color description } }
                 }
               }
             }

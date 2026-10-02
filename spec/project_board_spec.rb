@@ -92,6 +92,17 @@ RSpec.describe ProjectBoard do
                                updateProjectV2View])
   end
 
+  it 'keeps the IDs of existing columns, so cards keep their places' do
+    status_options.reject! { |option| option['name'] == 'Done' }
+    status_options << { 'id' => 'someday-id', 'name' => 'Someday', 'color' => 'PINK', 'description' => 'Later' }
+
+    board.set_up
+    sent = inputs.first.fetch(:singleSelectOptions)
+    expect(sent.first).to include(id: 'option-Approve', name: 'Approve')
+    expect(sent.find { |option| option[:name] == 'Done' }).not_to have_key(:id)
+    expect(sent.last).to eq(id: 'someday-id', name: 'Someday', color: 'PINK', description: 'Later')
+  end
+
   it 'replaces retired columns but keeps columns of the maintainer own' do
     status_options.replace((['Needs me', 'Someday', 'Done'] + ProjectBoard::COLUMNS.values.first(2))
                              .map { |name| { 'id' => name, 'name' => name } })
