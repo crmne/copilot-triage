@@ -3,9 +3,9 @@
 **A maintainer's copilot for GitHub: it triages issues, discussions, and pull
 requests, and keeps a board of what actually needs you.**
 
-https://github.com/user-attachments/assets/ef16d22c-c08d-4f1a-803f-828b9ad8dfcf
+https://github.com/user-attachments/assets/0664b85e-7d5a-4e8e-af22-ca1f2f851745
 
-[Download the video](https://github.com/crmne/copilot-triage/releases/download/v0.11.0/copilot-triage-launch-board-v011-1080p60.mp4)
+[Download the video](https://github.com/crmne/copilot-triage/releases/download/v0.15.0/copilot-triage-launch-board-v015-1080p60.mp4)
 
 Open source maintenance is mostly reading. Copilot Triage reads for you. When
 someone opens an issue, starts a discussion, sends a pull request, or comments,
@@ -74,7 +74,9 @@ tickets: problems go to the job summary.
 2. **Policy.** Save [examples/triage.yml](examples/triage.yml) as
    `.github/triage.yml` on your default branch and adapt the labels, replies,
    source paths, and instructions to your project.
-3. **Workflow.** Add `.github/workflows/triage.yml`:
+3. **Workflow.** Add `.github/workflows/triage.yml`. It names the events that
+   start triage and calls Copilot Triage's own workflow, which holds the
+   permissions, queueing, and inputs and updates with the `v0` tag:
 
 ```yaml
 name: Triage
@@ -91,6 +93,16 @@ on:
     types: [opened, reopened, ready_for_review, synchronize, closed]
   pull_request_review:
     types: [submitted]
+  workflow_dispatch:
+    inputs:
+      kind:
+        type: choice
+        options: [issue, discussion, pull_request]
+      number:
+        required: true
+      dry_run:
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -100,19 +112,18 @@ permissions:
 
 jobs:
   triage:
-    if: github.event.sender.type != 'Bot' || github.event_name == 'issues' || github.event_name == 'pull_request_review'
-    # On the job, so a bot comment's skipped run never replaces a queued one.
-    concurrency:
-      group: >-
-        triage-${{ github.event.discussion && 'discussion' || 'issue' }}-${{ github.event.issue.number || github.event.discussion.number || github.event.pull_request.number }}-${{ github.event.discussion && (github.event.comment.parent_id || github.event.comment.id) || 'report' }}
-      cancel-in-progress: false
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: crmne/copilot-triage@v0
-        with:
-          copilot-token: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+    uses: crmne/copilot-triage/.github/workflows/assess.yml@v0
+    secrets: inherit
+    with:
+      kind: ${{ inputs.kind || '' }}
+      number: ${{ inputs.number || '' }}
+      dry_run: ${{ inputs.dry_run || false }}
 ```
+
+It reads `COPILOT_GITHUB_TOKEN`, and if you set them, `TRIAGE_PROJECT_TOKEN`
+for the board and `OPENROUTER_API_KEY` for the fallback. To pick inputs the
+shared workflow does not pass, such as `engine` or `model`, call the action
+directly with `uses: crmne/copilot-triage@v0` in a job of your own.
 
 That's it. To add the board, see [The board](#the-board).
 
@@ -329,7 +340,7 @@ discussions:
 
 ```yaml
 pull_requests:
-  reviews: copilot      # or off
+  reviews: copilot      # private, or off
   review_min_lines: 100 # lines of code a change needs before Copilot reviews it
   out_of_scope: suggest # or close
 ```
@@ -425,9 +436,8 @@ board:
   archive_after_days: 0   # optional: days finished work stays in Done before the sweep archives it
 ```
 
-4. Pass the token to the triage step with `project-token:
-   ${{ secrets.TRIAGE_PROJECT_TOKEN }}`, and add a daily sweep as
-   `.github/workflows/board.yml`. The sweep uses no model:
+4. Add a daily sweep as `.github/workflows/board.yml`. The sweep uses no
+   model, and the triage workflow above already passes the project token:
 
 ```yaml
 name: Board
@@ -445,21 +455,13 @@ permissions:
   pull-requests: write # requests your review
   actions: write       # sends fork pull requests to triage
 
-concurrency:
-  group: board
-  cancel-in-progress: false
-
 jobs:
   sweep:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: crmne/copilot-triage@v0
-        with:
-          mode: sweep
-          project-token: ${{ secrets.TRIAGE_PROJECT_TOKEN }}
-          triage-workflow: triage.yml
-          dry-run: ${{ inputs.dry_run || false }}
+    uses: crmne/copilot-triage/.github/workflows/sweep.yml@v0
+    secrets: inherit
+    with:
+      dry_run: ${{ inputs.dry_run || false }}
+      triage_workflow: triage.yml
 ```
 
 Run it once by hand with `dry_run` turned off. It builds the board on the empty
@@ -580,6 +582,13 @@ Action inputs:
 | `kind`, `number` | from the event | What to assess, for manual runs |
 | `dry-run` | `false` | Show the decision without changing GitHub |
 | `debounce-seconds` | `10` | Wait for nearby comments, 0 to 60 |
+
+Several repositories can share settings: start a policy with `extends:
+owner/repo:path/to/policy.yml`, and it inherits that file's settings, section by
+section, with its own keys winning. A shared policy that cannot be read is
+reported and skipped. `pull_requests.reviews: private` requests Copilot reviews
+only in private repositories, for accounts whose public ones get free reviews
+from a bot such as CodeRabbit.
 
 Policy keys in `.github/triage.yml`: `labels` (at most two per issue),
 `replies` (optional reply templates), `sources` (globs the agent may read),

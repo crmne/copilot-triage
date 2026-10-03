@@ -24,7 +24,6 @@ permissions:
 
 jobs:
   sweep:
-    if: vars.COPILOT_ISSUE_ASSESSMENT_ENABLED == 'true'
     concurrency:
       group: board
       cancel-in-progress: false

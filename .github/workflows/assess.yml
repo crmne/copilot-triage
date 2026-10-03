@@ -35,10 +35,9 @@ jobs:
     # the sweep sends: an issue or pull request closing, a bot review, and the
     # sweep's own dispatches.
     if: >-
-      vars.COPILOT_ISSUE_ASSESSMENT_ENABLED == 'true' && (github.event.sender.type != 'Bot' ||
-      github.event_name == 'issues' || github.event_name == 'pull_request_review' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request_target' && github.event.action == 'closed'))
+      github.event.sender.type != 'Bot' || github.event_name == 'issues' ||
+      github.event_name == 'pull_request_review' || github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' && github.event.action == 'closed')
     # On the job, so a bot comment's skipped run never replaces a queued one.
     concurrency:
       group: >-
