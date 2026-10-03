@@ -33,6 +33,11 @@ class IssueAssessment # :nodoc:
               %r{(?:\A|/)(?:package-lock\.json|pnpm-lock\.yaml|go\.sum)\z}].freeze
 
   COPILOT_RETRY_DELAYS = [20, 40].freeze
+  # CodeRabbit appends its summary to a pull request's description seconds
+  # after it opens; it is the bot's text, not the author's, and would otherwise
+  # look like the author changing the report during assessment.
+  BOT_SUMMARY = Regexp.new('<!-- This is an auto-generated comment: release notes by coderabbit\.ai -->.*?' \
+                           '<!-- end of auto-generated comment: release notes by coderabbit\.ai -->', Regexp::MULTILINE)
   # Premium requests kept back before triage switches to its fallback model.
   COPILOT_RESERVE = 50
 
@@ -400,6 +405,7 @@ class IssueAssessment # :nodoc:
                  .fetch('data').fetch('repository')
     item = repository.fetch(KINDS.fetch(@kind).first)
     item['repository_id'] = repository['id']
+    item['body'] = item['body'].to_s.gsub(BOT_SUMMARY, '').rstrip if item['body']
     read_discussion_thread(item) if @kind == 'discussion' && comment_event?
     [item, repository.fetch('labels').fetch('nodes')]
   end

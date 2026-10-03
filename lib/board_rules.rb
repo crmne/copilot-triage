@@ -55,8 +55,7 @@ module BoardRules
     human = comments.reject { |comment| TriageEvent.bot?(comment['author']) }.last
     yours = bug?(issue) ? 'do' : 'decide'
     if current == 'sign_off'
-      stale = issue['stateReason'] == 'REOPENED' || comments.any? { |comment| maintainer?(comment) }
-      return unless stale
+      return unless changed_since?(issue, status_updated_at, comments)
 
       return human && maintainer?(human) ? 'theirs' : yours
     end
@@ -132,6 +131,40 @@ module BoardRules
 
   def bot_login?(login)
     login.to_s.end_with?('[bot]') || %w[coderabbitai].include?(login.to_s)
+  end
+
+  # The issue was reopened, or the maintainer commented, after the card was
+  # placed: a proposal made before is stale, but a placement made after stands.
+  def changed_since?(issue, since, comments)
+    return issue['stateReason'] == 'REOPENED' || comments.any? { |comment| maintainer?(comment) } if since.nil?
+
+    reopened = issue.dig('reopened', 'nodes').to_a.filter_map { |event| event['createdAt'] }.max
+    answered = comments.select { |comment| maintainer?(comment) }.filter_map { |comment| comment['createdAt'] }.max
+    [reopened, answered].compact.any? { |time| time > since }
+  end
+
+  # A one-line next step for a card the sweep moved, so it never keeps one
+  # written for its old column.
+  def reason(node, column, pull:)
+    return issue_reason(column) unless pull
+
+    checks = check_state(node.dig('commits', 'nodes', 0, 'commit', 'statusCheckRollup'))
+    case column
+    when 'sign_off' then 'Approved, green, and mergeable: merge it'
+    when 'theirs'
+      if node['isDraft'] then 'Draft: the author finishes it'
+      elsif node['mergeable'] == 'CONFLICTING' then 'Conflicts with the base branch: the author rebases'
+      elsif %w[FAILURE ERROR].include?(checks) then 'Checks fail: the author fixes them'
+      elsif %w[PENDING EXPECTED].include?(checks) then 'Checks are still running'
+      else 'Changes requested: the author has the next step'
+      end
+    when 'do' then pushed_since_changes?(node) ? 'The author pushed after your review: review again' : 'Read the change'
+    end
+  end
+
+  def issue_reason(column)
+    { 'theirs' => 'Waiting on the reporter or author', 'do' => 'They answered: read the reply and act',
+      'decide' => 'They answered: read the reply and decide' }[column]
   end
 
   # Something happened after a card was put in Done by hand or archived: the

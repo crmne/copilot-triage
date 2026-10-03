@@ -97,6 +97,17 @@ RSpec.describe IssueAssessment, 'with a pull request' do
     end
   end
 
+  it "ignores CodeRabbit's summary in the description, so its edit does not abandon the assessment" do
+    summary = "\n\n<!-- This is an auto-generated comment: release notes by coderabbit.ai -->\n## Summary\n" \
+              '<!-- end of auto-generated comment: release notes by coderabbit.ai -->'
+    runner = described_class.new(environment)
+    raw = item.merge('body' => "Retries dropped streams.#{summary}")
+    repository = { 'id' => 'repo', 'labels' => { 'nodes' => labels }, 'pullRequest' => raw }
+    allow(runner).to receive(:github).and_return('data' => { 'repository' => repository })
+
+    expect(runner.send(:read_report).first['body']).to eq('Retries dropped streams.')
+  end
+
   it 'prefers a dedicated review token' do
     environment['TRIAGE_REVIEW_TOKEN'] = 'owner-review-token'
 

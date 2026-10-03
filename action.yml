@@ -112,6 +112,7 @@ runs:
         TRIAGE_DRY_RUN: ${{ inputs.dry-run }}
         TRIAGE_STATE_DIR: ${{ runner.temp }}/copilot-triage-state
         TRIAGE_PREPARE_ONLY: 'true'
+        TRIAGE_PROJECT_TOKEN: ${{ inputs.project-token }}
         TRIAGE_PREPARED_PATH: ${{ runner.temp }}/copilot-triage-prepared.json
         TRIAGE_DEBOUNCE_SECONDS: ${{ inputs.debounce-seconds }}
         TRIAGE_METRICS_PATH: ${{ runner.temp }}/copilot-triage-metrics.json

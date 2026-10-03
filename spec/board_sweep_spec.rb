@@ -19,6 +19,7 @@ RSpec.describe BoardSweep do
   let(:requests) { [] }
   let(:review_requests) { [] }
   let(:drafts) { {} }
+  let(:steps) { [] }
   let(:main_checks) { +'SUCCESS' }
 
   def comment(association, created_at = '2026-09-02T00:00:00Z', login: 'someone')
@@ -71,6 +72,7 @@ RSpec.describe BoardSweep do
     allow(board).to receive(:add_draft)
     allow(board).to receive(:add) { |content| { 'id' => "new-#{content}" } }
     allow(board).to receive(:set_column) { |item, column| moves << [item, column] }
+    allow(board).to receive(:set_next_step) { |item, text| steps << [item, text] }
     allow(board).to receive(:archive) { |item| archived << item }
     allow(board).to receive(:graphql) do |query, **_variables|
       if query.include?('defaultBranchRef')
@@ -300,6 +302,28 @@ RSpec.describe BoardSweep do
     sweep.run
     expect(archived).to eq(%w[item-1])
     expect(moves).to eq([%w[new-issue-3 decide]])
+  end
+
+  it 'keeps a proposal or a hand placement made after the maintainer last spoke' do
+    issues.push(issue(1, status: 'Sign off', updated_at: '2026-10-02T00:00:00Z',
+                         comments: [comment('OWNER', '2026-10-01T00:00:00Z', login: 'crmne')]))
+
+    sweep.run
+    expect(moves).to be_empty
+  end
+
+  it 'writes a next step for the column a card moved to' do
+    pulls.push(pull(1, status: 'Do', mergeable: 'CONFLICTING'))
+
+    sweep.run
+    expect(steps).to eq([['item-1', 'Conflicts with the base branch: the author rebases']])
+  end
+
+  it 'sends a pull request parked in Decide back to its author when it stops being mergeable' do
+    pulls.push(pull(1, status: 'Decide', mergeable: 'CONFLICTING'), pull(2, status: 'Decide'))
+
+    sweep.run
+    expect(moves).to eq([%w[item-1 theirs]])
   end
 
   it 'places a proposed closure again once the issue is reopened or the maintainer joins' do

@@ -212,6 +212,10 @@ class ProjectBoard
     raise Error, "GitHub project request failed#{": #{message}" if message}"
   end
 
+  def set_next_step(item_id, text)
+    set_value(item_id, NEXT_STEP_FIELD, text:) if field(NEXT_STEP_FIELD)
+  end
+
   private
 
   def ensure_columns

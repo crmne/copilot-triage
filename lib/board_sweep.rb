@@ -79,6 +79,9 @@ class BoardSweep
       column = current || 'do'
     end
     movable = pull ? PULL_REQUEST_MOVABLE : ProjectBoard::MOVABLE
+    # A pull request parked for a scope decision still goes back to its author
+    # when it stops being mergeable.
+    movable += ['decide'] if pull && column == 'theirs'
     final = item && (column.nil? || column == current || !movable.include?(current)) ? current : column
     @pull_columns[node.fetch('number')] = final if pull
     move(node, item, current, final, pull) unless item && final == current
@@ -126,6 +129,8 @@ class BoardSweep
     # add brings an archived card back before it is placed.
     target = item.nil? || item['isArchived'] ? @board.add(node.fetch('id')) : item
     @board.set_column(target.fetch('id'), column)
+    step = BoardRules.reason(node, column, pull:)
+    @board.set_next_step(target.fetch('id'), step) if step
   end
 
   # The maintainer's review is requested while a pull request waits in Approve
