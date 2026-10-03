@@ -5,6 +5,7 @@ require 'open3'
 require 'time'
 require 'yaml'
 require_relative 'board_rules'
+require_relative 'triage_policy'
 require_relative 'copilot_review'
 require_relative 'project_board'
 require_relative 'triage_event'
@@ -26,7 +27,8 @@ class BoardSweep
   def initialize(environment = ENV)
     @environment = environment
     @repository = environment.fetch('GITHUB_REPOSITORY')
-    config = YAML.safe_load_file(environment.fetch('TRIAGE_CONFIG', '.github/triage.yml'))
+    config = TriagePolicy.load(environment.fetch('TRIAGE_CONFIG', '.github/triage.yml'),
+                               token: environment['GH_TOKEN'] || environment['TRIAGE_PROJECT_TOKEN'])
     settings = config['board'] or raise ProjectBoard::Error, 'the sweep needs a board section in the triage policy'
     @maintainer = settings['maintainer'] || settings['assign_urgent_to']
     @board = ProjectBoard.new(settings, token: environment['TRIAGE_PROJECT_TOKEN'])

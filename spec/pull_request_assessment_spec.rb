@@ -89,6 +89,20 @@ RSpec.describe IssueAssessment, 'with a pull request' do
     end
   end
 
+  context 'when Copilot reviews only private repositories' do
+    let(:policy) { { 'reviews' => 'private' } }
+
+    it 'requests a review in a private repository but not in a public one' do
+      File.write('event.json', JSON.generate('repository' => { 'private' => true }))
+      environment.merge!('GITHUB_EVENT_NAME' => 'workflow_dispatch', 'GITHUB_EVENT_PATH' => 'event.json')
+      expect(run_with).to have_received(:mutate).with('requestReviewsByLogin', anything)
+
+      File.write('event.json', JSON.generate('repository' => { 'private' => false }))
+      FileUtils.rm_rf('state')
+      expect(run_with).not_to have_received(:mutate).with('requestReviewsByLogin', anything)
+    end
+  end
+
   context 'when reviews are off, written as a bare YAML off' do
     let(:policy) { { 'reviews' => false } }
 

@@ -11,6 +11,7 @@ require_relative 'bot_reviews'
 require_relative 'conversation_state'
 require_relative 'copilot_review'
 require_relative 'project_board'
+require_relative 'triage_policy'
 require_relative 'triage_tools'
 
 class IssueAssessment # :nodoc:
@@ -46,7 +47,8 @@ class IssueAssessment # :nodoc:
     @repository = environment.fetch('GITHUB_REPOSITORY')
     @kind = environment.fetch('TRIAGE_KIND', 'issue')
     @number = Integer(environment.fetch('TRIAGE_NUMBER'), 10)
-    @config = YAML.safe_load_file(environment.fetch('TRIAGE_CONFIG', '.github/triage.yml'))
+    @config = TriagePolicy.load(environment.fetch('TRIAGE_CONFIG', '.github/triage.yml'),
+                                token: environment['GH_TOKEN'])
     @engine = environment.fetch('TRIAGE_ENGINE', 'copilot')
     raise ArgumentError, 'engine must be copilot or rubyllm' unless %w[copilot rubyllm].include?(@engine)
 
@@ -986,9 +988,25 @@ class IssueAssessment # :nodoc:
   def reviews?
     mode = pull_request_policy.fetch('reviews', 'copilot')
     mode = 'off' if mode == false # YAML reads a bare off as false
-    raise ArgumentError, 'pull_requests.reviews must be copilot or off' unless %w[copilot off].include?(mode)
+    unless %w[copilot private off].include?(mode)
+      raise ArgumentError, 'pull_requests.reviews must be copilot, private, or off'
+    end
 
-    mode == 'copilot'
+    mode == 'copilot' || (mode == 'private' && private_repository?)
+  end
+
+  # Public repositories get free reviews elsewhere, such as CodeRabbit, so
+  # reviews: private keeps Copilot's, billed to its owner, to private ones.
+  def private_repository?
+    return @private_repository if defined?(@private_repository)
+
+    from_event = event['repository']&.fetch('private', nil) if @environment['GITHUB_EVENT_PATH']
+    @private_repository = from_event.nil? ? repository_visibility_private? : from_event
+  end
+
+  def repository_visibility_private?
+    output, _errors, status = Open3.capture3('gh', 'api', "repos/#{@repository}", '--jq', '.private')
+    !status.success? || output.strip != 'false'
   end
 
   def substantial_change?(item)
