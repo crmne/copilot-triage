@@ -1,10 +1,27 @@
+GIT
+  remote: https://github.com/crmne/ruby_llm.git
+  revision: 12ec26942fe1df47b9740d212db2572a7579fb7f
+  branch: main
+  specs:
+    ruby_llm (2.0.0)
+      base64
+      faraday (>= 1.10.0)
+      faraday-multipart (>= 1)
+      faraday-net_http (>= 1)
+      faraday-retry (>= 1)
+      json (< 4)
+      marcel (>= 1.0, < 3)
+      minitest (>= 5, < 7)
+      schematist (~> 1.1)
+      zeitwerk (~> 2)
+
 GEM
   remote: https://rubygems.org/
   specs:
     ast (2.4.3)
     base64 (0.3.0)
     diff-lcs (1.6.2)
-    event_stream_parser (1.0.0)
+    drb (2.2.3)
     faraday (2.14.4)
       faraday-net_http (>= 2.0, < 3.5)
       json
@@ -20,6 +37,9 @@ GEM
     lint_roller (1.1.0)
     logger (1.7.0)
     marcel (2.1.0)
+    minitest (6.0.6)
+      drb (~> 2.0)
+      prism (~> 1.5)
     multipart-post (2.4.1)
     net-http (0.9.1)
       uri (>= 0.11.1)
@@ -30,6 +50,7 @@ GEM
     prism (1.9.0)
     racc (1.8.1)
     rainbow (3.1.1)
+    rake (13.4.2)
     regexp_parser (2.12.0)
     rspec (3.13.2)
       rspec-core (~> 3.13.0)
@@ -59,17 +80,6 @@ GEM
       parser (>= 3.3.7.2)
       prism (~> 1.7)
     ruby-progressbar (1.13.0)
-    ruby_llm (2.0.0)
-      base64
-      event_stream_parser (~> 1)
-      faraday (>= 1.10.0)
-      faraday-multipart (>= 1)
-      faraday-net_http (>= 1)
-      faraday-retry (>= 1)
-      json (< 3)
-      marcel (>= 1.0, < 3)
-      schematist (~> 1.1)
-      zeitwerk (~> 2)
     schematist (1.1.0)
     unicode-display_width (3.2.0)
       unicode-emoji (~> 4.1)
@@ -82,16 +92,17 @@ PLATFORMS
   x86_64-linux
 
 DEPENDENCIES
+  rake (~> 13.0)
   rspec (~> 3.13)
   rubocop (~> 1.81)
-  ruby_llm (~> 2.0)
+  ruby_llm!
 
 CHECKSUMS
   ast (2.4.3) sha256=954615157c1d6a382bc27d690d973195e79db7f55e9765ac7c481c60bdb4d383
   base64 (0.3.0) sha256=27337aeabad6ffae05c265c450490628ef3ebd4b67be58257393227588f5a97b
   bundler (4.0.16) sha256=d6ca5dd440c24f9abce9844cf44cc8e18c6a553de65a47efb4544137af92c47d
   diff-lcs (1.6.2) sha256=9ae0d2cba7d4df3075fe8cd8602a8604993efc0dfa934cff568969efb1909962
-  event_stream_parser (1.0.0) sha256=a2683bab70126286f8184dc88f7968ffc4028f813161fb073ec90d171f7de3c8
+  drb (2.2.3)
   faraday (2.14.4) sha256=9bb4408c44621b0dbaaaa39e5dbfc4dbe58cc6751b6eb94d16ae9e1f2f2fab6e
   faraday-multipart (1.2.0) sha256=7d89a949693714176f612323ca13746a2ded204031a6ba528adee788694ef757
   faraday-net_http (3.4.4) sha256=0e78af151747ed1b00f33e25973b4bc220d7f16c00c39676817c8b12331eb588
@@ -101,6 +112,7 @@ CHECKSUMS
   lint_roller (1.1.0) sha256=2c0c845b632a7d172cb849cc90c1bce937a28c5c8ccccb50dfd46a485003cc87
   logger (1.7.0) sha256=196edec7cc44b66cfb40f9755ce11b392f21f7967696af15d274dde7edff0203
   marcel (2.1.0) sha256=f8b0327111dc7e516331eeefe052e981ce50e2bd826c1042a53cdf047fcc3512
+  minitest (6.0.6)
   multipart-post (2.4.1) sha256=9872d03a8e552020ca096adadbf5e3cb1cd1cdd6acd3c161136b8a5737cdb4a8
   net-http (0.9.1) sha256=25ba0b67c63e89df626ed8fac771d0ad24ad151a858af2cc8e6a716ca4336996
   parallel (2.2.0) sha256=e1059c5fd7b649558a0aec38a769f06a42942bdb40503d005a59c352fe011cd8
@@ -108,6 +120,7 @@ CHECKSUMS
   prism (1.9.0) sha256=7b530c6a9f92c24300014919c9dcbc055bf4cdf51ec30aed099b06cd6674ef85
   racc (1.8.1) sha256=4a7f6929691dbec8b5209a0b373bc2614882b55fc5d2e447a21aaa691303d62f
   rainbow (3.1.1) sha256=039491aa3a89f42efa1d6dec2fc4e62ede96eb6acd95e52f1ad581182b79bc6a
+  rake (13.4.2)
   regexp_parser (2.12.0) sha256=35a916a1d63190ab5c9009457136ae5f3c0c7512d60291d0d1378ba18ce08ebb
   rspec (3.13.2) sha256=206284a08ad798e61f86d7ca3e376718d52c0bc944626b2349266f239f820587
   rspec-core (3.13.6) sha256=a8823c6411667b60a8bca135364351dda34cd55e44ff94c4be4633b37d828b2d
@@ -117,7 +130,7 @@ CHECKSUMS
   rubocop (1.91.0) sha256=9c82b7bf391c5d7e3798c5b9996e22a1fe3bd7468e351dfdeb96140c058296d0
   rubocop-ast (1.50.0) sha256=b9ca88300da0803ee222ad20cdb30494c0a784eed06fdc35d254b06d662788db
   ruby-progressbar (1.13.0) sha256=80fc9c47a9b640d6834e0dc7b3c94c9df37f08cb072b7761e4a71e22cff29b33
-  ruby_llm (2.0.0) sha256=b3ea5978f544c1c1edf74636fe4ac1d24129127deb44e4c4e7c58df11a4b9e3b
+  ruby_llm (2.0.0)
   schematist (1.1.0) sha256=905d8f0286830926e77e0d631bee325ee741c4b99640bc99735593b40ba73e7b
   unicode-display_width (3.2.0) sha256=0cdd96b5681a5949cdbc2c55e7b420facae74c4aaf9a9815eee1087cb1853c42
   unicode-emoji (4.2.0) sha256=519e69150f75652e40bf736106cfbc8f0f73aa3fb6a65afe62fefa7f80b0f80f

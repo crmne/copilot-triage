@@ -1,0 +1,1396 @@
+---
+cases:
+- name: new-long-report-summary
+  inputs:
+    title: Sustained CPU after connecting
+    body: |
+      I am running version 0.14.0 on Arch Linux. I first thought this was just
+      startup work, because one launch settled down after thirty seconds. But I
+      restarted twice more and the CPU stayed around 90% of one core while idle.
+      The account was connected and history synchronization had finished.
+
+      To avoid changing my real profile I made a separate copy for testing.
+      The official release still showed the problem on that copied profile,
+      both with the window focused and after switching away. I also tried a
+      patched build on the same copied profile, which used about 0-5% instead.
+
+      I do not know which change explains the difference, and I have not checked
+      other operating systems. My earlier report that the problem disappeared
+      after startup was based on that single successful launch. The later two
+      restarts did not reproduce that improvement.
+    decision:
+      labels:
+      - bug
+      reply:
+      comment: On Arch Linux v0.14.0, connected sessions stay near 90% CPU after startup
+        and two restarts. A patched build uses 0-5% on the same copied profile; the
+        official release still reproduces the problem.
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+    tools: []
+  expected_output:
+    action: reply
+    contains:
+    - 90%
+    - patched
+    max_calls: 8
+    min_calls: 1
+- name: followup-new-evidence-no-recap
+  inputs:
+    title: Idle CPU usage high
+    body: Version 0.14.0 uses 90% CPU while idle.
+    comment: I measured 98% CPU with the window focused and 96% with it unfocused.
+    decision:
+      labels:
+      - bug
+      reply:
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+    tools: []
+  expected_output:
+    action: silent
+    max_calls: 8
+    min_calls: 1
+- name: zapfast-20-stop-request
+  inputs:
+    title: Idle CPU usage high
+    body: Version 0.14.0 uses 90% CPU while idle.
+    comment: Can someone please disable this Copilot bot that is spamming the thread?
+    decision:
+      labels: []
+      reply:
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: true
+    tools: []
+  expected_output:
+    action: silent
+    max_calls: 8
+    mute: true
+    min_calls: 1
+- name: zapfast-20-repeated-update
+  inputs:
+    title: Idle CPU usage high
+    body: Version 0.14.0 uses 90% CPU while idle after a restart.
+    comment: After another restart it still uses 90% CPU while idle.
+    decision:
+      labels: []
+      reply:
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+    tools: []
+  expected_output:
+    action: silent
+    max_calls: 8
+    min_calls: 1
+- name: thanks
+  inputs:
+    title: Images fail to load
+    body: Images do not appear inline.
+    comment: Thanks!
+    decision:
+      labels: []
+      reply:
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+    tools: []
+  expected_output:
+    action: silent
+    max_calls: 8
+    min_calls: 1
+- name: zapfast-34-clear-feature
+  inputs:
+    title: Packaging for NixOS
+    body: It would be nice to package the app for NixOS. I can help with packaging.
+    decision:
+      labels:
+      - enhancement
+      reply:
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+    tools: []
+  expected_output:
+    action: silent
+    max_calls: 8
+    min_calls: 1
+- name: zapfast-26-missing-error-text
+  inputs:
+    title: Images fail to display
+    body: Images show an error in a screenshot, which has not been opened. Clicking
+      them opens the external viewer. Version 0.14.0 on Windows.
+    decision:
+      labels:
+      - bug
+      reply: error
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+    tools: []
+  expected_output:
+    action: reply
+    contains:
+    - error
+    max_calls: 8
+    min_calls: 1
+- name: answered-version-question
+  inputs:
+    title: Images fail to display
+    body: Images do not appear inline on Windows.
+    previous_question: Which version are you using?
+    comment: Version 0.14.0.
+    decision:
+      labels:
+      - bug
+      reply:
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+    tools: []
+  expected_output:
+    action: silent
+    max_calls: 8
+    min_calls: 1
+- name: documented-platform-policy
+  inputs:
+    title: Android support
+    body: Please port the app to Android.
+    decision:
+      labels:
+      - enhancement
+      reply:
+      comment: The project supports desktop platforms only; see [[file:docs/guide.md]].
+      sources:
+      - file:docs/guide.md
+      related_issue:
+      relationship:
+      mute: false
+    tools:
+    - name: read_evidence
+      arguments:
+        reference: file:docs/guide.md
+  expected_output:
+    action: reply
+    contains:
+    - guide
+    contains_any:
+    - desktop
+    - outside
+    - not supported
+    - does not support
+    max_calls: 8
+    min_calls: 1
+    min_evidence_reads: 1
+- name: documented-technical-answer
+  inputs:
+    title: How do I implement a tool?
+    body: Which method should my tool class define?
+    decision:
+      labels:
+      - question
+      reply:
+      comment: Define `execute` on your tool class; see [[file:docs/guide.md]].
+      sources:
+      - file:docs/guide.md
+      related_issue:
+      relationship:
+      mute: false
+    tools:
+    - name: read_evidence
+      arguments:
+        reference: file:docs/guide.md
+  expected_output:
+    action: reply
+    contains:
+    - execute
+    max_calls: 8
+    min_calls: 1
+    min_evidence_reads: 1
+- name: verified-released-fix
+  inputs:
+    title: Images fail on Windows
+    body: All inline images fail on Windows in version 1.2.0.
+    release:
+      id: 1
+      tag_name: v1.2.1
+      name: Windows image fix
+      body: Fixed all inline images failing on Windows. This fix is included in version
+        1.2.1.
+      html_url: https://github.com/example/project/releases/tag/v1.2.1
+      published_at: '2026-09-16T12:00:00Z'
+      draft: false
+      prerelease: false
+    decision:
+      labels:
+      - bug
+      reply:
+      comment: Fixed in v1.2.1; see [[release:1]].
+      sources:
+      - release:1
+      related_issue:
+      relationship:
+      mute: false
+    tools:
+    - name: read_evidence
+      arguments:
+        reference: release:1
+  expected_output:
+    action: reply
+    contains:
+    - 1.2.1
+    - release notes
+    max_calls: 8
+    min_calls: 1
+    min_evidence_reads: 1
+- name: new-regression-without-question
+  inputs:
+    title: Images fail on Windows
+    body: Some inline images fail on Windows in version 1.2.0.
+    comment: 'After upgrading to 1.2.1, I get Error: unsupported image format for
+      every image.'
+    decision:
+      labels:
+      - bug
+      reply:
+      comment: Which image format triggers that error?
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+    tools: []
+  expected_output:
+    action: reply
+    allowed_actions:
+    - reply
+    - silent
+    contains:
+    - format
+    max_calls: 8
+    min_calls: 1
+- name: confirmed-duplicate
+  inputs:
+    title: Theme resets after restart
+    body: My selected theme resets whenever I restart the app on Linux version 1.2.0.
+    candidate:
+      node_id: candidate-42
+      number: 42
+      title: Remember selected theme
+      body: On Linux version 1.2.0 the selected theme resets on every app restart.
+      state: open
+      comments: 0
+      html_url: https://github.com/example/project/issues/42
+    decision:
+      labels:
+      - bug
+      reply:
+      comment: Both reports describe the selected theme resetting after restarting
+        on Linux.
+      sources: []
+      related_issue: 42
+      relationship: duplicate
+      mute: false
+    tools:
+    - name: read_evidence
+      arguments:
+        reference: issue:42
+  expected_output:
+    action: duplicate
+    contains:
+    - 'Duplicate of #42'
+    max_calls: 8
+    min_calls: 1
+    min_evidence_reads: 1
+- name: zapfast-46-existing-forwarding
+  inputs:
+    title: Message/Picture Forwarding
+    body: Does not appear to be a feature or something that works, would be highly
+      appreciated if it was added!
+    tools:
+    - name: search_repository
+      arguments:
+        query: forward
+    - name: read_evidence
+      arguments:
+        reference: file:docs/guide.md
+    decision:
+      labels: []
+      reply:
+      comment: 'Forwarding is already available: right-click the message or picture,
+        choose Forward, then select the destination chat. See [[file:docs/guide.md]].'
+      sources:
+      - file:docs/guide.md
+      related_issue:
+      relationship:
+      mute: false
+  expected_output:
+    action: reply
+    contains:
+    - right-click
+    - Forward
+    - destination
+    - guide
+    max_calls: 8
+    min_calls: 1
+    min_evidence_reads: 1
+- name: spotifast-500-closed-duplicate
+  inputs:
+    title: Smart Shuffle recommendations
+    body: Please add Smart Shuffle recommendations, which mix suggested songs into
+      a playlist.
+    candidate:
+      node_id: candidate-42
+      number: 42
+      title: Smart shuffle
+      body: Please add Smart Shuffle recommendations, which mix suggested songs into
+        a playlist.
+      state: closed
+      state_reason: not_planned
+      comments: 0
+      html_url: https://github.com/example/project/issues/42
+    tools:
+    - name: read_evidence
+      arguments:
+        reference: issue:42
+    decision:
+      labels:
+      - enhancement
+      reply:
+      comment: Both requests ask for Smart Shuffle recommendations mixed into a playlist.
+      sources: []
+      related_issue: 42
+      relationship: duplicate
+      mute: false
+  expected_output:
+    action: duplicate
+    allowed_actions:
+    - duplicate
+    - reply
+    contains:
+    - shuffle
+    max_calls: 8
+    min_calls: 1
+    min_evidence_reads: 1
+- name: ruby_llm-974-closer-look-risk
+  inputs:
+    title: Let an MCP server use a custom transport
+    body: |
+      Some MCP servers are reached neither over Streamable HTTP nor over stdio. A server on a user's computer behind a firewall, for example, can only dial out to the app, so the app has to send JSON-RPC messages back through that tunnel. Until now that meant subclassing `RubyLLM::MCP`'s private transports.
+
+      A `transport` setting now takes the object that carries the messages, as a value, a method name, or a block evaluated on the instance:
+
+      ```ruby
+      class LaptopFiles < RubyLLM::MCP
+        inputs :device
+        transport { Tunnel.new(device) }
+      end
+
+      RubyLLM.mcp(transport: tunnel, name: "laptop")
+      ```
+
+      A transport responds to the same four methods the built-in HTTP and stdio transports already implement: `request(message, version:, timeout:, headers:)`, which returns the response and yields notifications such as progress, then `notify`, `cancel`, and `close`. Everything else stays the same: tools, resources, prompts, progress, input requests, and approvals all go through `Client` as before.
+
+      Details:
+
+      - The transport handles its own authentication and timeouts, so `bearer_token`, `headers`, `oauth`, and `timeout` don't apply to it.
+      - `RubyLLM.mcp(transport:)` requires `name:`, since there is no URL or command to derive one from.
+      - Subclasses share their parent's transport object instead of getting a `dup` of it, as they do for the other settings.
+
+      The MCP guide gets a Custom Transports section, and `RubyLLM.mcp` and `MCP.transport` have RDoc. Unit specs cover talking through a transport, building it from inputs, inheritance, closing, and the inline name check.
+
+      `bundle exec rspec --tag ~generator`: 4663 examples, 0 failures. RuboCop, ArchSpec, and Flay pass.
+    pull_request:
+      association: CONTRIBUTOR
+      files:
+      - path: docs/_core_features/mcp.md
+        additions: 31
+        deletions: 1
+        changeType: MODIFIED
+      - path: lib/ruby_llm.rb
+        additions: 6
+        deletions: 5
+        changeType: MODIFIED
+      - path: lib/ruby_llm/mcp.rb
+        additions: 41
+        deletions: 5
+        changeType: MODIFIED
+      - path: spec/ruby_llm/mcp_spec.rb
+        additions: 91
+        deletions: 2
+        changeType: MODIFIED
+      copilot_review: "<!-- ccr-overview-v2 -->\n\n## Copilot review overview\n\n###
+        \U0001F535 Needs a closer look\n\nThe new transport API spans configuration,
+        lifecycle, and integration behavior, warranting final human review.\n\n**Review
+        effort:** Lite  \n**Findings:** None\n\n<details>\n<summary><strong>Resolved
+        since last review (1)</strong></summary>\n\n- <picture><source media=\"(prefers-color-scheme:
+        dark)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/medium-v2-dark.svg\"><source
+        media=\"(prefers-color-scheme: light)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/medium-v2-light.svg\"><img
+        src=\"https://github.githubassets.com/static/images/icons/copilot-code-review/medium-v2-light.png\"
+        alt=\"Medium severity\" width=\"62\" height=\"18\" align=\"texttop\"></picture>
+        [Add coverage for resolving transport via a method name](#discussion_r4099308915)\n</details>"
+    decision:
+      labels: []
+      reply:
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+      review: false
+      out_of_scope: false
+      next_move: sign_off
+      priority: normal
+      next_step: Read the change; Copilot only flagged its breadth
+    tools: []
+  expected_output:
+    action: silent
+    allowed_actions:
+    - silent
+    - reply
+    next_move:
+    - sign_off
+    - do
+    max_calls: 8
+    min_calls: 1
+- name: ruby_llm-1003-closer-look-risk
+  inputs:
+    title: Restore attachments from serialized messages
+    body: "## What this does\r\n\r\n`Message#to_h` serialized attachments as `{ type:,
+      source: }`, and\r\n`Message.new` passed that Hash to `Attachment.new` as a raw
+      source. A\r\ntranscript restored with `Chat#messages=` from `Message#to_h` therefore
+      had\r\nattachments with no filename or resolution, an `application/octet-stream`\r\nMIME
+      type, and no content, and the next request raised\r\n`UnsupportedAttachmentError`.
+      Attachments were the one value object that\r\n08035557 did not rebuild.\r\n\r\nFollowing
+      the shape agreed in #1001:\r\n\r\n- `Attachment#to_h` adds `filename:` and `resolution:`,
+      omitting `nil`s.\r\n  `type` stays in the output and is ignored on input.\r\n-
+      A Hash inside an attachment list is rebuilt through `Attachment.from_h`,\r\n
+      \ with Symbol or String keys and the message's `config:`. A JSON\r\n  `resolution`
+      of `\"high\"` is turned back into `:high` before\r\n  `Attachment.new` checks
+      it against `RESOLUTIONS`.\r\n- The MIME type is recomputed from the source and
+      filename, so there is one\r\n  source of truth.\r\n- Only Hashes inside a list
+      are decoded. A top-level Hash is still grouped\r\n  input (`with: { image: path
+      }`), so `attachments: attachment.to_h` on its\r\n  own stays grouped, as agreed.\r\n\r\nPaths
+      and URLs round-trip through JSON. IO, Active Storage, and\r\n`UploadedFile`
+      sources pass through as Ruby objects; no bytes are serialized.\r\n\r\nSeven
+      new examples fail before the fix, including the Symbol-key and JSON\r\nround
+      trips at both the `Attachment` and `Message` level and\r\n`Chat#messages=` with
+      serialized messages. The String-key spec asserts that\r\nthe JSON input carries
+      `\"resolution\" => \"high\"`. Two more guard the omitted\r\n`nil` resolution
+      and the forwarded configuration.\r\n\r\nFixes #1001\r\n\r\n## Type of change\r\n\r\n-
+      [x] Bug fix\r\n- [ ] New feature\r\n- [ ] Breaking change\r\n- [ ] Documentation\r\n-
+      [ ] Performance improvement\r\n\r\n## Scope check\r\n\r\n- [x] I read the [Contributing
+      Guide](https://github.com/crmne/ruby_llm/blob/main/CONTRIBUTING.md)\r\n- [x]
+      This aligns with RubyLLM's focus on **LLM communication**\r\n- [x] This isn't
+      application-specific logic that belongs in user code\r\n- [x] This benefits
+      most users, not just my specific use case\r\n\r\n## Quality check\r\n\r\n- [x]
+      I ran `overcommit --install` and all hooks pass\r\n- [x] I tested my changes
+      thoroughly\r\n  - [ ] For provider changes: Re-recorded VCR cassettes with `bundle
+      exec rake vcr:record[provider_name]`\r\n  - [x] All tests pass: `bundle exec
+      rspec --tag ~live` (3,687 examples, 0 failures)\r\n- [x] I updated documentation
+      if needed (not needed: `Attachment#to_h` and `.from_h` are `:nodoc:`)\r\n- [x]
+      I didn't modify auto-generated files manually (`models.json`, `aliases.json`)\r\n\r\n##
+      AI-generated code\r\n\r\n- [x] I used AI tools to help write this code\r\n-
+      [x] I have reviewed and understand all generated code (required if above is
+      checked)\r\n\r\n## API changes\r\n\r\n- [ ] Breaking change\r\n- [ ] New public
+      methods/classes\r\n- [ ] Changed method signatures\r\n- [x] No API changes\r\n"
+    pull_request:
+      association: CONTRIBUTOR
+      files:
+      - path: lib/ruby_llm/attachment.rb
+        additions: 7
+        deletions: 1
+        changeType: MODIFIED
+      - path: spec/ruby_llm/attachment_spec.rb
+        additions: 47
+        deletions: 0
+        changeType: MODIFIED
+      - path: spec/ruby_llm/chat_functions_spec.rb
+        additions: 14
+        deletions: 0
+        changeType: MODIFIED
+      - path: spec/ruby_llm/message_spec.rb
+        additions: 27
+        deletions: 0
+        changeType: MODIFIED
+      copilot_review: "<!-- ccr-overview-v2 -->\n\n## Copilot review overview\n\n###
+        \U0001F535 Needs a closer look\n\nAttachment deserialization affects message
+        and chat transcript reconstruction and warrants final human review.\n\n**Review
+        effort:** Lite  \n**Findings:** None\n\n<details>\n<summary><strong>What changed
+        in this PR</strong></summary>\n\nRestores serialized attachments as usable
+        value objects during message and chat transcript reconstruction.\n\n**Changes:**\n-
+        Adds attachment metadata serialization and deserialization.\n- Preserves filenames,
+        resolutions, MIME types, and configuration.\n- Adds attachment, message, and
+        chat round-trip coverage.\n\n| File | Summary |\r\n|---|---|\r\n| `spec/​ruby_llm/​message_spec.rb`
+        | Tests message attachment restoration. |\r\n| `spec/​ruby_llm/​chat_functions_spec.rb`
+        | Tests restoring attachments in chat transcripts. |\r\n| `spec/​ruby_llm/​attachment_spec.rb`
+        | Tests attachment round trips and configuration forwarding. |\r\n| `lib/​ruby_llm/​attachment.rb`
+        | Implements attachment serialization and deserialization. |\n</details>\n\n---\n\n\U0001F4A1
+        <a href=\"/crmne/ruby_llm/new/main?filename=.github/skills/code-review/SKILL.md\"
+        class=\"Link--inTextBlock\" target=\"_blank\" rel=\"noopener noreferrer\">Add
+        a `code-review` agent skill</a> or configure MCP servers for context-aware,
+        tailored reviews. <a href=\"https://docs.github.com/copilot/how-tos/use-copilot-agents/request-a-code-review/use-code-review?tool=webui#mcp-servers-and-agent-skills\"
+        class=\"Link--inTextBlock\" target=\"_blank\" rel=\"noopener noreferrer\">Learn
+        more in the docs.</a>"
+    decision:
+      labels: []
+      reply:
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+      review: false
+      out_of_scope: false
+      next_move: sign_off
+      priority: normal
+      next_step: Read the change; Copilot only flagged its breadth
+    tools: []
+  expected_output:
+    action: silent
+    allowed_actions:
+    - silent
+    - reply
+    next_move:
+    - sign_off
+    - do
+    max_calls: 8
+    min_calls: 1
+- name: spotifast-531-closer-look-risk
+  inputs:
+    title: Make top result artists clickable
+    body: |
+      ## Why
+
+      A song's Top result shows its credited artists, but unlike ordinary song rows,
+      those names cannot open the artist page. This makes search navigation
+      inconsistent and forces listeners to use the context menu instead.
+
+      ## What changed
+
+      - Render each credited artist in a song Top result as the existing artist-link
+        control.
+      - Keep the card's album navigation when the artist link did not handle the
+        click, and keep artists without a Spotify ID as plain text.
+      - Add a demo-mode regression test for the artist navigation action.
+      - Document the behavior and add matched native Linux visual-review captures.
+
+      ### Visual review
+
+      [Open the HTML comparison and its capture notes](https://github.com/reedpen/spotifast/tree/top-result-artist-navigation/docs/assets/top-result-artist-navigation).
+
+      The resting layout is intentionally unchanged. The artist name now underlines
+      on hover and opens the artist page when selected. The comparison includes
+      Before/After controls for light and dark themes at 900x700 and 620x700. The
+      interaction test covers the click because the deterministic screenshot runner
+      does not position a pointer.
+
+      | Before | After |
+      | --- | --- |
+      | ![Song Top result before](https://raw.githubusercontent.com/reedpen/spotifast/top-result-artist-navigation/docs/assets/top-result-artist-navigation/before-dark-normal.png) | ![Song Top result after](https://raw.githubusercontent.com/reedpen/spotifast/top-result-artist-navigation/docs/assets/top-result-artist-navigation/after-dark-normal.png) |
+
+      ## Verification
+
+      Tested on Linux. macOS and Windows were not manually tested.
+
+      - `python3 packaging/test-launchers.py`
+      - `cargo fmt --all --check`
+      - `cargo clippy --locked --all-targets -- -D warnings`
+      - `cargo clippy --locked --all-targets --all-features -- -D warnings`
+      - `cargo test --locked --all-targets`
+      - `cargo test --locked --all-targets --all-features`
+      - `cargo test --locked --all-features --doc`
+      - `RUSTDOCFLAGS='-D warnings' cargo doc --locked --all-features --no-deps`
+      - `(cd docs && bundle exec jekyll build)`
+
+      - [x] I read `CONTRIBUTING.md` and kept this pull request to one concern.
+      - [x] I added or updated tests for behaviour that can regress.
+      - [x] I ran formatting, Clippy, and the relevant tests locally.
+      - [x] I updated documentation for user-visible behaviour, settings, files, or network access.
+      - [x] I understand and take responsibility for every submitted line, including AI-assisted code. Author review required before merge.
+    pull_request:
+      association: CONTRIBUTOR
+      files:
+      - path: README.md
+        additions: 2
+        deletions: 0
+        changeType: MODIFIED
+      - path: docs/_guide/what-is-spotifast.md
+        additions: 3
+        deletions: 1
+        changeType: MODIFIED
+      - path: docs/assets/top-result-artist-navigation/README.md
+        additions: 15
+        deletions: 0
+        changeType: ADDED
+      - path: docs/assets/top-result-artist-navigation/after-dark-narrow.png
+        additions: 0
+        deletions: 0
+        changeType: ADDED
+      - path: docs/assets/top-result-artist-navigation/after-dark-normal.png
+        additions: 0
+        deletions: 0
+        changeType: ADDED
+      - path: docs/assets/top-result-artist-navigation/after-light-narrow.png
+        additions: 0
+        deletions: 0
+        changeType: ADDED
+      - path: docs/assets/top-result-artist-navigation/after-light-normal.png
+        additions: 0
+        deletions: 0
+        changeType: ADDED
+      - path: docs/assets/top-result-artist-navigation/before-dark-narrow.png
+        additions: 0
+        deletions: 0
+        changeType: ADDED
+      - path: docs/assets/top-result-artist-navigation/before-dark-normal.png
+        additions: 0
+        deletions: 0
+        changeType: ADDED
+      - path: docs/assets/top-result-artist-navigation/before-light-narrow.png
+        additions: 0
+        deletions: 0
+        changeType: ADDED
+      - path: docs/assets/top-result-artist-navigation/before-light-normal.png
+        additions: 0
+        deletions: 0
+        changeType: ADDED
+      - path: docs/assets/top-result-artist-navigation/review.html
+        additions: 55
+        deletions: 0
+        changeType: ADDED
+      - path: src/demo.rs
+        additions: 59
+        deletions: 0
+        changeType: MODIFIED
+      - path: src/ui/search.rs
+        additions: 54
+        deletions: 18
+        changeType: MODIFIED
+      - path: src/ui/widgets.rs
+        additions: 4
+        deletions: 1
+        changeType: MODIFIED
+      copilot_review: "<!-- ccr-overview-v2 -->\n\n## Copilot review overview\n\n###
+        \U0001F535 Needs a closer look\n\nRequires explicit maintainer approval for
+        the user-visible navigation and hover interaction.\n\n**Review effort:** Lite
+        \ \n**Findings:** None\n\n<details>\n<summary><strong>Resolved since last
+        review (3)</strong></summary>\n\n- <picture><source media=\"(prefers-color-scheme:
+        dark)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/medium-v2-dark.svg\"><source
+        media=\"(prefers-color-scheme: light)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/medium-v2-light.svg\"><img
+        src=\"https://github.githubassets.com/static/images/icons/copilot-code-review/medium-v2-light.png\"
+        alt=\"Medium severity\" width=\"62\" height=\"18\" align=\"texttop\"></picture>
+        [Cover album routing for ID-less Top result artists](#discussion_r4051078031)\n-
+        <picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/low-v2-dark.svg\"><source
+        media=\"(prefers-color-scheme: light)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/low-v2-light.svg\"><img
+        src=\"https://github.githubassets.com/static/images/icons/copilot-code-review/low-v2-light.png\"
+        alt=\"Low severity\" width=\"62\" height=\"18\" align=\"texttop\"></picture>
+        [Clarify artist names are selectable only with a Spotify ID](#discussion_r4051078077)\n-
+        <picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/low-v2-dark.svg\"><source
+        media=\"(prefers-color-scheme: light)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/low-v2-light.svg\"><img
+        src=\"https://github.githubassets.com/static/images/icons/copilot-code-review/low-v2-light.png\"
+        alt=\"Low severity\" width=\"62\" height=\"18\" align=\"texttop\"></picture>
+        [Clarify artist links require an available Spotify ID](#discussion_r4051078060)\n</details>"
+    decision:
+      labels: []
+      reply:
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+      review: false
+      out_of_scope: false
+      next_move: sign_off
+      priority: normal
+      next_step: Read the change; Copilot only flagged its breadth
+    tools: []
+  expected_output:
+    action: silent
+    allowed_actions:
+    - silent
+    - reply
+    next_move:
+    - sign_off
+    - do
+    max_calls: 8
+    min_calls: 1
+- name: ruby_llm-1000-closer-look-risk
+  inputs:
+    title: Reject invalid OpenRouter batch embedding positions
+    body: "## What this does\r\n\r\nA successful OpenRouter embedding batch result
+      holds one row per input, and each row's `index` says which input the vector
+      belongs to. The parser sorted rows by `index` without checking it. Duplicate,
+      gapped, and negative positions could therefore produce successful results without
+      a valid input-to-vector mapping. Null positions raised `ArgumentError`, and
+      absent keys raised `KeyError`, aborting collection for the whole batch. These
+      cases were reproduced with mocked responses, not observed in live OpenRouter
+      responses.\r\n\r\nThe parser now requires integer positions covering exactly
+      `0...N`, where `N` is the returned row count. Invalid positions produce a `nil`
+      result and `:failed` status for that request, matching the per-request failure
+      behavior of Gemini, Bedrock, and Vertex AI embedding batches. Other requests
+      remain collectible, and valid out-of-order rows are still sorted into input
+      order.\r\n\r\nScope stays narrow: chat and Responses results, outer `custom_id`
+      validation (#993), `Batch`, synchronous embeddings, and request payloads are
+      unchanged.\r\n\r\nFixes #999 \r\n\r\n## Type of change\r\n\r\n- [x] Bug fix\r\n-
+      [ ] New feature\r\n- [ ] Breaking change\r\n- [ ] Documentation\r\n- [ ] Performance
+      improvement\r\n\r\n## Scope check\r\n\r\n- [x] I read the [Contributing Guide](https://github.com/crmne/ruby_llm/blob/main/CONTRIBUTING.md)\r\n-
+      [x] This aligns with RubyLLM's focus on **LLM communication**\r\n- [x] This
+      isn't application-specific logic that belongs in user code\r\n- [x] This benefits
+      most users, not just my specific use case\r\n\r\n## Quality check\r\n\r\n- [x]
+      I ran `overcommit --install` and all hooks pass\r\n- [x] I tested my changes
+      thoroughly\r\n  - [ ] For provider changes: Re-recorded VCR cassettes with `bundle
+      exec rake vcr:record[provider_name]`\r\n  - [ ] All tests pass: `bundle exec
+      rspec`\r\n- [x] I updated documentation if needed\r\n- [x] I didn't modify auto-generated
+      files manually (`models.json`, `aliases.json`)\r\n\r\nEight independent regressions
+      cover duplicate, gapped, negative, null, string, floating-point, nonzero scalar,
+      and absent positions. Each fails against the baseline parser. Each also verifies
+      that a neighboring valid request remains collectible; the parameterized cases
+      check vector order, token usage, and cost. Existing tests cover scalar, single-element
+      array, and reordered multi-vector results.\r\n\r\nLocal validation: 27 focused
+      OpenRouter examples and all 3,674 non-live examples pass, including generators.
+      All hooks pass with `SPEC_OPTS='--tag ~live' TEST_QUEUE_WORKERS=2 bundle exec
+      overcommit --run`; the hook itself excludes generators. The unrestricted `bundle
+      exec rspec` checkbox remains unchecked: the original investigation recorded
+      a Vertex AI ranking failure without local Google Application Default Credentials,
+      also reproduced on the baseline. No live-provider or remote CI success is claimed.\r\n\r\nNo
+      request payloads change, so no cassettes were re-recorded.\r\n\r\n## AI-generated
+      code\r\n\r\n- [x] I used AI tools to help write this code\r\n- ["
+    pull_request:
+      association: CONTRIBUTOR
+      files:
+      - path: lib/ruby_llm/protocols/openrouter/batches.rb
+        additions: 12
+        deletions: 2
+        changeType: MODIFIED
+      - path: spec/ruby_llm/protocols/openrouter/batches_spec.rb
+        additions: 31
+        deletions: 2
+        changeType: MODIFIED
+      copilot_review: "<!-- ccr-overview-v2 -->\n\n## Copilot review overview\n\n###
+        \U0001F535 Needs a closer look\n\nHuman review is recommended despite the
+        narrow scope and passing focused validation.\n\n**Review effort:** Lite  \n**Findings:**
+        None\n\n<details>\n<summary><strong>What changed in this PR</strong></summary>\n\nThis
+        PR validates OpenRouter embedding positions and isolates malformed results
+        per request.\n\n**Changes:**\n- Rejects invalid, duplicate, missing, and out-of-range
+        positions.\n- Adds regression coverage while preserving valid reordered results.\n-
+        Retains a minor warning-wording nit.\n\n| File | Summary |\r\n|---|---|\r\n|
+        `lib/​ruby_llm/​protocols/​openrouter/​batches.rb` | Validates embedding positions
+        before parsing. |\r\n| `spec/​ruby_llm/​protocols/​openrouter/​batches_spec.rb`
+        | Adds invalid-position regression tests. |\n</details>\n\n---\n\n\U0001F4A1
+        <a href=\"/crmne/ruby_llm/new/main?filename=.github/skills/code-review/SKILL.md\"
+        class=\"Link--inTextBlock\" target=\"_blank\" rel=\"noopener noreferrer\">Add
+        a `code-review` agent skill</a> or configure MCP servers for context-aware,
+        tailored reviews. <a href=\"https://docs.github.com/copilot/how-tos/use-copilot-agents/request-a-code-review/use-code-review?tool=webui#mcp-servers-and-agent-skills\"
+        class=\"Link--inTextBlock\" target=\"_blank\" rel=\"noopener noreferrer\">Learn
+        more in the docs.</a>"
+    decision:
+      labels: []
+      reply:
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+      review: false
+      out_of_scope: false
+      next_move: sign_off
+      priority: normal
+      next_step: Read the change; Copilot only flagged its breadth
+    tools: []
+  expected_output:
+    action: silent
+    allowed_actions:
+    - silent
+    - reply
+    next_move:
+    - sign_off
+    - do
+    max_calls: 8
+    min_calls: 1
+- name: ruby_llm-949-closer-look-concrete
+  inputs:
+    title: Drop foreign provider raw_content on replay
+    body: "## What this does\r\n\r\nFixes #948 \r\n\r\nA provider-tool turn keeps
+      the producing provider's native content blocks in\r\n`Message#raw_content` so
+      that provider can replay the turn exactly (Anthropic\r\n`server_tool_use` /
+      `web_search_tool_result`, the Responses protocol's\r\n`web_search_call` / reasoning
+      / `message` items, Gemini's server-tool parts).\r\n`format_message` (Anthropic),
+      `format_assistant_items` / `format_tool_items`\r\n(Responses), and `format_parts`
+      (Gemini) all replayed those blocks whenever\r\n`raw_content` was present, with
+      **no check for which provider or protocol\r\nproduced them**. Once a chat moved
+      to another provider with `with_model` (or\r\na configured fallback), the previous
+      provider's wire-format blocks were\r\ninserted into the new provider's request
+      verbatim.\r\n\r\nThis mirrors the `thinking` cross-provider replay bug fixed
+      in #935. That fix\r\nidentified the producer from the message's successful `ruby_llm_usage_entries`\r\nand
+      stripped foreign `thinking` before rendering. This PR adds the same guard\r\nfor
+      `raw_content` — and goes one step further than a pure provider check,\r\nbecause
+      provider identity alone is not always enough.\r\n\r\n### Why provider identity
+      alone isn't enough\r\n\r\nVertex AI serves Claude, Gemini, and Chat-Completions-compatible
+      models\r\nthrough **one provider slug** (`vertexai`) but **three different wire\r\nprotocols**
+      (`VertexAI::Anthropic`, `VertexAI::Gemini`,\r\n`VertexAI::ChatCompletions`),
+      selected per model. A message produced on a\r\nClaude-on-Vertex turn and a message
+      produced on a Gemini-on-Vertex turn both\r\nreport `provider: \"vertexai\"`
+      in their usage entry — so a producer-only check\r\n(matching the merged `thinking`
+      fix's granularity) would treat a\r\nClaude-shaped `raw_content` moving to a
+      Gemini-on-Vertex turn as \"same\r\nproducer\" and still replay Anthropic content
+      blocks into Gemini's `parts`.\r\nThis is caught with real, tested reproduction
+      in this PR's regression suite.\r\n\r\n### The fix\r\n\r\n`Message` gains `raw_content_protocol`
+      — the registered name of the protocol\r\nthat produced `raw_content` (`\"anthropic\"`,
+      `\"responses\"`, `\"gemini\"`, etc.).\r\n`Provider#complete`, `#tool_approval_response`,
+      `#compact`, and\r\n`Batch#deliver_message` tag it with the resolved protocol's
+      name (reusing the\r\nexisting `batch_protocol_name` reverse lookup already used
+      to name protocols\r\nfor batch storage — no new naming scheme).\r\n\r\n`Protocol#preprocess_message`
+      drops `raw_content` (and, as before, `thinking`)\r\nwhen the message is foreign
+      by **either** signal:\r\n\r\n```ruby\r\ndef foreign_protocol_state?(message)\r\n
+      \ producer = producer_slug(message)\r\n  return true if producer && producer
+      != @provider.slug\r\n\r\n  source_protocol = message.raw_content_protocol\r\n
+      \ target_protocol = @provider.batch_protocol_name(self.class)\r\n  source_protocol
+      && target_protocol && source_protocol != target_protocol\r\nend\r\n```\r\n\r\nAn
+      unknown producer *and* an untagged protocol (a message from before this\r\nchange,
+      or one built by hand without `raw_content_protocol:`) both replay\r\nunchange"
+    pull_request:
+      association: CONTRIBUTOR
+      files:
+      - path: docs/_core_features/provider-tools.md
+        additions: 4
+        deletions: 0
+        changeType: MODIFIED
+      - path: lib/ruby_llm/active_record/chat_methods.rb
+        additions: 1
+        deletions: 1
+        changeType: MODIFIED
+      - path: lib/ruby_llm/active_record/message_methods.rb
+        additions: 3
+        deletions: 1
+        changeType: MODIFIED
+      - path: lib/ruby_llm/batch.rb
+        additions: 6
+        deletions: 0
+        changeType: MODIFIED
+      - path: lib/ruby_llm/message.rb
+        additions: 63
+        deletions: 2
+        changeType: MODIFIED
+      - path: lib/ruby_llm/protocol.rb
+        additions: 28
+        deletions: 7
+        changeType: MODIFIED
+      - path: lib/ruby_llm/provider.rb
+        additions: 15
+        deletions: 3
+        changeType: MODIFIED
+      - path: spec/ruby_llm/active_record/chat_methods_thinking_replay_spec.rb
+        additions: 77
+        deletions: 0
+        changeType: MODIFIED
+      - path: spec/ruby_llm/batch_spec.rb
+        additions: 17
+        deletions: 0
+        changeType: MODIFIED
+      - path: spec/ruby_llm/chat_fallbacks_spec.rb
+        additions: 36
+        deletions: 0
+        changeType: MODIFIED
+      - path: spec/ruby_llm/chat_raw_content_replay_spec.rb
+        additions: 178
+        deletions: 0
+        changeType: ADDED
+      - path: spec/ruby_llm/message_spec.rb
+        additions: 73
+        deletions: 0
+        changeType: MODIFIED
+      - path: spec/ruby_llm/provider_spec.rb
+        additions: 46
+        deletions: 0
+        changeType: MODIFIED
+      copilot_review: "<!-- ccr-overview-v2 -->\n\n## Copilot review overview\n\n###
+        \U0001F535 Needs a closer look\n\nBatch delivery can record the adapter rather
+        than the actual response protocol, causing valid same-protocol replay state
+        to be discarded.\n\n**Review effort:** Lite  \n**Findings:** None\n\n<details>\n<summary><strong>What
+        changed in this PR</strong></summary>\n\nThis PR prevents provider-specific
+        `raw_content` from being replayed across incompatible providers or protocols
+        while preserving same-protocol replay and persistence.\n\n**Changes:**\n-
+        Adds protocol provenance and replay sanitization.\n- Persists provenance in
+        existing JSON storage.\n- Adds batch, fallback, Rails, regression, and documentation
+        coverage.\n\n| File | Summary |\r\n|---|---|\r\n| `spec/​ruby_llm/​provider_spec.rb`
+        | Tests protocol tagging for provider results. |\r\n| `spec/​ruby_llm/​message_spec.rb`
+        | Tests provenance serialization and storage envelopes. |\r\n| `spec/​ruby_llm/​chat_raw_content_replay_spec.rb`
+        | Tests cross-provider and cross-protocol replay filtering. |\r\n| `spec/​ruby_llm/​chat_fallbacks_spec.rb`
+        | Tests fallback sanitization. |\r\n| `spec/​ruby_llm/​batch_spec.rb` | Tests
+        batch result tagging. |\r\n| `spec/​ruby_llm/​active_record/​chat_methods_thinking_replay_spec.rb`
+        | Tests persisted and legacy replay behavior. |\r\n| `lib/​ruby_llm/​provider.rb`
+        | Tags provider responses with protocol provenance. |\r\n| `lib/​ruby_llm/​protocol.rb`
+        | Filters foreign state and raises for unreplayable turns. |\r\n| `lib/​ruby_llm/​message.rb`
+        | Stores protocol provenance and persistence envelopes; architecture concern
+        noted. |\r\n| `lib/​ruby_llm/​batch.rb` | Tags batch results; protocol selection
+        needs correction for parsed batch responses. |\r\n| `lib/​ruby_llm/​active_record/​message_methods.rb`
+        | Restores persisted provenance. |\r\n| `lib/​ruby_llm/​active_record/​chat_methods.rb`
+        | Persists provenance envelopes. |\r\n| `docs/​_core_features/​provider-tools.md`
+        | Documents protocol-aware replay behavior. |\n</details>\n\n---\n\n\U0001F4A1
+        <a href=\"/crmne/ruby_llm/new/main?filename=.github/skills/code-review/SKILL.md\"
+        class=\"Link--inTextBlock\" target=\"_blank\" rel=\"noopener noreferrer\">Add
+        a `code-review` agent skill</a> or configure MCP servers for context-aware,
+        tailored reviews. <a href=\"https://docs.github.com/copilot/how-tos/use-copilot-agents/request-a-code-review/use-code-review?tool=webui#mcp-servers-and-agent-skills\"
+        class=\"Link--inTextBlock\" target=\"_blank\" rel=\"noopener noreferrer\">Learn
+        more in the docs.</a>"
+    decision:
+      labels: []
+      reply:
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+      review: false
+      out_of_scope: false
+      next_move: theirs
+      priority: normal
+      next_step: Wait for the author to fix the issues Copilot found
+    tools: []
+  expected_output:
+    action: silent
+    allowed_actions:
+    - silent
+    - reply
+    next_move:
+    - theirs
+    max_calls: 8
+    min_calls: 1
+- name: spotifast-525-closer-look-concrete
+  inputs:
+    title: 'fix(ui): stop shuffle button from starting playback'
+    body: "## Why\n\nThe Shuffle button next to **Play** used to start playback immediately
+      when clicked.\n\nThat made it impossible to enable shuffle first and decide
+      separately when to start playing the playlist. Since the button is meant to
+      control shuffle mode, it should only toggle that state and leave playback to
+      the **Play** button.\n\n## What changed\n\n- Updated the Shuffle button next
+      to **Play** so it only toggles shuffle mode and no longer starts playback.\n-
+      Kept the active shuffle state visible with the accent colour.\n- Left the explicit
+      **Shuffle play** action in context menus unchanged.\n- Added a regression test
+      to make sure toggling shuffle does not emit a playback action.\n- Updated the
+      README and user guide to reflect the new behaviour.\n- Added app-level tests
+      for selecting Shuffle before a device is active and pressing **Play** later,
+      and for toggling Shuffle while another collection is playing.\n- Updated the
+      queue reference for the global Shuffle mode and its effect on playback order.\n-
+      Kept Shuffle pending without a remote request when no device is active, with
+      regression coverage for that case and active playback whose device ID is unknown.\n\nThere
+      is no linked issue.\n\n## Verification\n\nTested on macOS with:\n\n```sh\ncargo
+      fmt --all --check\ncargo clippy --locked --all-targets -- -D warnings\ncargo
+      clippy --locked --all-targets --all-features -- -D warnings\ncargo test --locked
+      --lib ui::collection::tests::collection_shuffle_button_changes_mode_without_starting_playback
+      -- --exact\ncargo test --locked --lib shuffle_selected_without_a_device_applies_when_collection_play_starts\ncargo
+      test --locked --lib shuffle_toggle_on_another_collection_keeps_playing_context_until_play\ncargo
+      test --locked --all-targets\ncargo test --locked --all-targets --all-features\ncargo
+      test --locked --all-features --doc\nRUSTDOCFLAGS='-D warnings' cargo doc --locked
+      --all-features --no-deps\n```\n\nFormatting, the focused and full tests, doctests,
+      and Rust documentation pass. The new tests use the real collection controls
+      and verify that the selected mode survives until **Play**, while toggling Shuffle
+      during playback does not start the viewed collection. The follow-up verifies
+      that no remote Shuffle request or error is produced without a device, while
+      active playback with an unknown device ID still receives the request.\n\nBoth
+      local Clippy commands stop at the existing `manual_c_str_literals` lint in `src/mac_touchbar_crash_guard.rs:48`
+      on Rust 1.98. That file is unchanged in this PR.\n\nI was not able to run the
+      local documentation site build because Bundler 4.0.16 is not installed in this
+      environment. The packaging launcher tests fail with this macOS machine's `install`
+      and Ruby/Psych versions. GitHub Actions provides the platform and site checks;
+      their current results are shown in the PR checks.\n\n### Visual comparison\n\nThe
+      visible change is the result of clicking the collection Shuffle button. In the
+      baseline, clicking it requests playback of the viewed **Discover Weekly** playlist. "
+    pull_request:
+      association: CONTRIBUTOR
+      files:
+      - path: README.md
+        additions: 5
+        deletions: 0
+        changeType: MODIFIED
+      - path: docs/_guide/using-spotifast.md
+        additions: 3
+        deletions: 0
+        changeType: MODIFIED
+      - path: docs/_reference/queue.md
+        additions: 7
+        deletions: 0
+        changeType: MODIFIED
+      - path: docs/_reference/settings-and-files.md
+        additions: 4
+        deletions: 2
+        changeType: MODIFIED
+      - path: src/app.rs
+        additions: 285
+        deletions: 1
+        changeType: MODIFIED
+      - path: src/backend.rs
+        additions: 22
+        deletions: 0
+        changeType: MODIFIED
+      - path: src/demo.rs
+        additions: 11
+        deletions: 0
+        changeType: MODIFIED
+      - path: src/entrypoint.rs
+        additions: 2
+        deletions: 1
+        changeType: MODIFIED
+      - path: src/ui/collection.rs
+        additions: 62
+        deletions: 15
+        changeType: MODIFIED
+      - path: src/ui/player_bar.rs
+        additions: 1
+        deletions: 1
+        changeType: MODIFIED
+      copilot_review: "<!-- ccr-overview-v2 -->\n\n## Copilot review overview\n\n###
+        \U0001F535 Needs a closer look\n\nThe no-device shuffle path can still issue
+        unintended queue or shuffle requests in idle-state cases.\n\n**Review effort:**
+        Lite  \n**Findings:** None\n\n<details>\n<summary><strong>Resolved since last
+        review (1)</strong></summary>\n\n- <picture><source media=\"(prefers-color-scheme:
+        dark)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/medium-v2-dark.svg\"><source
+        media=\"(prefers-color-scheme: light)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/medium-v2-light.svg\"><img
+        src=\"https://github.githubassets.com/static/images/icons/copilot-code-review/medium-v2-light.png\"
+        alt=\"Medium severity\" width=\"62\" height=\"18\" align=\"texttop\"></picture>
+        [Skip shuffle request when no remote device is active](#discussion_r4079725690)\n</details>"
+    decision:
+      labels: []
+      reply:
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+      review: false
+      out_of_scope: false
+      next_move: theirs
+      priority: normal
+      next_step: Wait for the author to fix the issues Copilot found
+    tools: []
+  expected_output:
+    action: silent
+    allowed_actions:
+    - silent
+    - reply
+    next_move:
+    - theirs
+    max_calls: 8
+    min_calls: 1
+- name: hyprmoncfg-61-closer-look-concrete
+  inputs:
+    title: Keep display discovery responsive and reuse layouts on new hardware
+    body: |
+      This adds reusable layout drafts and keeps display discovery and editor responses correlated with the current hardware while docks connect or disconnect.
+
+      - Add `reuse_profile` and a typed client helper: map saved roles to current screens and return an unnamed draft without applying or saving it. Preserve the original profile and omit its command hook.
+      - Preserve target-device calibration, remap mirrors/workspaces, preserve the template's effective generated workspace order before appending extra connected screens, and warn about mode/scale adjustments. Broken mirror dependencies become nonoverlapping independent displays; mode/scale-adapted rectangles are repaired and the final draft is validated. Preserve the selected template's explicit unknown-display policy independently of calibration donors.
+      - Bound daemon discovery and apply-engine reads per query, return retryable `compositor_busy` errors, and retain working client connections during recovery. Keep rollback's independent recovery context.
+      - Add hardware snapshot hashes to status/editor/reuse responses and verify bindings around workspace reads. Coalesce topology probes, reject stale results and debounce timers (including pre-lid-wake snapshots), and wait for the latest probe before reconciliation. Retry transient failures without another hotplug event.
+      - Preserve current upstream's automatic extension, explicit strict-display policy, recovery/backoff, power refresh, and workspace persistence.
+
+      The [companion panel PR](https://github.com/crmne/omarchy-hyprmoncfg/pull/18) provides the reuse form and protects drafts during refresh/recovery.
+
+      Validation: full Go tests, vet, both command builds, and race tests for apply, daemon, profile, appstatus, IPC, Hyprland client, and TUI pass. `go mod tidy` leaves module files unchanged. Regressions cover blocked apply reads with restoration/retry, calibration and ambiguous identity, hardware changes during snapshots, repaired/adapted geometry and mirror alignment, template policy preservation, newer hotplug/lid/timeout ordering, pre-wake poll/hotplug snapshots, explicit/implicit/rule-derived workspace order with skipped and extra displays, and typed IPC errors.
+
+      The 750 ms default is per daemon query, not a whole-operation guarantee. Automatic reconciliation/apply/rollback remains serialized. Display writes and post-apply commands retain their own lifecycle; the terminal editor retains its separate asynchronous refresh context. No physical unfamiliar-dock replug was performed.
+
+      — Astra Ulta
+    pull_request:
+      association: CONTRIBUTOR
+      files:
+      - path: README.md
+        additions: 3
+        deletions: 1
+        changeType: MODIFIED
+      - path: docs/_guide/daemon.md
+        additions: 1
+        deletions: 1
+        changeType: MODIFIED
+      - path: docs/_reference/ipc.md
+        additions: 25
+        deletions: 2
+        changeType: MODIFIED
+      - path: internal/appstatus/status.go
+        additions: 5
+        deletions: 2
+        changeType: MODIFIED
+      - path: internal/daemon/ipc.go
+        additions: 30
+        deletions: 1
+        changeType: MODIFIED
+      - path: internal/daemon/query_test.go
+        additions: 85
+        deletions: 1
+        changeType: MODIFIED
+      - path: internal/ipc/client.go
+        additions: 6
+        deletions: 0
+        changeType: MODIFIED
+      - path: internal/ipc/client_reuse_test.go
+        additions: 71
+        deletions: 0
+        changeType: ADDED
+      - path: internal/ipc/protocol.go
+        additions: 6
+        deletions: 0
+        changeType: MODIFIED
+      - path: internal/ipc/reuse_test.go
+        additions: 43
+        deletions: 0
+        changeType: ADDED
+      - path: internal/ipc/server.go
+        additions: 13
+        deletions: 0
+        changeType: MODIFIED
+      - path: internal/profile/reuse.go
+        additions: 298
+        deletions: 0
+        changeType: ADDED
+      - path: internal/profile/reuse_review_test.go
+        additions: 233
+        deletions: 0
+        changeType: ADDED
+      - path: internal/profile/reuse_test.go
+        additions: 348
+        deletions: 0
+        changeType: ADDED
+      copilot_review: "<!-- ccr-overview-v2 -->\n\n## Copilot review overview\n\n###
+        \U0001F535 Needs a closer look\n\nFour moderate unresolved issues remain in
+        layout reuse and daemon input validation.\n\n**Review effort:** Lite  \n**Findings:**
+        None"
+    decision:
+      labels: []
+      reply:
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+      review: false
+      out_of_scope: false
+      next_move: theirs
+      priority: normal
+      next_step: Wait for the author to fix the issues Copilot found
+    tools: []
+  expected_output:
+    action: silent
+    allowed_actions:
+    - silent
+    - reply
+    next_move:
+    - theirs
+    max_calls: 8
+    min_calls: 1
+- name: spotifast-585-closer-look-concrete
+  inputs:
+    title: Fix song selection with arrow keys and add playlist Delete shortcut
+    body: |-
+      ## Why
+
+      Song-row arrow navigation moves focus but leaves the clicked song selected, making the highlights ambiguous. Keyboard users also cannot extend a selection with Shift+Up/Down or remove selected playlist songs with Delete.
+
+      ## What changed
+
+      - Up/Down selects only the destination song.
+      - Shift+Up/Down extends or shrinks the selection from its anchor.
+      - Delete uses the existing "Remove from this playlist" action in editable playlists, respecting text-field focus, dialogs and open menus. On macOS, both the normal Delete key and forward Delete work.
+      - Clear selection when playlist contents are refreshed, so stale row indices cannot delete different songs.
+      - Add regression coverage in the existing table tests, including Delete with an open row menu.
+      - Document the shortcuts in README, the guide, and the translated in-app Keyboard shortcuts dialog.
+      - Preserve the active Wayland Keep Above translations during catalog regeneration.
+
+      ## Verification
+
+      Windows, with the pinned Rust toolchain:
+      - Passed `cargo fmt --all --check` and `git diff --check`.
+      - Passed `cargo test --locked --no-default-features --features demo --lib`: 910 passed, one ignored native credential-store test.
+      - Passed the localization integration test and the canonical gettext catalog check.
+      - Built and captured the native demo with `--no-default-features --features demo`.
+      - Passed `cargo clippy --locked --no-default-features --features demo --all-targets -- -D warnings`.
+
+      The default/all-feature MilkDrop checks remain blocked locally by missing Windows vcpkg configuration. Launcher packaging checks require missing Unix tools/Ruby, and Jekyll requires missing Bundler. No Linux or macOS tests were run locally. Fresh CI on the updated head is still required.
+
+      ## Screenshots
+
+      Native Windows demo captures, baseline `7e2d6c5`, candidate `40fdaf4`. Each pair uses the same playlist, input sequence, theme and window size. Screenshot files are stored on a separate evidence branch, outside this PR.
+
+      <details>
+      <summary>arrow: Click Rosewood, then Down. Only Otomo remains selected after the change.</summary>
+
+      | Theme / size | Before | After |
+      |---|---|---|
+      | dark, 1000?720 | ![Before arrow, dark, normal](https://raw.githubusercontent.com/shrinikets/spotifast/review/pr-585-screenshots/before-dark-normal-arrow.png) | ![After arrow, dark, normal](https://raw.githubusercontent.com/shrinikets/spotifast/review/pr-585-screenshots/after-dark-normal-arrow.png) |
+      | dark, 760?620 | ![Before arrow, dark, narrow](https://raw.githubusercontent.com/shrinikets/spotifast/review/pr-585-screenshots/before-dark-narrow-arrow.png) | ![After arrow, dark, narrow](https://raw.githubusercontent.com/shrinikets/spotifast/review/pr-585-screenshots/after-dark-narrow-arrow.png) |
+      | light, 1000?720 | ![Before arrow, light, normal](https://raw.githubusercontent.com/shrinikets/spotifast/review/pr-585-screenshots/before-light-normal-arrow.png) | ![After arrow, light, normal](https://raw.githubusercontent.com/shrinikets/spotifast
+    pull_request:
+      association: NONE
+      files:
+      - path: README.md
+        additions: 3
+        deletions: 0
+        changeType: MODIFIED
+      - path: assets/i18n/de-DE.po
+        additions: 51
+        deletions: 47
+        changeType: MODIFIED
+      - path: assets/i18n/es.po
+        additions: 51
+        deletions: 47
+        changeType: MODIFIED
+      - path: assets/i18n/fr.po
+        additions: 51
+        deletions: 47
+        changeType: MODIFIED
+      - path: assets/i18n/it.po
+        additions: 51
+        deletions: 47
+        changeType: MODIFIED
+      - path: assets/i18n/ja.po
+        additions: 51
+        deletions: 47
+        changeType: MODIFIED
+      - path: assets/i18n/nl.po
+        additions: 51
+        deletions: 47
+        changeType: MODIFIED
+      - path: assets/i18n/pl.po
+        additions: 51
+        deletions: 47
+        changeType: MODIFIED
+      - path: assets/i18n/pt-BR.po
+        additions: 51
+        deletions: 47
+        changeType: MODIFIED
+      - path: assets/i18n/pt-PT.po
+        additions: 51
+        deletions: 47
+        changeType: MODIFIED
+      - path: assets/i18n/ru.po
+        additions: 51
+        deletions: 47
+        changeType: MODIFIED
+      - path: assets/i18n/spotifast.pot
+        additions: 51
+        deletions: 47
+        changeType: MODIFIED
+      - path: assets/i18n/sv.po
+        additions: 51
+        deletions: 47
+        changeType: MODIFIED
+      - path: assets/i18n/zh-Hans.po
+        additions: 51
+        deletions: 47
+        changeType: MODIFIED
+      - path: assets/i18n/zh-Hant.po
+        additions: 51
+        deletions: 47
+        changeType: MODIFIED
+      - path: docs/_guide/using-spotifast.md
+        additions: 5
+        deletions: 0
+        changeType: MODIFIED
+      - path: src/ui/collection.rs
+        additions: 240
+        deletions: 23
+        changeType: MODIFIED
+      - path: src/ui/keys.rs
+        additions: 5
+        deletions: 0
+        changeType: MODIFIED
+      - path: src/window.rs
+        additions: 2
+        deletions: 1
+        changeType: MODIFIED
+      - path: tests/localization.rs
+        additions: 10
+        deletions: 0
+        changeType: MODIFIED
+      copilot_review: "<!-- ccr-overview-v2 -->\n\n## Copilot review overview\n\n###
+        \U0001F535 Needs a closer look\n\nClear the selection after playlist deletion
+        and expose the macOS Delete shortcut in the in-app dialog.\n\n**Review effort:**
+        Lite  \n**Findings:** 2 <picture><source media=\"(prefers-color-scheme: dark)\"
+        srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/low-v2-dark.svg\"><source
+        media=\"(prefers-color-scheme: light)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/low-v2-light.svg\"><img
+        src=\"https://github.githubassets.com/static/images/icons/copilot-code-review/low-v2-light.png\"
+        alt=\"Low severity\" width=\"62\" height=\"18\" align=\"texttop\"></picture>\n\n<details
+        open>\n<summary><strong>Open (2)</strong></summary>\n\n- <picture><source
+        media=\"(prefers-color-scheme: dark)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/low-v2-dark.svg\"><source
+        media=\"(prefers-color-scheme: light)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/low-v2-light.svg\"><img
+        src=\"https://github.githubassets.com/static/images/icons/copilot-code-review/low-v2-light.png\"
+        alt=\"Low severity\" width=\"62\" height=\"18\" align=\"texttop\"></picture>
+        [Missing required UI comparison evidence and approval](#discussion_r4114037664)\n-
+        <picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/low-v2-dark.svg\"><source
+        media=\"(prefers-color-scheme: light)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/low-v2-light.svg\"><img
+        src=\"https://github.githubassets.com/static/images/icons/copilot-code-review/low-v2-light.png\"
+        alt=\"Low severity\" width=\"62\" height=\"18\" align=\"texttop\"></picture>
+        [Add required visual evidence for keyboard interaction changes](#discussion_r4101835414)\n</details>\n\n<details>\n<summary><strong>Resolved
+        since last review (4)</strong></summary>\n\n- <picture><source media=\"(prefers-color-scheme:
+        dark)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/high-v2-dark.svg\"><source
+        media=\"(prefers-color-scheme: light)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/high-v2-light.svg\"><img
+        src=\"https://github.githubassets.com/static/images/icons/copilot-code-review/high-v2-light.png\"
+        alt=\"High severity\" width=\"62\" height=\"18\" align=\"texttop\"></picture>
+        [Prevent stale selections from deleting the wrong songs](#discussion_r4101835306)\n-
+        <picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/medium-v2-dark.svg\"><source
+        media=\"(prefers-color-scheme: light)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/medium-v2-light.svg\"><img
+        src=\"https://github.githubassets.com/static/images/icons/copilot-code-review/medium-v2-light.png\"
+        alt=\"Medium severity\" width=\"62\" height=\"18\" align=\"texttop\"></picture>
+        [macOS Delete shortcut ignores the Backspace key](#discussion_r4114037642)\n-
+        <picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/medium-v2-dark.svg\"><source
+        media=\"(prefers-color-scheme: light)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/medium-v2-light.svg\"><img
+        src=\"https://github.githubassets.com/static/images/icons/copilot-code-review/medium-v2-light.png\"
+        alt=\"Medium severity\" width=\"62\" height=\"18\" align=\"texttop\"></picture>
+        [Add regression coverage for Delete with an open row menu](#discussion_r4101835355)\n-
+        <picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/low-v2-dark.svg\"><source
+        media=\"(prefers-color-scheme: light)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/low-v2-light.svg\"><img
+        src=\"https://github.githubassets.com/static/images/icons/copilot-code-review/low-v2-light.png\"
+        alt=\"Low severity\" width=\"62\" height=\"18\" align=\"texttop\"></picture>
+        [Document new shortcuts in the in-app Keyboard shortcuts dialog](#discussion_r4101835386)\n</details>\n\n<details>\n<summary><strong>Previously
+        missed (1)</strong></summary>\n\nIn code that hasn't changed since last review\n\n<details>\n<summary><picture><source
+        media=\"(prefers-color-scheme: dark)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/medium-v2-dark.svg\"><source
+        media=\"(prefers-color-scheme: light)\" srcset=\"https://github.githubassets.com/static/images/icons/copilot-code-review/medium-v2-light.svg\"><img
+        src=\"https://github.githubassets.com/static/images/icons/copilot-code-review/medium-v2-light.png\"
+        alt=\"Medium severity\" width=\"62\" height=\"18\" align=\"texttop\"></picture>
+        Clear selection after queued playlist removal</summary>\n\n`src/​ui/​collection.rs:978`\n\nAfter
+        this action is queued, the selected row set is left in `App`. The optimistic
+        `RemoveFromPlaylist` path removes items without advancing the playlist `items_revision`,
+        so the next frame can keep the same `view` and resolve the old row index to
+        the following song. Pressing Delete again can therefore remove a different
+        song; clear the selection after collecting `uris` (or otherwise invalidate
+        the view) here.\n</details>\n</details>"
+    decision:
+      labels: []
+      reply:
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+      review: false
+      out_of_scope: false
+      next_move: theirs
+      priority: normal
+      next_step: Wait for the author to fix the issues Copilot found
+    tools: []
+  expected_output:
+    action: silent
+    allowed_actions:
+    - silent
+    - reply
+    next_move:
+    - theirs
+    max_calls: 8
+    min_calls: 1

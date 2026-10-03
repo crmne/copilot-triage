@@ -1,9 +1,14 @@
 # Reply evaluations
 
+`TriageEvaluation` in `app/evals` uses RubyLLM's evaluation runner. Its YAML dataset
+contains the same 23 control cases, with inputs separate from expected outcomes.
+The RSpec suite declares `evaluates TriageEvaluation`, so each case also appears
+as an ordinary example with the same assertions and failure messages.
+
 Run the offline control checks:
 
 ```sh
-bundle exec ruby eval/run.rb --replay
+bundle exec rake ruby_llm:eval
 ```
 
 This runs the real tools and publisher against fixture GitHub data and supplied
@@ -20,22 +25,22 @@ We rerun them before each release and when we consider a new default model.
 Measure fresh model behavior with a Copilot token in `COPILOT_GITHUB_TOKEN`:
 
 ```sh
-bundle exec ruby eval/run.rb --live --model gpt-5.6-luna --output luna-eval.json
+EVAL_LIVE=true TRIAGE_MODEL=gpt-5.6-luna EVAL_OUTPUT=tmp/luna bundle exec rake ruby_llm:eval
 ```
 
 Measure a model from another provider through RubyLLM with its key in
 `TRIAGE_API_KEY`:
 
 ```sh
-bundle exec ruby eval/run.rb --live --engine rubyllm --provider anthropic --model claude-haiku-4-5
+EVAL_LIVE=true TRIAGE_ENGINE=rubyllm TRIAGE_PROVIDER=anthropic TRIAGE_MODEL=claude-haiku-4-5 bundle exec rake ruby_llm:eval
 ```
 
-Add `--api-base URL` for an OpenAI-compatible or local endpoint.
+Set `TRIAGE_API_BASE` for an OpenAI-compatible or local endpoint.
 
-The live option consumes Copilot credits but still uses fixture GitHub evidence
-and dry-run publishing. Compare another model by changing `--model`, or compare
-`--reasoning-effort none` and `--reasoning-effort low`. Use
-`--case verified-released-fix` to narrow a run. The runner returns a nonzero exit
+`EVAL_LIVE=true` consumes model credits but still uses fixture GitHub evidence
+and dry-run publishing. Compare another model with `TRIAGE_MODEL`, or compare
+`TRIAGE_REASONING_EFFORT=none` and `TRIAGE_REASONING_EFFORT=low`. Use
+`bundle exec rake "ruby_llm:eval[TriageEvaluation,verified-released-fix]"` to narrow a run. The runner returns a nonzero exit
 status when an expected outcome, required content, or call budget fails.
 
 Alternatively, manually dispatch the **Evaluate replies** Actions workflow. It
@@ -71,8 +76,14 @@ The new-regression case requires assessment, not a manufactured question: either
 a necessary clarification or silence is allowed. Cases with a clear answer,
 required missing error, useful initial summary, or duplicate still require help.
 
-Results include unnecessary replies, missed helpful replies, model calls, input
-bytes, wall time, and each actual reply. Per-case token counts appear when the
-CLI reports usage. Review the replies as well as the pass count: keyword checks
+The task saves `tmp/evaluations/TriageEvaluation.json`. Set `EVAL_OUTPUT` to keep
+runs in separate directories and `EVAL_REPETITIONS` to measure variation. Each
+trial includes its reference, actual action, reply, tool trace, model calls,
+input bytes, wall time, and any assertion failure. Per-case token counts appear
+when the engine reports usage. The `mode` field distinguishes offline replay
+from fresh model output. Review the replies as well as the pass count: keyword checks
 cannot establish factual accuracy or whether a question was necessary. Do not
 optimize only for silence. Keep positive cases when adding negative regressions.
+
+The development bundle uses RubyLLM's `main` branch for the evaluation API.
+The published action continues to install its pinned RubyLLM release.

@@ -12,7 +12,7 @@ bundle install
 npm install --global @github/copilot@1.0.83
 bundle exec rubocop
 bundle exec rspec
-bundle exec ruby eval/run.rb --replay
+bundle exec rake ruby_llm:eval
 ```
 
 The CLI integration test talks to a local fake model and consumes no credits.

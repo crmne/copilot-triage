@@ -223,8 +223,8 @@ Flash never finished within Copilot CLI's 90-second limit.
 Run it yourself against any model, with Copilot or through RubyLLM:
 
 ```sh
-bundle exec ruby eval/run.rb --live --model gpt-5.6-luna
-TRIAGE_API_KEY=... bundle exec ruby eval/run.rb --live --engine rubyllm --provider openrouter --model openai/gpt-oss-120b
+EVAL_LIVE=true TRIAGE_MODEL=gpt-5.6-luna bundle exec rake ruby_llm:eval
+EVAL_LIVE=true TRIAGE_ENGINE=rubyllm TRIAGE_PROVIDER=openrouter TRIAGE_MODEL=openai/gpt-oss-120b TRIAGE_API_KEY=... bundle exec rake ruby_llm:eval
 ```
 
 ## Issues
@@ -652,7 +652,7 @@ spends no credits.
 bundle install
 bundle exec rubocop
 bundle exec rspec
-bundle exec ruby eval/run.rb --replay
+bundle exec rake ruby_llm:eval
 ```
 
 This independent project uses GitHub Copilot CLI and RubyLLM and is not an
