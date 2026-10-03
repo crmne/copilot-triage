@@ -147,7 +147,7 @@ RSpec.describe IssueAssessment, 'with a project board' do
     assessment.run
     expect(assessment).to be_failed
     expect(board).to have_received(:update).with(
-      'report-id', column: 'do', movable: [nil, 'theirs'],
+      'report-id', column: 'do', movable: [nil],
                    next_step: 'Triage could not assess the latest update: its decision was invalid'
     )
   end

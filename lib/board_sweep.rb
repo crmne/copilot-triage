@@ -73,6 +73,12 @@ class BoardSweep
     return dismiss(node, item) if finished && !BoardRules.revived?(node, updated_at)
 
     current = nil if finished
+    # Right after a push to the base branch GitHub has not worked out whether a
+    # pull request still merges; its card waits for the next sweep.
+    if pull && node['mergeable'] == 'UNKNOWN' && item
+      @pull_columns[node.fetch('number')] = current
+      return
+    end
     column = if pull then BoardRules.pull_request_column(node)
              else BoardRules.issue_column(node, current, updated_at, linked_column: linked_column(node))
              end

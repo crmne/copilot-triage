@@ -293,12 +293,13 @@ class IssueAssessment # :nodoc:
   end
 
   # GitHub notifies only whoever triggered a run, so a run that leaves the item
-  # for the maintainer says so on its card, and a card waiting on others comes
-  # back to the maintainer.
+  # for the maintainer says so in its card's next step, in plain words. The
+  # card keeps its column: a failed run says nothing about whose move it is.
   def flag_on_board(reason)
     return unless @item_id && board? && !dry_run? && !@environment['TRIAGE_PROJECT_TOKEN'].to_s.empty?
 
-    board.update(@item_id, column: 'do', movable: [nil, 'theirs'],
+    reason = reason.sub(/ \(.*\)\z/, '')
+    board.update(@item_id, column: 'do', movable: [nil],
                            next_step: "Triage could not assess the latest update: #{reason}"[0, 150])
     report('Board: flagged the card for a maintainer.')
   rescue RuntimeError => e

@@ -146,7 +146,7 @@ module BoardRules
   # A one-line next step for a card the sweep moved, so it never keeps one
   # written for its old column.
   def reason(node, column, pull:)
-    return issue_reason(column) unless pull
+    return issue_reason(node, column) unless pull
 
     checks = check_state(node.dig('commits', 'nodes', 0, 'commit', 'statusCheckRollup'))
     case column
@@ -155,14 +155,29 @@ module BoardRules
       if node['isDraft'] then 'Draft: the author finishes it'
       elsif node['mergeable'] == 'CONFLICTING' then 'Conflicts with the base branch: the author rebases'
       elsif %w[FAILURE ERROR].include?(checks) then 'Checks fail: the author fixes them'
-      elsif %w[PENDING EXPECTED].include?(checks) then 'Checks are still running'
-      else 'Changes requested: the author has the next step'
+      elsif node['reviewDecision'] == 'CHANGES_REQUESTED' || reviewer_state(node) == 'CHANGES_REQUESTED'
+        'Changes requested: the author has the next step'
+      elsif %w[PENDING EXPECTED].include?(checks) then 'Checks or a review are still running'
+      else 'Waiting on the author'
       end
-    when 'do' then pushed_since_changes?(node) ? 'The author pushed after your review: review again' : 'Read the change'
+    when 'do' then do_reason(node, checks)
     end
   end
 
-  def issue_reason(column)
+  def do_reason(node, checks)
+    if maintainer?(node)
+      %w[FAILURE ERROR].include?(checks) ? 'Your change fails its checks: fix them' : 'Finish your change'
+    elsif pushed_since_changes?(node) then 'The author pushed after your review: review again'
+    else
+      'Read the change'
+    end
+  end
+
+  def issue_reason(issue, column)
+    if issue.dig('closedByPullRequestsReferences', 'totalCount').to_i.positive?
+      number = issue.dig('closedByPullRequestsReferences', 'nodes', 0, 'number')
+      return "Follows pull request ##{number}" if number
+    end
     { 'theirs' => 'Waiting on the reporter or author', 'do' => 'They answered: read the reply and act',
       'decide' => 'They answered: read the reply and decide' }[column]
   end

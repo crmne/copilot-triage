@@ -312,6 +312,14 @@ RSpec.describe BoardSweep do
     expect(moves).to be_empty
   end
 
+  it 'leaves a pull request whose mergeability GitHub is still working out' do
+    pulls.push(pull(1, status: 'Their move', mergeable: 'UNKNOWN'))
+
+    sweep.run
+    expect(moves).to be_empty
+    expect(review_requests).to be_empty
+  end
+
   it 'writes a next step for the column a card moved to' do
     pulls.push(pull(1, status: 'Do', mergeable: 'CONFLICTING'))
 
