@@ -5,6 +5,8 @@ require_relative '../../eval/assessment'
 
 # Checks replies, silence, evidence use, and board decisions against the same corpus.
 class TriageEvaluation < RubyLLM::Evaluation
+  evaluator false
+
   def perform(input)
     EvaluationAssessment.run(input)
   end
