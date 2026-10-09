@@ -138,11 +138,11 @@ runs:
       uses: actions/cache@v6
       with:
         path: ${{ runner.temp }}/copilot-triage-gems
-        key: rubyllm-${{ runner.os }}-${{ runner.arch }}-ruby-${{ steps.ruby.outputs.version }}-2.0.0
+        key: rubyllm-${{ runner.os }}-${{ runner.arch }}-ruby-${{ steps.ruby.outputs.version }}-2.1.0
     - name: Install RubyLLM
       if: steps.report.outputs.eligible == 'true' && (inputs.engine == 'rubyllm' || inputs.fallback-api-key != '') && steps.gems.outputs.cache-hit != 'true'
       shell: bash
-      run: gem install ruby_llm --version 2.0.0 --install-dir "$RUNNER_TEMP/copilot-triage-gems" --no-document
+      run: gem install ruby_llm --version 2.1.0 --install-dir "$RUNNER_TEMP/copilot-triage-gems" --no-document
     - name: Assess the report
       if: steps.report.outputs.eligible == 'true'
       shell: bash
