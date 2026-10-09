@@ -129,4 +129,14 @@ RSpec.describe IssueAssessment, 'with a pull request on the board' do
     expect(pushed).not_to have_received(:ask_copilot)
     expect(board).to have_received(:update).with('pr-id', column: 'theirs')
   end
+
+  it 'waits for GitHub to work out mergeability before reading the pull request' do
+    runner = described_class.new(environment)
+    reads = [item.merge('mergeable' => 'UNKNOWN'), item.merge('mergeable' => 'CONFLICTING')]
+    allow(runner).to receive(:pause)
+    allow(runner).to receive(:fetch_report) { [reads.shift || item.merge('mergeable' => 'CONFLICTING'), labels] }
+
+    expect(runner.send(:read_report).first['mergeable']).to eq('CONFLICTING')
+    expect(runner).to have_received(:pause).once
+  end
 end

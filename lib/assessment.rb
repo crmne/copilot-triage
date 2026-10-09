@@ -34,6 +34,8 @@ class IssueAssessment # :nodoc:
               %r{(?:\A|/)(?:package-lock\.json|pnpm-lock\.yaml|go\.sum)\z}].freeze
 
   COPILOT_RETRY_DELAYS = [20, 40].freeze
+  # Seconds between reads while GitHub works out whether a pull request merges.
+  MERGEABILITY_DELAYS = [2, 4, 8].freeze
   # CodeRabbit appends its summary to a pull request's description seconds
   # after it opens; it is the bot's text, not the author's, and would otherwise
   # look like the author changing the report during assessment.
@@ -387,7 +389,22 @@ class IssueAssessment # :nodoc:
     nil
   end
 
+  # Right after a push to the base branch, GitHub reports a pull request's
+  # mergeability as unknown until asked, then works it out within seconds. The
+  # report waits for it, so the agent judges conflicts and the check after the
+  # assessment does not mistake the answer for a change to the report.
   def read_report
+    report = fetch_report
+    MERGEABILITY_DELAYS.each do |delay|
+      break unless pull_request? && report.first['mergeable'] == 'UNKNOWN'
+
+      pause(delay)
+      report = fetch_report
+    end
+    report
+  end
+
+  def fetch_report
     owner, name = @repository.split('/', 2)
     query = <<~GRAPHQL
       query($owner: String!, $name: String!, $number: Int!) {
