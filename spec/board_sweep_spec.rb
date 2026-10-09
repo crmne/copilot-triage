@@ -48,7 +48,7 @@ RSpec.describe BoardSweep do
       'commit' => { 'oid' => commit } }
   end
 
-  def pull(number, status: nil, next_at: nil, **facts)
+  def pull(number, status: nil, next_at: nil, updated_at: nil, **facts)
     checks = facts.key?(:checks) ? facts[:checks] : 'SUCCESS'
     requested = Array(facts[:requested]).map do |login|
       type = login.start_with?('copilot') ? 'Bot' : 'User'
@@ -59,8 +59,10 @@ RSpec.describe BoardSweep do
       'isDraft' => facts.fetch(:draft, false), 'mergeable' => facts.fetch(:mergeable, 'MERGEABLE'),
       'reviewDecision' => facts[:review], 'reviewRequests' => { 'nodes' => requested },
       'reviews' => { 'nodes' => [facts[:copilot]].compact },
-      'commits' => { 'nodes' => [{ 'commit' => { 'statusCheckRollup' => checks && { 'state' => checks } } }] },
-      'projectItems' => { 'nodes' => status ? card(number, status, next_at: next_at) : [] } }
+      'comments' => { 'nodes' => facts.fetch(:comments, []) },
+      'commits' => { 'nodes' => [{ 'commit' => { 'committedDate' => facts[:committed],
+                                                 'statusCheckRollup' => checks && { 'state' => checks } } }] },
+      'projectItems' => { 'nodes' => status ? card(number, status, updated_at:, next_at:) : [] } }
   end
 
   before do
@@ -122,6 +124,18 @@ RSpec.describe BoardSweep do
 
     sweep.run
     expect(moves).to eq([%w[item-3 theirs]])
+  end
+
+  it "keeps a pull request where triage placed it from the maintainer's comment until the author pushes" do
+    asked = [comment('OWNER', '2026-10-06T19:00:00Z', login: 'crmne')]
+    approved = { review: 'APPROVED', comments: asked, committed: '2026-10-05T00:00:00Z' }
+    pulls.push(pull(1, status: 'Their move', updated_at: '2026-10-06T19:01:00Z', **approved),
+               pull(2, status: 'Their move', updated_at: '2026-10-06T19:01:00Z',
+                       **approved, committed: '2026-10-07T00:00:00Z'),
+               pull(3, status: 'Sign off', updated_at: '2026-10-05T00:00:00Z', **approved, mergeable: 'CONFLICTING'))
+
+    sweep.run
+    expect(moves).to eq([%w[item-2 sign_off], %w[item-3 theirs]])
   end
 
   it 'moves an issue with the pull request that would close it' do

@@ -407,7 +407,9 @@ someone comments on it.
 
 Your own comments move cards too, without a reply: ask the reporter for a pull
 request and the card goes to **Their move**, say "not now" and it goes to **Not
-now**, take the work and it goes to **Do**.
+now**, take the work and it goes to **Do**. On a pull request, the sweep keeps
+that placement until the author comments or pushes, even when the pull request
+is approved and mergeable.
 
 In **Sign off**, an issue is a closure triage proposes: close it if you agree,
 or answer in the issue if you don't. Triage never proposes closing an issue

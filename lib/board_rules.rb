@@ -69,6 +69,17 @@ module BoardRules
     yours if status_updated_at.nil? || human.fetch('createdAt') > status_updated_at
   end
 
+  # The maintainer's comment is the latest from a person, and the card was
+  # placed after it, so triage placed it by what they said. A later push, or a
+  # commit rebased since, means the author has answered.
+  def placed_by_maintainer?(pull, since)
+    human = pull.dig('comments', 'nodes').to_a.reject { |comment| TriageEvent.bot?(comment['author']) }.last
+    return false unless since && human && maintainer?(human) && since > human.fetch('createdAt')
+
+    committed = pull.dig('commits', 'nodes', 0, 'commit', 'committedDate')
+    committed.nil? || committed < human.fetch('createdAt')
+  end
+
   # Triage's own jobs, and runs cancelled or skipped, say nothing about the
   # change, so they are left out of the checks' state.
   OWN_CHECKS = %w[assess sweep].freeze

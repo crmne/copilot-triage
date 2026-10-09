@@ -79,6 +79,12 @@ class BoardSweep
       @pull_columns[node.fetch('number')] = current
       return
     end
+    # Triage placed the card from the maintainer's latest comment, such as a
+    # request to resolve conflicts; it stands until the author answers or pushes.
+    if pull && current && BoardRules.placed_by_maintainer?(node, updated_at)
+      @pull_columns[node.fetch('number')] = current
+      return keep_review_request(node, current)
+    end
     column = if pull then BoardRules.pull_request_column(node)
              else BoardRules.issue_column(node, current, updated_at, linked_column: linked_column(node))
              end
@@ -216,7 +222,8 @@ class BoardSweep
                   'closedByPullRequestsReferences(first: 3, includeClosedPrs: false) { totalCount nodes { number } }'
               else
                 "isDraft mergeable reviewDecision #{CopilotReview::FIELDS} " \
-                  'commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 100) { nodes { ' \
+                  'commits(last: 1) { nodes { commit { committedDate ' \
+                  'statusCheckRollup { state contexts(first: 100) { nodes { ' \
                   '... on CheckRun { name conclusion } ... on StatusContext { context state } } } } } } }'
               end
     <<~GRAPHQL
