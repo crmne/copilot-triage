@@ -31,6 +31,19 @@ RSpec.describe IssueAssessment, 'with a fallback model' do
     expect(assessment.send(:quiet?)).to be(true)
   end
 
+  it 'falls back when the environment is the process ENV, as in the action' do
+    saved = environment.keys.to_h { |key| [key, ENV.fetch(key, nil)] }
+    environment.each { |key, value| ENV[key] = value }
+    from_env = described_class.new(ENV)
+    allow(from_env).to receive_messages(ask_copilot: nil, ask_rubyllm: '{"fallback": true}')
+    allow(from_env).to receive(:puts)
+
+    expect(from_env.send(:ask_model, 'prompt')).to eq('{"fallback": true}')
+    expect(from_env.instance_variable_get(:@environment)).to include('TRIAGE_API_KEY' => 'sk-or-fallback')
+  ensure
+    saved.each { |key, value| ENV[key] = value }
+  end
+
   it 'keeps using Copilot while the allowance lasts or overage is allowed' do
     quota['remaining'] = 900
     expect(assessment.send(:ask_model, 'prompt')).to eq('{"copilot": true}')

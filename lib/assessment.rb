@@ -657,11 +657,13 @@ class IssueAssessment # :nodoc:
     report('Copilot allowance is spent; placing the card with the fallback model, posting nothing.')
     @fallback = true
     @engine = 'rubyllm'
-    @environment = @environment.merge('TRIAGE_PROVIDER' => @environment.fetch('TRIAGE_FALLBACK_PROVIDER', 'openrouter'),
-                                      'TRIAGE_MODEL' => @environment.fetch('TRIAGE_FALLBACK_MODEL',
-                                                                           'openai/gpt-oss-120b'),
-                                      'TRIAGE_API_KEY' => @environment['TRIAGE_FALLBACK_API_KEY'],
-                                      'TRIAGE_API_BASE' => nil)
+    # ENV has no merge, so the fallback works on a copy.
+    @environment = @environment.to_h.merge(
+      'TRIAGE_PROVIDER' => @environment.fetch('TRIAGE_FALLBACK_PROVIDER', 'openrouter'),
+      'TRIAGE_MODEL' => @environment.fetch('TRIAGE_FALLBACK_MODEL', 'openai/gpt-oss-120b'),
+      'TRIAGE_API_KEY' => @environment['TRIAGE_FALLBACK_API_KEY'],
+      'TRIAGE_API_BASE' => nil
+    )
     ask_rubyllm(prompt)
   end
 
