@@ -144,8 +144,8 @@ Change it with the `model` input.
 
 ### When the Copilot allowance runs out
 
-Give the action a fallback key and triage keeps the board current after your
-Copilot allowance is spent:
+Give the action a fallback key and triage keeps working after your Copilot
+allowance is spent:
 
 ```yaml
       - uses: crmne/copilot-triage@v0
@@ -156,11 +156,11 @@ Copilot allowance is spent:
 
 Before each run, triage checks the remaining premium requests. When fewer than
 50 are left and overage is off, it uses the fallback model instead,
-`openai/gpt-oss-120b` through OpenRouter by default (`fallback-provider` and
-`fallback-model` change it). A fallback run only places the card on the board
-and posts nothing: in our evaluation the fallback judged pull requests and
-cards as well as the default, but replied less reliably (16 of 23 cases, about
-a cent for all of them).
+`openai/gpt-5.6-luna` through OpenRouter by default, the same model the
+Copilot engine runs (`fallback-provider` and `fallback-model` change it, for
+example `openai` and `gpt-5.6-luna` with an OpenAI key). A fallback run
+triages, replies and places the card like a Copilot run, but requests no
+Copilot reviews until the allowance returns.
 
 ### Your own API key
 
@@ -576,7 +576,7 @@ Action inputs:
 | `model` | `gpt-5.6-luna` | Model ID; for `rubyllm`, as the provider names it |
 | `reasoning-effort` | `low` | Copilot reasoning effort, `none` or `low`; `default` for models without it, such as Claude Haiku |
 | `provider`, `api-key`, `api-base` | | Provider, key, and optional endpoint for `rubyllm` |
-| `fallback-api-key`, `fallback-provider`, `fallback-model` | `openrouter`, `openai/gpt-oss-120b` | Board-only fallback once the Copilot allowance is spent |
+| `fallback-api-key`, `fallback-provider`, `fallback-model` | `openrouter`, `openai/gpt-5.6-luna` | Fallback once the Copilot allowance is spent |
 | `review-token` | `copilot-token` | Token that requests Copilot reviews, billed to its owner |
 | `project-token` | | Classic token with the `project` scope, for the board |
 | `triage-workflow` | `triage.yml` | For the sweep, the triage workflow to run on fork pull requests Copilot asks a human to look at |

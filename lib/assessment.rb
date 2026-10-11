@@ -668,16 +668,15 @@ class IssueAssessment # :nodoc:
     end
   end
 
-  # The fallback model judges cards well but replies less reliably than the
-  # default, so a fallback run only updates the board; nothing is posted.
+  # The fallback runs the default model through the fallback provider's key, so
+  # it triages, replies and places the card like a Copilot run.
   def ask_fallback(prompt)
-    report('Copilot allowance is spent; placing the card with the fallback model, posting nothing.')
-    @fallback = true
+    report('Copilot allowance is spent; assessing with the fallback model.')
     @engine = 'rubyllm'
     # ENV has no merge, so the fallback works on a copy.
     @environment = @environment.to_h.merge(
       'TRIAGE_PROVIDER' => @environment.fetch('TRIAGE_FALLBACK_PROVIDER', 'openrouter'),
-      'TRIAGE_MODEL' => @environment.fetch('TRIAGE_FALLBACK_MODEL', 'openai/gpt-oss-120b'),
+      'TRIAGE_MODEL' => @environment.fetch('TRIAGE_FALLBACK_MODEL', 'openai/gpt-5.6-luna'),
       'TRIAGE_API_KEY' => @environment['TRIAGE_FALLBACK_API_KEY'],
       'TRIAGE_API_BASE' => nil
     )
@@ -1102,6 +1101,7 @@ class IssueAssessment # :nodoc:
     return report("Copilot review: already requested for #{head[0, 7]}.") if @state.data['reviewed_head'] == head
     return report("Copilot review: would request one for #{head[0, 7]}.") if dry_run?
     return report('Copilot review: skipped; no token can request one.') if review_token.to_s.empty?
+    return report('Copilot review: skipped; the Copilot allowance is spent.') if copilot_exhausted?
 
     mutate('requestReviewsByLogin', token: review_token, pullRequestId: item.fetch('id'),
                                     botLogins: [COPILOT_REVIEWER], union: true)
@@ -1378,7 +1378,7 @@ class IssueAssessment # :nodoc:
   # A maintainer's own comment only updates the board: the agent places the
   # card by what they said, and nothing is posted.
   def quiet?
-    @environment['TRIAGE_QUIET'] == 'true' || maintainer_comment? || @fallback == true
+    @environment['TRIAGE_QUIET'] == 'true' || maintainer_comment?
   end
 
   def maintainer_comment?

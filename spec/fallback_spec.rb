@@ -25,10 +25,23 @@ RSpec.describe IssueAssessment, 'with a fallback model' do
     expect(assessment.send(:ask_model, 'prompt')).to eq('{"fallback": true}')
     expect(assessment).not_to have_received(:ask_copilot)
     environment = assessment.instance_variable_get(:@environment)
-    expect(environment).to include('TRIAGE_PROVIDER' => 'openrouter', 'TRIAGE_MODEL' => 'openai/gpt-oss-120b',
+    expect(environment).to include('TRIAGE_PROVIDER' => 'openrouter', 'TRIAGE_MODEL' => 'openai/gpt-5.6-luna',
                                    'TRIAGE_API_KEY' => 'sk-or-fallback')
     expect(assessment.send(:redact, 'key sk-or-fallback')).to eq('key [REDACTED]')
-    expect(assessment.send(:quiet?)).to be(true)
+  end
+
+  it 'posts from a fallback run like a Copilot run' do
+    assessment.send(:ask_model, 'prompt')
+    expect(assessment.send(:quiet?)).to be_falsey
+  end
+
+  it 'requests no Copilot review once the allowance is spent' do
+    item = { 'id' => 'PR_1', 'headRefOid' => 'abc1234def' }
+    allow(assessment).to receive(:mutate)
+    assessment.instance_variable_set(:@state, ConversationState.new(nil, 'test'))
+    assessment.send(:request_review, item)
+    expect(assessment).not_to have_received(:mutate)
+    expect(assessment).to have_received(:puts).with(a_string_including('allowance is spent'))
   end
 
   it 'falls back when the environment is the process ENV, as in the action' do
