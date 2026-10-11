@@ -39,6 +39,8 @@ jobs:
         with:
           ruby-version: '3.3'
       - run: npm install --global --no-audit --no-fund @github/copilot@1.0.83
+      # The fallback model runs on RubyLLM once the Copilot allowance is spent.
+      - run: gem install ruby_llm --version 2.1.0 --no-document
       - name: Preview without publishing
         working-directory: subject
         shell: bash
@@ -51,3 +53,5 @@ jobs:
           TRIAGE_DEBUG: 'true'
           GH_TOKEN: ${{ github.token }}
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          TRIAGE_FALLBACK_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          TRIAGE_FALLBACK_MODEL: openai/gpt-5.6-luna
