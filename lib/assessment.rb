@@ -702,7 +702,9 @@ class IssueAssessment # :nodoc:
       ensure
         @tool_ledger = toolbox.ledger
         @model_calls = agent.turns
-        @usage << [agent.tokens.input.to_i, agent.tokens.output.to_i]
+        # RubyLLM counts cached input apart from standard input; all of it was read.
+        tokens = agent.tokens
+        @usage << [tokens.input.to_i + tokens.cache_read.to_i + tokens.cache_write.to_i, tokens.output.to_i]
         @cost = agent.cost.total
       end
       decision = @tool_ledger['decision']

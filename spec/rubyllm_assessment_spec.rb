@@ -20,7 +20,7 @@ RSpec.describe IssueAssessment, 'with the RubyLLM engine' do
       'relationship' => nil, 'mute' => false, 'close_as' => nil }
   end
   let(:agent) do
-    instance_double(TriageAgent, turns: 3, tokens: RubyLLM::Tokens.new(input: 9000, output: 120),
+    instance_double(TriageAgent, turns: 3, tokens: RubyLLM::Tokens.new(input: 1000, cache_read: 8000, output: 120),
                                  cost: instance_double(RubyLLM::Cost, total: 0.0021))
   end
   let(:built) { {} }
