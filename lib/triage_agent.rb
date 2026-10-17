@@ -66,7 +66,8 @@ class TriageAgent < RubyLLM::Agent
   end
   # Requiring a tool call keeps most models on task, but OpenRouter's hosts of
   # gpt-oss answer a required call with an empty error turn, so it can be
-  # relaxed; a model that stops without submitting is reminded once.
+  # relaxed; a model that stops without submitting is reminded once, with the
+  # call forced, since a relaxed model ignored a reminder in plain words.
   tool_options { { choice: tool_choice || :required } }
   max_output_tokens 4000
 
@@ -86,6 +87,7 @@ class TriageAgent < RubyLLM::Agent
         break if reminded
 
         ask_later(REMINDER)
+        with_tool_options(choice: :submit_decision)
         reminded = true
       end
       raise Exhausted, "no decision after #{MAX_TURNS} model turns" if turns >= MAX_TURNS

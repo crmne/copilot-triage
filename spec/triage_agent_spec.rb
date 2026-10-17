@@ -60,6 +60,18 @@ RSpec.describe TriageAgent do
     expect(toolbox.ledger['decision']).to eq(silence)
   end
 
+  it 'forces the submit_decision call with the reminder, for a model whose tool calls are optional' do
+    allow(agent).to receive(:complete?).and_return(true, false)
+    choices = []
+    allow(agent).to receive(:step) do
+      choices << agent.tool_options[:choice]
+      toolbox.call('submit_decision', silence)
+    end
+
+    agent.triage('Report')
+    expect(choices).to eq([:submit_decision])
+  end
+
   it 'gives up when the reminded model still does not submit' do
     allow(agent).to receive_messages(complete?: true)
     allow(agent).to receive(:step)
