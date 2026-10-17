@@ -304,6 +304,18 @@ RSpec.describe TriageTools do
     expect(tools.call('submit_decision', decision.merge('move_to_issue' => true))).not_to include(isError: true)
   end
 
+  it 'answers a discussion in place when its evidence would only ride along on a move' do
+    tools = described_class.new(root: Dir.pwd, repository: 'owner/project', config: config, move: true)
+    tools.call('read_evidence', { 'reference' => 'file:docs/tools.md' })
+    decision = { 'labels' => [], 'reply' => nil, 'comment' => 'The guide rules this out: [[file:docs/tools.md]].',
+                 'sources' => ['file:docs/tools.md'], 'related_issue' => nil, 'relationship' => nil, 'mute' => false,
+                 'move_to_issue' => true }
+
+    expect(tools.call('submit_decision', decision)[:content].first[:text])
+      .to include('A move cites no sources', 'set move_to_issue false')
+    expect(tools.call('submit_decision', decision.merge('move_to_issue' => false))).not_to include(isError: true)
+  end
+
   it 'offers diffs only when assessing a pull request' do
     expect(tools.call('read_evidence', { 'reference' => 'diff:lib/stream.rb' })[:content].first[:text])
       .to include('only available when assessing a pull request')

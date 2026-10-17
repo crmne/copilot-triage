@@ -294,6 +294,12 @@ class TriageTools
     if sources.any? { |source| source.start_with?('diff:') }
       raise ArgumentError, 'Diffs are evidence for you, not citations.'
     end
+    # Evidence worth citing usually answers the discussion, or rules out the
+    # request; a move only hands the report to the new issue's assessment.
+    if decision[:move_to_issue] && sources.any?
+      raise ArgumentError, 'A move cites no sources; the new issue is assessed next. If what you read rules the ' \
+                           'request out or a maintainer declined it, set move_to_issue false and answer here.'
+    end
     if (decision[:out_of_scope] || decision[:close_as]) && !decision[:comment]
       raise ArgumentError, 'Explain in comment why it can be closed.'
     end

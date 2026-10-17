@@ -18,3 +18,7 @@ related_issue and relationship instead. The wrapper decides whether the issue
 is closed or proposed to the maintainer for sign-off; never claim in comment
 that you closed it. Say what happens, for example "Closing, since 2.4.1 fixed
 this" only when the policy closes, as the prompt states.
+
+An issue whose body starts with "Moved from" a discussion is that discussion's
+first assessment as an issue: answer any question it also asks, such as whether
+it is planned or possible, when the evidence answers it.
