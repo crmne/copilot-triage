@@ -151,6 +151,23 @@ RSpec.describe BoardSweep do
     expect(moves).to eq([%w[item-2 sign_off], %w[item-3 theirs]])
   end
 
+  it 'keeps a pull request in Their move while triage asked its author for something' do
+    asked = [comment('CONTRIBUTOR', '2026-10-06T18:00:00Z', login: 'contributor'),
+             comment('NONE', '2026-10-06T19:00:00Z', login: 'github-actions[bot]'),
+             comment('NONE', '2026-10-06T19:30:00Z', login: 'coderabbitai[bot]')]
+    approved = { review: 'APPROVED', copilot: approval, committed: '2026-10-05T00:00:00Z' }
+    pulls.push(pull(1, status: 'Their move', updated_at: '2026-10-06T19:01:00Z', comments: asked, **approved),
+               pull(2, status: 'Their move', updated_at: '2026-10-06T19:01:00Z', **approved,
+                       comments: asked + [comment('CONTRIBUTOR', '2026-10-07T00:00:00Z', login: 'contributor')]),
+               pull(3, status: 'Their move', updated_at: '2026-10-06T19:01:00Z', comments: asked,
+                       **approved, committed: '2026-10-07T00:00:00Z'),
+               pull(4, status: 'Their move', updated_at: '2026-10-06T18:30:00Z', comments: asked, **approved))
+
+    sweep.run
+    expect(moves).to eq([%w[item-2 sign_off], %w[item-3 sign_off], %w[item-4 sign_off]])
+    expect(review_requests.map { |input| input[:pullRequestId] }).to eq(%w[pr-2 pr-3 pr-4])
+  end
+
   it 'moves an issue with the pull request that would close it' do
     pulls.push(pull(7, copilot: copilot(:approve)))
     linked = issue(1, linked: 1)

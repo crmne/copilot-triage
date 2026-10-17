@@ -80,8 +80,10 @@ class BoardSweep
       return
     end
     # Triage placed the card from the maintainer's latest comment, such as a
-    # request to resolve conflicts; it stands until the author answers or pushes.
-    if pull && current && BoardRules.placed_by_maintainer?(node, updated_at)
+    # request to resolve conflicts, or from its own reply asking the author for
+    # something; it stands until the author answers or pushes.
+    if pull && current && (BoardRules.placed_by_maintainer?(node, updated_at) ||
+                           (current == 'theirs' && BoardRules.asked_author?(node, updated_at)))
       @pull_columns[node.fetch('number')] = current
       return keep_review_request(node, current)
     end

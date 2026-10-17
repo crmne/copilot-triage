@@ -87,6 +87,18 @@ module BoardRules
     committed.nil? || committed < human.fetch('createdAt')
   end
 
+  # Triage's latest reply, the latest comment besides review bots', asked the
+  # author for something, such as screenshots, and the card was placed in
+  # Their move with it. Neither a comment nor a push has answered it since.
+  def asked_author?(pull, since)
+    reply = pull.dig('comments', 'nodes').to_a.reject { |comment| BotReviews.reviewer?(comment.dig('author', 'login')) }
+                .last
+    return false unless since && reply && TriageEvent.bot?(reply['author']) && since >= reply.fetch('createdAt')
+
+    committed = pull.dig('commits', 'nodes', 0, 'commit', 'committedDate')
+    committed.nil? || committed < reply.fetch('createdAt')
+  end
+
   # Triage's own jobs, and runs cancelled or skipped, say nothing about the
   # change, so they are left out of the checks' state.
   OWN_CHECKS = %w[assess sweep].freeze
