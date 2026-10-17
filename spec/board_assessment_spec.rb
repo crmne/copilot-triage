@@ -182,7 +182,8 @@ RSpec.describe IssueAssessment, 'with a project board' do
   end
 
   it 'adds the board guidance and tool fields to the agent' do
-    expect(assessment.send(:system_prompt)).to include('## Maintainer board')
+    expect(assessment.send(:system_prompt)).to include('## Maintainer board', 'always in English',
+                                                       'waits on upstream', 'on main but unreleased')
     expect(assessment.send(:tools_settings, Dir.pwd)).to include(board: true)
   end
 
