@@ -268,6 +268,22 @@ RSpec.describe IssueAssessment, type: :task do
     expect(assessment).not_to have_received(:mutate).with('addReaction', anything)
   end
 
+  it "names the failed GitHub request and GitHub's reason, without tokens" do
+    environment['GH_TOKEN'] = 'secret-token'
+    failed = instance_double(Process::Status, success?: false)
+    allow(Open3).to receive(:capture3).with({}, 'gh', 'api', 'graphql', '--input', '-', stdin_data: anything)
+                                      .and_return(['', "gh: Bad credentials secret-token (HTTP 401)\n", failed])
+    allow(Open3).to receive(:capture3).with({}, 'gh', 'api', 'repos/crmne/ruby_llm/labels', '--input', '-',
+                                            stdin_data: anything)
+                                      .and_return(['{"errors":[{"message":"Not Found"}]}', '',
+                                                   instance_double(Process::Status, success?: true)])
+
+    expect { assessment.send(:github, 'graphql', query: 'mutation($input: X) { addComment(input: $input) { a } }') }
+      .to raise_error('GitHub request failed (addComment: Bad credentials [REDACTED] (HTTP 401))')
+    expect { assessment.send(:github, 'repos/crmne/ruby_llm/labels', name: 'bug') }
+      .to raise_error('GitHub request failed (repos/crmne/ruby_llm/labels: Not Found)')
+  end
+
   it 'previews previously assessed reports without writing to GitHub' do
     environment['TRIAGE_DRY_RUN'] = 'true'
     item['reactions']['nodes'] << { 'user' => { 'login' => 'github-actions[bot]' } }

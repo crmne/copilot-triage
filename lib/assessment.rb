@@ -1451,14 +1451,22 @@ class IssueAssessment # :nodoc:
   def github(endpoint, token: nil, method: nil, **payload)
     environment = token ? { 'GH_TOKEN' => token } : {}
     arguments = ['gh', 'api', endpoint, '--input', '-', *(['--method', method] if method)]
-    output, _errors, status = Open3.capture3(environment, *arguments, stdin_data: JSON.generate(payload))
-    raise 'GitHub request failed' unless status.success?
+    output, errors, status = Open3.capture3(environment, *arguments, stdin_data: JSON.generate(payload))
+    raise github_failure(endpoint, method, payload, errors) unless status.success?
     return {} if output.strip.empty?
 
     result = JSON.parse(output)
-    raise 'GitHub request failed' if result['errors']
+    messages = result['errors']&.map { |error| error['message'] }
+    raise github_failure(endpoint, method, payload, messages.join('; ')) if messages
 
     result
+  end
+
+  # Names the request and GitHub's reason (gh prints the HTTP status), so a
+  # failed run says what to fix; never the tokens.
+  def github_failure(endpoint, method, payload, reason)
+    request = endpoint == 'graphql' ? payload[:query].to_s[/\{\s*(\w+)/, 1] : [method, endpoint].compact.join(' ')
+    "GitHub request failed (#{request}: #{redact(reason.to_s.strip.sub(/\Agh: /, ''))[0, 300]})"
   end
 
   def bot?(author)
