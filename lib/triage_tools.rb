@@ -159,13 +159,14 @@ class TriageTools
 
   # report describes the item under assessment, for checks on the decision.
   def initialize(root:, repository:, config:, ledger_path: nil, token: nil, board: false, pull_request: nil,
-                 move: false, issue: false, report: nil)
+                 move: false, issue: false, report: nil, number: nil)
     @root = File.realpath(root)
     @report = report || {}
     @board = board
     @pull_request = pull_request
     @move = move
     @issue = issue
+    @number = number
     @repository = repository
     raise ArgumentError, 'Invalid repository' unless repository.match?(%r{\A[\w.-]+/[\w.-]+\z})
 
@@ -333,6 +334,9 @@ class TriageTools
 
     sources = decision.fetch(:sources)
     raise ArgumentError, 'Read the cited references first.' unless (sources - @ledger['evidence'].keys).empty?
+    if @number && (sources.include?("issue:#{@number}") || decision[:related_issue] == @number)
+      raise ArgumentError, "issue:#{@number} is this report itself; cite other evidence or none."
+    end
     if sources.any? && !decision[:comment]
       raise ArgumentError,
             'Cite sources only in a comment; with no comment, use [].'

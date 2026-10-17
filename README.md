@@ -295,6 +295,12 @@ same goes for an error report from a `report_bots` tracker that reopened it
 because the error recurred, and for a closed issue by the same author, who
 filed it again: the new report is the one to keep.
 
+A link the conversation already has is not posted again: a related issue the
+report or a comment mentions, any issue the bot linked before, or the issue a
+pull request closes ("Fixes #42"). A duplicate the reporter only suspected is
+still confirmed. When the comment had nothing else to say, the decision is
+silent. The agent cannot cite the report itself as evidence.
+
 ### Closing finished issues
 
 ```yaml

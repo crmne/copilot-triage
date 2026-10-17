@@ -388,6 +388,7 @@ class IssueAssessment # :nodoc:
         reply_body(decision)
       decision['next_move'] = 'decide' if board? && decision['next_move'] == 'theirs'
     end
+    drop_known_link(item, decision) if decision['related_issue']
     if decision['related_issue']
       @related_snapshot = @tool_ledger.fetch('evidence').fetch("issue:#{decision['related_issue']}").fetch('snapshot')
       if decision['relationship'] == 'duplicate' && TriageTools.duplicate_conflict(@related_snapshot, @report_facts)
@@ -419,6 +420,26 @@ class IssueAssessment # :nodoc:
   def drop_reply(decision, reason)
     report("Dropped the reply: #{reason}.")
     decision.merge!('reply' => nil, 'comment' => nil, 'sources' => [], 'related_issue' => nil, 'relationship' => nil)
+  end
+
+  # A link the conversation already has tells nobody anything new: one the
+  # report or a comment gives, the bot's own earlier link, or the issue a pull
+  # request closes. A duplicate the reporter only suspected is still worth
+  # confirming. Without cited facts, the comment only explained the link.
+  def drop_known_link(item, decision)
+    number = decision['related_issue']
+    link = %r{(?<![\w&])\##{number}(?!\d)|/#{Regexp.escape(@repository)}/(?:issues|pull|discussions)/#{number}(?!\d)}i
+    comments = item.fetch('comments').fetch('nodes') + (@recovered_comments || [])
+    ours, theirs = comments.partition { |comment| bot?(comment['author']) }.map { |part| part.map { _1['body'] } }
+    ours += @state.data['replies']
+    theirs << item['body'].to_s
+    closed = pull_request? && item['body'].to_s.match?(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+(?:#{link})/i)
+    return unless closed || ours.any? { _1.to_s.match?(link) } ||
+                  (decision['relationship'] == 'related' && theirs.any? { _1.to_s.match?(link) })
+    return drop_reply(decision, "##{number} is already linked in the conversation") if decision['sources'].empty?
+
+    report("Dropped the link to ##{number}: the conversation already has it.")
+    decision.merge!('related_issue' => nil, 'relationship' => nil)
   end
 
   def initial_recap_allowed?(item)
@@ -759,7 +780,8 @@ class IssueAssessment # :nodoc:
     config = @config.merge('labels' => @config.fetch('labels').slice(*allowed))
     { root: Dir.pwd, repository: @repository, config: config,
       ledger_path: File.join(directory, 'evidence.json'), token: @environment['GH_TOKEN'], board: board?,
-      pull_request: (@number if pull_request?), move: move?, issue: @kind == 'issue', report: @report_facts }
+      pull_request: (@number if pull_request?), move: move?, issue: @kind == 'issue', report: @report_facts,
+      number: @number }
   end
 
   def tools_command(settings_path)
@@ -1416,7 +1438,7 @@ class IssueAssessment # :nodoc:
 
   def evidence_tools
     @evidence_tools ||= TriageTools.new(root: Dir.pwd, repository: @repository, config: @config,
-                                        token: @environment['GH_TOKEN'])
+                                        token: @environment['GH_TOKEN'], number: @number)
   end
 
   def evidence_link(reference)
