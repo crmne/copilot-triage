@@ -118,7 +118,8 @@ class TriageTools
 
   # Why this report cannot be closed as a duplicate of the issue snapshot, or
   # nil. A target closed as completed means the bug came back, and an error
-  # tracker reopens its report when the error recurs.
+  # tracker reopens its report when the error recurs. A reporter who closed
+  # their issue and filed it again left this report as the one to keep.
   def self.duplicate_conflict(snapshot, report)
     number = snapshot['number']
     recurrence = "link ##{number} as related instead, and say this looks like a recurrence of it."
@@ -126,6 +127,9 @@ class TriageTools
       "The error tracker reopened this report because the error recurred: #{recurrence}"
     elsif snapshot['state'] == 'closed' && snapshot['state_reason'] == 'completed'
       "##{number} was closed as completed, so this is not a duplicate: #{recurrence}"
+    elsif snapshot['state'] == 'closed' && report['author'] && snapshot['author'] == report['author']
+      "##{number} is closed and has the same author, who filed this report again: this one is the live copy, " \
+        'so link it as related instead.'
     end
   end
 
@@ -399,6 +403,7 @@ class TriageTools
              end
     snapshot = data.slice(*fields)
     if kind == 'issue'
+      snapshot['author'] = data.dig('user', 'login')
       count = data.fetch('comments', 0)
       # The final page contains the newest comments; no full-thread dump.
       page = [(count / 5.0).ceil, 1].max

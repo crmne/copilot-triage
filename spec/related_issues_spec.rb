@@ -129,6 +129,15 @@ RSpec.describe 'Agent-selected related issues and guarded publishing' do
     expect(assessment).not_to have_received(:mutate).with('closeIssue', anything)
   end
 
+  it 'keeps open the copy a reporter filed again after closing their own issue' do
+    candidate.merge!('state' => 'closed', 'state_reason' => nil, 'user' => { 'login' => 'reporter' })
+
+    assessment.run
+
+    expect(assessment).to have_received(:mutate).with('addComment', hash_including(body: start_with('See also #42.')))
+    expect(assessment).not_to have_received(:mutate).with('closeIssue', anything)
+  end
+
   it 'never proposes closing an error tracker report that reopened because the error recurred' do
     config = YAML.safe_load_file('triage.yml').merge('report_bots' => ['honeybadger[bot]'])
     File.write('triage.yml', YAML.dump(config))

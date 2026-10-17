@@ -361,7 +361,8 @@ class IssueAssessment # :nodoc:
 
   # What the tools check a decision against.
   def report_facts(item)
-    { 'recurring' => item['stateReason'] == 'REOPENED' && bot?(item['author']) && report_bot?(item['author']) }
+    { 'author' => item.dig('author', 'login'),
+      'recurring' => item['stateReason'] == 'REOPENED' && bot?(item['author']) && report_bot?(item['author']) }
   end
 
   def initial_recap_allowed?(item)

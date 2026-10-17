@@ -263,6 +263,15 @@ RSpec.describe TriageTools do
       expect(tools.call('submit_decision', decision)[:content].first[:text]).to include('error recurred')
     end
 
+    it 'keeps the copy a reporter filed again after closing their own issue' do
+      issue.merge!('state_reason' => 'not_planned', 'user' => { 'login' => 'reporter' })
+      tools = described_class.new(root: Dir.pwd, repository: 'owner/project', config: config,
+                                  report: { 'author' => 'reporter' })
+      allow(tools).to receive(:api).and_return(issue)
+      tools.call('read_evidence', { 'reference' => 'issue:42' })
+      expect(tools.call('submit_decision', decision)[:content].first[:text]).to include('live copy')
+    end
+
     it 'accepts a duplicate of an issue closed for another reason' do
       issue['state_reason'] = 'not_planned'
       call('read_evidence', reference: 'issue:42')
