@@ -48,6 +48,11 @@ RSpec.describe BoardSweep do
       'commit' => { 'oid' => commit } }
   end
 
+  def approval(commit: 'head', login: 'crmne')
+    { 'author' => { 'login' => login }, 'state' => 'APPROVED', 'submittedAt' => '2026-10-01T10:00:00Z',
+      'commit' => { 'oid' => commit } }
+  end
+
   def pull(number, status: nil, next_at: nil, updated_at: nil, **facts)
     checks = facts.key?(:checks) ? facts[:checks] : 'SUCCESS'
     requested = Array(facts[:requested]).map do |login|
@@ -136,7 +141,7 @@ RSpec.describe BoardSweep do
 
   it "keeps a pull request where triage placed it from the maintainer's comment until the author pushes" do
     asked = [comment('OWNER', '2026-10-06T19:00:00Z', login: 'crmne')]
-    approved = { review: 'APPROVED', comments: asked, committed: '2026-10-05T00:00:00Z' }
+    approved = { review: 'APPROVED', copilot: approval, comments: asked, committed: '2026-10-05T00:00:00Z' }
     pulls.push(pull(1, status: 'Their move', updated_at: '2026-10-06T19:01:00Z', **approved),
                pull(2, status: 'Their move', updated_at: '2026-10-06T19:01:00Z',
                        **approved, committed: '2026-10-07T00:00:00Z'),
@@ -178,7 +183,8 @@ RSpec.describe BoardSweep do
   describe 'pull requests' do
     it 'follows Copilot on the latest commit, checks, and reviews' do
       pulls.push(pull(1, copilot: copilot(:approve)), pull(2, copilot: copilot(:changes)),
-                 pull(3, review: 'APPROVED'), pull(4), pull(5, draft: true), pull(6, checks: 'FAILURE'),
+                 pull(3, review: 'APPROVED', copilot: approval), pull(4), pull(5, draft: true),
+                 pull(6, checks: 'FAILURE'),
                  pull(7, checks: 'PENDING'), pull(8, requested: 'copilot-pull-request-reviewer'),
                  pull(9, copilot: copilot(:approve, commit: 'older')), pull(10, mergeable: 'CONFLICTING'))
 
@@ -204,15 +210,27 @@ RSpec.describe BoardSweep do
           { 'name' => name, 'conclusion' => conclusion }
         end } }
       end
-      clean = pull(1, review: 'APPROVED')
+      clean = pull(1, review: 'APPROVED', copilot: approval)
       clean['commits']['nodes'][0]['commit']['statusCheckRollup'] = rollup.call(%w[test SUCCESS], %w[assess CANCELLED],
                                                                                 %w[lint CANCELLED])
-      broken = pull(2, review: 'APPROVED')
+      broken = pull(2, review: 'APPROVED', copilot: approval)
       broken['commits']['nodes'][0]['commit']['statusCheckRollup'] = rollup.call(%w[test FAILURE])
       pulls.push(clean, broken)
 
       sweep.run
       expect(moves.map(&:last)).to eq(%w[sign_off theirs])
+    end
+
+    it "never puts a contributor's pull request nobody reviewed on its latest commit in Sign off" do
+      unreviewed = copilot(:approve).merge('body' => 'Copilot was unable to review: quota limit reached.')
+      pulls.push(pull(1, review: 'APPROVED', copilot: approval(commit: 'older')),
+                 pull(2, review: 'APPROVED', copilot: approval(login: 'coderabbitai[bot]')),
+                 pull(3, status: 'Sign off', copilot: unreviewed),
+                 pull(4, association: 'OWNER', author: 'crmne'))
+
+      sweep.run
+      expect(moves).to eq([%w[new-pr-1 do], %w[new-pr-2 sign_off], %w[item-3 do], %w[new-pr-4 sign_off]])
+      expect(steps.first.last).to eq('No review of the latest commit: read the change')
     end
 
     it 'gives a pull request back to the maintainer once its author pushed after changes were requested' do

@@ -538,6 +538,10 @@ named by `triage-workflow`, once per review. That workflow needs a
 `workflow_dispatch` trigger with `kind`, `number`, and `dry_run` inputs, as in
 [Preview a report](#preview-a-report).
 
+A contributor's pull request that nothing reviewed on its latest commit, such
+as when CodeRabbit ran out of reviews, never goes to **Sign off**, whatever the
+agent proposes: it goes to **Do**, since it needs your reading first.
+
 While a pull request sits in **Sign off** or **Do**, your review is requested
 by the workflow, so GitHub's review-requested list is your queue; it is
 withdrawn when the card moves on. Issues are not assigned to you outside urgent

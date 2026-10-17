@@ -10,8 +10,15 @@ module BoardRules
   module_function
 
   # Returns a column key, or :agent when Copilot asks for a closer look or
-  # another review bot left findings, which only triage can judge.
+  # another review bot left findings, which only triage can judge. Sign off
+  # means only the maintainer's yes is needed, so a contributor's pull request
+  # nobody reviewed on its latest commit is theirs to read first.
   def pull_request_column(pull)
+    column = facts_column(pull)
+    column == 'sign_off' && !maintainer?(pull) && !reviewed?(pull) ? 'do' : column
+  end
+
+  def facts_column(pull)
     own = maintainer?(pull)
     yours_or_theirs = own ? 'do' : 'theirs'
     return yours_or_theirs if pull['isDraft']
@@ -108,6 +115,14 @@ module BoardRules
     asked && asked.dig('commit', 'oid') != pull['headRefOid']
   end
 
+  # A bot or a person reviewed the latest commit. A review that only says the
+  # bot could not review, and a bot's notice that its limit ran out, are none.
+  def reviewed?(pull)
+    pull.dig('reviews', 'nodes').to_a.any? do |review|
+      review.dig('commit', 'oid') == pull['headRefOid'] && !review['body'].to_s.match?(BotReviews::UNREVIEWED)
+    end
+  end
+
   # Another review bot, such as CodeRabbit, commented on the latest commit:
   # whether its findings matter is the agent's call.
   def findings?(pull)
@@ -179,6 +194,7 @@ module BoardRules
     if maintainer?(node)
       %w[FAILURE ERROR].include?(checks) ? 'Your change fails its checks: fix them' : 'Finish your change'
     elsif pushed_since_changes?(node) then 'The author pushed after your review: review again'
+    elsif !reviewed?(node) then 'No review of the latest commit: read the change'
     else
       'Read the change'
     end

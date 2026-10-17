@@ -1214,6 +1214,7 @@ class IssueAssessment # :nodoc:
     column = board_column(item, decision, reply_posted)
     next_step = decision.fetch('next_step').strip
     next_step = "Close it if you agree: #{next_step}"[0, 150] if column == 'sign_off' && proposed_closure?(decision)
+    next_step = "No review of the latest commit: #{next_step}"[0, 150] if unreviewed_sign_off?(item, decision)
     proposed = { column: column, priority: decision.fetch('priority'), next_step: next_step }
     assignee = maintainer_login
     assign = proposed[:priority] == 'urgent' && assignee && item.dig('assignees', 'totalCount').to_i.zero?
@@ -1264,9 +1265,18 @@ class IssueAssessment # :nodoc:
     return 'sign_off' if proposed_closure?(decision) && !decided_by_a_person?(item)
 
     move = decision.fetch('next_move')
+    return 'do' if unreviewed_sign_off?(item, decision)
     return move unless move == 'theirs'
 
     'theirs' if pull_request? || reply_posted
+  end
+
+  # Sign off means only the maintainer's yes is needed: a contributor's pull
+  # request that no bot or person reviewed on its latest commit, such as when
+  # CodeRabbit ran out of reviews, needs their reading first.
+  def unreviewed_sign_off?(item, decision)
+    pull_request? && decision['next_move'] == 'sign_off' && !proposed_closure?(decision) &&
+      !maintainer?(item['authorAssociation']) && !BoardRules.reviewed?(item)
   end
 
   def proposed_closure?(decision)

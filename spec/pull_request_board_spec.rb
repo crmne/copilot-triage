@@ -75,6 +75,26 @@ RSpec.describe IssueAssessment, 'with a pull request on the board' do
     )
   end
 
+  it "keeps a contributor's pull request no bot reviewed out of Sign off" do
+    item['reviews']['nodes'] = []
+    item['comments']['nodes'] << { 'id' => 'c1', 'createdAt' => '2026-10-01T10:00:00Z',
+                                   'author' => { 'login' => 'coderabbitai[bot]' }, 'authorAssociation' => 'NONE',
+                                   'body' => 'Review limit reached. Next included review available in 12 minutes.' }
+    run_with
+
+    expect(board).to have_received(:update).with(
+      'pr-id', hash_including(column: 'do', next_step: start_with('No review of the latest commit: Merge it'))
+    )
+  end
+
+  it "takes a review bot's approval of the latest commit as a review" do
+    item['reviews']['nodes'] = [{ 'author' => { 'login' => 'coderabbitai' }, 'state' => 'APPROVED', 'body' => '',
+                                  'submittedAt' => '2026-10-01T10:00:00Z', 'commit' => { 'oid' => 'a' * 40 } }]
+    run_with
+
+    expect(board).to have_received(:update).with('pr-id', hash_including(column: 'sign_off'))
+  end
+
   it 'sends a pull request with real problems back to its author and withdraws the review request' do
     decision[:next_move] = 'theirs'
     item['reviewRequests']['nodes'] << { 'requestedReviewer' => { '__typename' => 'User', 'login' => 'crmne' } }
