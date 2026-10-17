@@ -419,16 +419,15 @@ RSpec.describe TriageTools do
     expect(tools.call('submit_decision', decision.merge('move_to_issue' => true))).not_to include(isError: true)
   end
 
-  it 'answers a discussion in place when its evidence would only ride along on a move' do
+  it 'moves a discussion without the citations, which the new issue finds for itself' do
     tools = described_class.new(root: Dir.pwd, repository: 'owner/project', config: config, move: true)
     tools.call('read_evidence', { 'reference' => 'file:docs/tools.md' })
-    decision = { 'labels' => [], 'reply' => nil, 'comment' => 'The guide rules this out: [[file:docs/tools.md]].',
+    decision = { 'labels' => [], 'reply' => nil, 'comment' => 'A bug report fits issues [[file:docs/tools.md]].',
                  'sources' => ['file:docs/tools.md'], 'related_issue' => nil, 'relationship' => nil, 'mute' => false,
                  'move_to_issue' => true }
 
-    expect(tools.call('submit_decision', decision)[:content].first[:text])
-      .to include('A move cites no sources', 'set move_to_issue false')
-    expect(tools.call('submit_decision', decision.merge('move_to_issue' => false))).not_to include(isError: true)
+    expect(tools.call('submit_decision', decision)).not_to include(isError: true)
+    expect(tools.ledger['decision']).to include('comment' => 'A bug report fits issues.', 'sources' => [])
   end
 
   it 'keeps a request its labels rule out in the discussion' do

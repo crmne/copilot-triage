@@ -332,6 +332,12 @@ class TriageTools
     raise ArgumentError, 'Unknown configured reply.' if reply && !@config.fetch('replies').key?(reply)
     raise ArgumentError, 'Use either comment or a configured reply, not both.' if reply && decision[:comment]
 
+    # A move only hands the report to the new issue's assessment, which finds
+    # and cites its own evidence, so the move's one sentence carries none.
+    if decision[:move_to_issue] && decision.fetch(:sources).any?
+      decision[:comment] = decision[:comment].to_s.gsub(/\s*\[\[[^\]]+\]\]/, '').strip.then { _1.empty? ? nil : _1 }
+      decision[:sources] = []
+    end
     sources = decision.fetch(:sources)
     raise ArgumentError, 'Read the cited references first.' unless (sources - @ledger['evidence'].keys).empty?
     if @number && (sources.include?("issue:#{@number}") || decision[:related_issue] == @number)
@@ -349,12 +355,6 @@ class TriageTools
     end
     if sources.any? { |source| source.start_with?('diff:') }
       raise ArgumentError, 'Diffs are evidence for you, not citations.'
-    end
-    # Evidence worth citing usually answers the discussion, or rules out the
-    # request; a move only hands the report to the new issue's assessment.
-    if decision[:move_to_issue] && sources.any?
-      raise ArgumentError, 'A move cites no sources; the new issue is assessed next. If what you read rules the ' \
-                           'request out or a maintainer declined it, set move_to_issue false and answer here.'
     end
     if @pull_request && code_review?(decision[:comment])
       raise ArgumentError, 'Do not review code in a pull request reply: no code, identifiers, or line numbers. ' \
