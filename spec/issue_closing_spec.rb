@@ -60,13 +60,25 @@ RSpec.describe IssueAssessment, 'closing issues' do
     expect(assessment).to have_received(:mutate).with('closeIssue', issueId: 'report-id', stateReason: 'NOT_PLANNED')
   end
 
-  it 'only proposes a resolution the reporter did not state' do
+  it 'rejects a resolution the reporter did not state, comment included' do
     item['comments']['nodes'] = [reporter_comment.merge('author' => { 'login' => 'someone-else' })]
     assessment.run
 
-    expect(assessment).not_to have_received(:mutate).with('closeIssue', anything)
-    expect(board).to have_received(:update)
-      .with('report-id', hash_including(column: 'sign_off', next_step: start_with('Close it if you agree: ')))
+    expect(assessment).not_to have_received(:mutate)
+    expect(assessment).to have_received(:puts).with(include('invalid assessment')).at_least(:once)
+  end
+
+  it 'tells the agent that resolved needs the reporter to have spoken last' do
+    item['comments']['nodes'] = [reporter_comment.merge('author' => { 'login' => 'someone-else' })]
+    tools = lambda do
+      TriageTools.new(**assessment.send(:tools_settings, Dir.pwd), report: assessment.send(:report_facts, item))
+    end
+    submitted = decision.merge(related_issue: nil, relationship: nil, mute: false).transform_keys(&:to_s)
+    refused = tools.call.call('submit_decision', submitted)
+    expect(refused[:content].first[:text]).to include('close_as resolved needs the reporter')
+
+    item['comments']['nodes'] << reporter_comment
+    expect(tools.call.call('submit_decision', submitted)).not_to include(isError: true)
   end
 
   it 'neither closes nor proposes closing once the maintainer joined the conversation' do

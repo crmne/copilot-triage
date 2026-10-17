@@ -350,8 +350,14 @@ class TriageTools
   end
 
   # A closure must rest on evidence the agent read: release notes for a fix,
-  # documented scope for out of scope.
+  # documented scope for out of scope, the reporter's own latest comment for
+  # resolved.
   def close_evidence!(decision)
+    if decision[:close_as] == 'resolved' && @report['author'] && @report['latest_commenter'] != @report['author']
+      raise ArgumentError, 'close_as resolved needs the reporter to say so in the latest comment, and someone ' \
+                           'else spoke last. Set close_as null and do not say the issue is resolved or closing.'
+    end
+
     kind = { 'fixed' => 'release:', 'out_of_scope' => 'file:' }[decision[:close_as]]
     return if kind.nil? || decision.fetch(:sources).any? { |source| source.start_with?(kind) }
 

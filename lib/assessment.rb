@@ -338,6 +338,9 @@ class IssueAssessment # :nodoc:
   def assess(item, labels)
     @report_facts = report_facts(item)
     decision = request(build_prompt(item, labels)) { |response| validate(response, labels) }
+    # Someone else's words would make the "resolved" comment false.
+    raise ArgumentError if decision['close_as'] == 'resolved' && latest_commenter(item) != item.dig('author', 'login')
+
     unsourced = @answer_only && (decision['related_issue'] || decision['sources'].empty?)
     if decision['mute'] || answered?(item) || unsourced
       decision['reply'] = nil
@@ -361,8 +364,12 @@ class IssueAssessment # :nodoc:
 
   # What the tools check a decision against.
   def report_facts(item)
-    { 'author' => item.dig('author', 'login'),
+    { 'author' => item.dig('author', 'login'), 'latest_commenter' => latest_commenter(item),
       'recurring' => item['stateReason'] == 'REOPENED' && bot?(item['author']) && report_bot?(item['author']) }
+  end
+
+  def latest_commenter(item)
+    item.fetch('comments').fetch('nodes').reject { |comment| bot?(comment['author']) }.last&.dig('author', 'login')
   end
 
   def initial_recap_allowed?(item)

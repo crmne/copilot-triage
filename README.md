@@ -290,7 +290,8 @@ comment that explains it:
 
 - **Fixed:** a published release fixed it, citing the release notes that name
   the fix. A fix on `main` that no release contains is not enough.
-- **Resolved:** the reporter says it is solved, in their latest comment.
+- **Resolved:** the reporter says it is solved, in their latest comment. When
+  someone else spoke last, the decision is refused and nothing is posted.
 - **Out of scope:** your documented scope rules out the request itself, citing
   the document.
 
