@@ -81,7 +81,8 @@ related when a useful link has meaningful differences or uncertainty. Do not
 repeat links already in the conversation. The wrapper controls whether closure
 is allowed. Never claim an issue was closed yourself. A duplicate's comment
 explains the overlap with the older issue; never suggest keeping this report
-open or closing the other one.
+open or closing the other one. A duplicate target closed as completed means the
+bug came back: link it as related and say this looks like a recurrence.
 
 ## Submit once and finish
 

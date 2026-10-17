@@ -116,9 +116,24 @@ class TriageTools
     end
   end
 
+  # Why this report cannot be closed as a duplicate of the issue snapshot, or
+  # nil. A target closed as completed means the bug came back, and an error
+  # tracker reopens its report when the error recurs.
+  def self.duplicate_conflict(snapshot, report)
+    number = snapshot['number']
+    recurrence = "link ##{number} as related instead, and say this looks like a recurrence of it."
+    if report['recurring']
+      "The error tracker reopened this report because the error recurred: #{recurrence}"
+    elsif snapshot['state'] == 'closed' && snapshot['state_reason'] == 'completed'
+      "##{number} was closed as completed, so this is not a duplicate: #{recurrence}"
+    end
+  end
+
+  # report describes the item under assessment, for checks on the decision.
   def initialize(root:, repository:, config:, ledger_path: nil, token: nil, board: false, pull_request: nil,
-                 move: false, issue: false)
+                 move: false, issue: false, report: nil)
     @root = File.realpath(root)
+    @report = report || {}
     @board = board
     @pull_request = pull_request
     @move = move
@@ -315,6 +330,9 @@ class TriageTools
       unless entry && entry['complete']
         raise ArgumentError, "Read #{reference} completely with read_evidence before submitting an issue relationship."
       end
+
+      conflict = self.class.duplicate_conflict(entry['snapshot'], @report) if decision[:relationship] == 'duplicate'
+      raise ArgumentError, conflict if conflict
     end
 
     references = decision[:comment].to_s.scan(/\[\[([^\]]+)\]\]/).flatten

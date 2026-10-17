@@ -120,6 +120,33 @@ RSpec.describe 'Agent-selected related issues and guarded publishing' do
     )
   end
 
+  it 'links an issue closed as completed as related, since the bug came back' do
+    candidate.merge!('state' => 'closed', 'state_reason' => 'completed')
+
+    assessment.run
+
+    expect(assessment).to have_received(:mutate).with('addComment', hash_including(body: start_with('See also #42.')))
+    expect(assessment).not_to have_received(:mutate).with('closeIssue', anything)
+  end
+
+  it 'never proposes closing an error tracker report that reopened because the error recurred' do
+    config = YAML.safe_load_file('triage.yml').merge('report_bots' => ['honeybadger[bot]'])
+    File.write('triage.yml', YAML.dump(config))
+    item.merge!('stateReason' => 'REOPENED', 'author' => { '__typename' => 'Bot', 'login' => 'honeybadger' })
+    assessment = IssueAssessment.new(environment)
+    allow(assessment).to receive_messages(read_report: [item, []], puts: nil, mutate: nil)
+    allow(assessment.send(:evidence_tools)).to receive(:api) { Marshal.load(Marshal.dump(candidate)) }
+    allow(assessment).to receive(:ask_copilot) do
+      agent_reads(assessment, 'issue:42')
+      JSON.generate(decision)
+    end
+
+    assessment.run
+
+    expect(assessment).to have_received(:mutate).with('addComment', hash_including(body: start_with('See also #42.')))
+    expect(assessment).to have_received(:puts).with(include('"relationship":"related"'))
+  end
+
   it 'can link a closed related issue without closing the current report' do
     candidate['state'] = 'closed'
     decision[:relationship] = 'related'

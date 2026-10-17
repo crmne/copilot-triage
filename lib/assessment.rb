@@ -336,6 +336,7 @@ class IssueAssessment # :nodoc:
   end
 
   def assess(item, labels)
+    @report_facts = report_facts(item)
     decision = request(build_prompt(item, labels)) { |response| validate(response, labels) }
     unsourced = @answer_only && (decision['related_issue'] || decision['sources'].empty?)
     if decision['mute'] || answered?(item) || unsourced
@@ -345,6 +346,9 @@ class IssueAssessment # :nodoc:
     end
     if decision['related_issue']
       @related_snapshot = @tool_ledger.fetch('evidence').fetch("issue:#{decision['related_issue']}").fetch('snapshot')
+      if decision['relationship'] == 'duplicate' && TriageTools.duplicate_conflict(@related_snapshot, @report_facts)
+        decision['relationship'] = 'related'
+      end
       decision['close'] = decision['relationship'] == 'duplicate' && close_duplicate?(item, decision['related_issue'])
       prefix = decision['close'] ? 'Duplicate of' : 'See also'
       decision['comment'] = "#{prefix} ##{decision['related_issue']}. #{decision['comment']}"
@@ -353,6 +357,11 @@ class IssueAssessment # :nodoc:
     decision['close_pull_request'] = close_pull_request?(item, decision)
     decision['close_issue'] = close_issue?(item, decision)
     decision
+  end
+
+  # What the tools check a decision against.
+  def report_facts(item)
+    { 'recurring' => item['stateReason'] == 'REOPENED' && bot?(item['author']) && report_bot?(item['author']) }
   end
 
   def initial_recap_allowed?(item)
@@ -648,7 +657,7 @@ class IssueAssessment # :nodoc:
     config = @config.merge('labels' => @config.fetch('labels').slice(*allowed))
     { root: Dir.pwd, repository: @repository, config: config,
       ledger_path: File.join(directory, 'evidence.json'), token: @environment['GH_TOKEN'], board: board?,
-      pull_request: (@number if pull_request?), move: move?, issue: @kind == 'issue' }
+      pull_request: (@number if pull_request?), move: move?, issue: @kind == 'issue', report: @report_facts }
   end
 
   def tools_command(settings_path)

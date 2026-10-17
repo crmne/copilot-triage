@@ -273,6 +273,11 @@ only against an older issue, never a reopened or maintainer-authored one, and
 never after a maintainer has joined the conversation. Both reports are fetched
 again before anything changes.
 
+Neither mode closes or proposes a duplicate of an issue closed as completed: the
+bug came back, so the agent links it as related and calls it a recurrence. The
+same goes for an error report from a `report_bots` tracker that reopened it
+because the error recurred.
+
 ### Closing finished issues
 
 ```yaml

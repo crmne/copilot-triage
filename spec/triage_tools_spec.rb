@@ -234,6 +234,42 @@ RSpec.describe TriageTools do
     expect(tools.ledger).not_to have_key('decision')
   end
 
+  describe 'duplicates that would hide a recurrence' do
+    let(:issue) do
+      { 'node_id' => 'issue-42', 'number' => 42, 'title' => 'Memory grows', 'body' => 'Memory grows to 2 GB.',
+        'state' => 'closed', 'state_reason' => 'completed', 'comments' => 0,
+        'html_url' => 'https://github.com/owner/project/issues/42' }
+    end
+    let(:decision) do
+      { 'labels' => [], 'reply' => nil, 'comment' => 'Both reports describe memory growing.', 'sources' => [],
+        'related_issue' => 42, 'relationship' => 'duplicate', 'mute' => false }
+    end
+
+    before { allow(tools).to receive(:api).and_return(issue) }
+
+    it 'sends a duplicate of an issue closed as completed back as a recurrence' do
+      call('read_evidence', reference: 'issue:42')
+      message = tools.call('submit_decision', decision)[:content].first[:text]
+      expect(message).to include('#42 was closed as completed', 'recurrence')
+      expect(call('submit_decision', **decision, 'relationship' => 'related')).to eq('accepted' => true)
+    end
+
+    it 'sends a duplicate of an error tracker report that recurred back as related' do
+      issue['state_reason'] = 'not_planned'
+      tools = described_class.new(root: Dir.pwd, repository: 'owner/project', config: config,
+                                  report: { 'recurring' => true })
+      allow(tools).to receive(:api).and_return(issue)
+      tools.call('read_evidence', { 'reference' => 'issue:42' })
+      expect(tools.call('submit_decision', decision)[:content].first[:text]).to include('error recurred')
+    end
+
+    it 'accepts a duplicate of an issue closed for another reason' do
+      issue['state_reason'] = 'not_planned'
+      call('read_evidence', reference: 'issue:42')
+      expect(call('submit_decision', **decision)).to eq('accepted' => true)
+    end
+  end
+
   context 'with a project board' do
     let(:tools) { described_class.new(root: Dir.pwd, repository: 'owner/project', config: config, board: true) }
     let(:decision) do
