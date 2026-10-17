@@ -240,7 +240,10 @@ clear request needs only labels. After that, replies must add new help:
 Replies stay short, normally under 60 words, with no headings or status chatter.
 Facts learned through tools carry citations to evidence the agent actually read,
 and Ruby renders the links. A released-fix claim needs release notes, not code
-on `main` or a closed issue. Map documentation files to your public site:
+on `main` or a closed issue. Your docs and code show the default branch, so
+before citing them the agent checks what landed after your latest stable release,
+and tells users when something is not in a release yet instead of calling it
+available. Map documentation files to your public site:
 
 ```yaml
 documentation:
@@ -601,13 +604,14 @@ Policy keys in `.github/triage.yml`: `labels` (at most two per issue),
 ## Safety
 
 - **No code execution.** The model has no shell, no file writes, no arbitrary
-  URLs, and no GitHub write tools. It gets five tools:
+  URLs, and no GitHub write tools. It gets six tools:
 
   | Tool | Returns |
   | --- | --- |
   | `search_repository` | Up to ten literal matches in your configured sources |
   | `search_issues` | Up to five same-repository issue search results |
   | `list_releases` | Five published releases with short notes |
+  | `search_changes` | Release notes and unreleased default-branch commits that mention a phrase |
   | `read_evidence` | A paged file, issue, release, or pull request patch, up to 6 KB |
   | `submit_decision` | A schema-checked proposal; no GitHub mutation |
 

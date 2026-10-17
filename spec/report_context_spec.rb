@@ -73,6 +73,29 @@ RSpec.describe 'Report context' do
     expect(prompt).to include('follow-up: assess the latest_comment, not the original report again')
   end
 
+  it 'tells the agent how far the default branch is ahead of the latest stable release', :releases do
+    assessment.instance_variable_set(:@state, ConversationState.new(nil, 'test'))
+    allow(assessment.send(:evidence_tools)).to receive(:api) do |endpoint|
+      if endpoint.include?('/releases?')
+        [{ 'tag_name' => 'v0.19.0', 'prerelease' => false, 'published_at' => '2026-10-03T18:46:30Z' }]
+      else
+        { 'ahead_by' => 183, 'commits' => [] }
+      end
+    end
+
+    prompt = assessment.send(:build_prompt, item, [])
+
+    expect(prompt).to include('Releases: repository files show the default branch, 183 commits after ' \
+                              'the latest stable release, v0.19.0 (2026-10-03).')
+  end
+
+  it 'leaves the release baseline out when GitHub cannot be read', :releases do
+    assessment.instance_variable_set(:@state, ConversationState.new(nil, 'test'))
+    allow(assessment.send(:evidence_tools)).to receive(:api).and_raise(IOError, 'GitHub read failed')
+
+    expect(assessment.send(:build_prompt, item, [])).not_to include('Releases:')
+  end
+
   it 'gives the agent a long conversation in full' do
     item['comments']['nodes'] = (1..40).map do |number|
       { 'id' => "comment-#{number}", 'body' => "Update #{number}: #{'details ' * 100}",

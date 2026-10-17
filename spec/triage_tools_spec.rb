@@ -105,6 +105,52 @@ RSpec.describe TriageTools do
     expect(call('list_releases')['results']).to eq([expected])
   end
 
+  it 'says which release shipped a change and what the default branch has not released yet', :releases do
+    releases = [{ 'id' => 3, 'tag_name' => 'v2.0-rc1', 'prerelease' => true, 'body' => 'Try the new player.' },
+                { 'id' => 2, 'tag_name' => 'v1.9', 'prerelease' => false, 'published_at' => '2026-10-03T18:46:30Z',
+                  'body' => 'Calls show in the chat list now.' },
+                { 'id' => 1, 'tag_name' => 'v1.8', 'prerelease' => false, 'body' => 'Faster startup.' }]
+    messages = ['Add one-to-one voice calls', 'Fix typo', "Show calls on a Calls page\n\nDetails"]
+    commits = messages.map.with_index do |message, index|
+      { 'sha' => index.to_s * 40, 'commit' => { 'message' => message, 'committer' => { 'date' => '2026-10-13' } } }
+    end
+    allow(tools).to receive(:api).with('repos/owner/project/releases?per_page=50').and_return(releases)
+    allow(tools).to receive(:api).with('repos/owner/project/compare/v1.9...HEAD?per_page=100&page=1')
+                                 .and_return('ahead_by' => 3, 'commits' => commits)
+
+    result = call('search_changes', query: 'CALLS')
+
+    expect(result).to include('latest_release' => 'v1.9', 'commits_since' => 3, 'incomplete' => false)
+    expect(result['released']).to eq([{ 'reference' => 'release:2', 'version' => 'v1.9', 'prerelease' => false,
+                                        'published_at' => '2026-10-03T18:46:30Z',
+                                        'excerpt' => 'Calls show in the chat list now.' }])
+    expect(result['unreleased'].map { |commit| commit['subject'] })
+      .to eq(['Show calls on a Calls page', 'Add one-to-one voice calls'])
+    expect(tools.ledger['evidence']).to be_empty
+  end
+
+  it 'says when no stable release is published', :releases do
+    allow(tools).to receive(:api).and_return([{ 'tag_name' => 'v0.1-beta', 'prerelease' => true }])
+    expect(call('search_changes', query: 'calls')).to include('latest_release' => nil)
+  end
+
+  it 'checks unreleased changes before a reply cites default-branch files', :releases do
+    allow(tools).to receive(:api) do |endpoint|
+      if endpoint.include?('/releases?') then [{ 'tag_name' => 'v1.9', 'prerelease' => false }]
+      else { 'ahead_by' => 3, 'commits' => [] }
+      end
+    end
+    call('read_evidence', reference: 'file:docs/tools.md')
+    decision = { labels: [], reply: nil, comment: 'See [[file:docs/tools.md]].', sources: ['file:docs/tools.md'],
+                 related_issue: nil, relationship: nil, mute: false }
+
+    refused = tools.call('submit_decision', decision.transform_keys(&:to_s))
+    expect(refused.to_json).to include('3 commits ahead of v1.9', 'search_changes')
+
+    call('search_changes', query: 'tool')
+    expect(call('submit_decision', **decision)).to eq('accepted' => true)
+  end
+
   it 'cannot read draft releases or pull requests as evidence' do
     allow(tools).to receive(:api).and_return('draft' => true)
     expect(tools.call('read_evidence', { 'reference' => 'release:1' })).to include(isError: true)
@@ -276,7 +322,7 @@ RSpec.describe TriageTools do
     TriageToolServer.new(tools).run(input, output)
     responses = output.string.lines.map { |line| JSON.parse(line) }
     expect(responses.map { |response| response['id'] }).to eq([1, 2, 3])
-    expect(responses[1].dig('result', 'tools').size).to eq(5)
+    expect(responses[1].dig('result', 'tools').size).to eq(6)
     expect(responses[2].dig('result', 'content', 0, 'text')).to include('file:docs/tools.md')
   end
 end

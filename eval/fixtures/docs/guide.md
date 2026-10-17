@@ -13,3 +13,7 @@ Define `execute` on your tool class to implement its behavior.
 # Message forwarding
 
 Right-click the message or picture, choose Forward, then select the destination chat.
+
+# Voice calls
+
+Open a chat and choose the phone button in its header to start a voice call.

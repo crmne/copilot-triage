@@ -30,6 +30,12 @@ RSpec.configure do |config|
     allow_any_instance_of(IssueAssessment).to receive(:ensure_labels) { |_, labels| labels }
     allow_any_instance_of(IssueAssessment).to receive(:pause)
   end
+  # The release baseline reads GitHub too; the release specs opt back in.
+  config.before do |example|
+    next if example.metadata[:releases] || !defined?(TriageTools)
+
+    allow_any_instance_of(TriageTools).to receive(:release_baseline)
+  end
   config.around do |example|
     Dir.mktmpdir('triage-repository-') do |directory|
       FileUtils.cp_r(Dir.glob(File.join(__dir__, 'fixtures', '*')), directory)

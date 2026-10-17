@@ -12,6 +12,7 @@ require_relative 'project_board'
 class TriageTools
   MAX_CALLS = 12
   MAX_RESULT_BYTES = 8000
+  UNRELEASED_PAGES = 5
   SCHEMAS = {
     'search_repository' => {
       description: 'Find literal, case-insensitive text in configured repository docs/code. ' \
@@ -33,6 +34,16 @@ class TriageTools
                    'and short notes. Read a reference for full notes. Follow next_page for older releases. ' \
                    'A closed issue or code on main is not proof of a released fix.',
       properties: { page: { type: 'integer', minimum: 1, maximum: 10 } }, required: []
+    },
+    'search_changes' => {
+      description: 'Find which release ships a change, or whether it is still unreleased. Returns release notes ' \
+                   'that mention query (released, with version; read a reference for full notes) and commits on ' \
+                   'the default branch since the latest stable release whose message mentions it (unreleased, ' \
+                   'newest first). Repository files show the default branch: what they contain shipped in the ' \
+                   'latest release unless it is among the unreleased commits. query is literal, case-insensitive ' \
+                   'text; empty lists the unreleased commits. Follow next_offset for more unreleased commits.',
+      properties: { query: { type: 'string', maxLength: 200 }, offset: { type: 'integer', minimum: 0 } },
+      required: ['query']
     },
     'read_evidence' => {
       description: 'Read a file, issue (body and latest comments), or release from this repository. ' \
@@ -200,6 +211,38 @@ class TriageTools
     { results: results, next_page: releases.size == 5 && page < 10 ? page + 1 : nil }
   end
 
+  def search_changes(query:, offset: 0)
+    baseline = release_baseline
+    return { latest_release: nil, note: 'No stable release is published.' } unless baseline
+
+    term = query.downcase
+    released = recent_releases.select { |release| release['body'].to_s.downcase.include?(term) }.first(5)
+    unreleased = unreleased_commits.select { |commit| commit.fetch(:message).downcase.include?(term) }
+    page = unreleased.drop(offset).first(10)
+    { latest_release: baseline.fetch(:version), published_at: baseline.fetch(:published_at),
+      commits_since: baseline.fetch(:commits_since),
+      released: (offset.zero? ? released : []).map { |release| release_match(release, term) },
+      unreleased: page.map do |commit|
+        { commit: commit.fetch(:sha), date: commit.fetch(:date),
+          subject: clip(commit.fetch(:message).lines.first.strip, 200) }
+      end,
+      next_offset: unreleased.size > offset + page.size ? offset + page.size : nil,
+      incomplete: unreleased_commits.size < baseline.fetch(:commits_since) }
+  end
+
+  # The newest stable release and how many default-branch commits came after
+  # it, or nil when no stable release is published.
+  def release_baseline
+    return @release_baseline if defined?(@release_baseline)
+
+    release = recent_releases.find { |candidate| !candidate['prerelease'] }
+    @release_baseline = release && begin
+      @compare_pages = [compare_page(release.fetch('tag_name'), 1)]
+      { version: clip(release.fetch('tag_name'), 150), published_at: release['published_at'],
+        commits_since: @compare_pages.first.fetch('ahead_by') }
+    end
+  end
+
   def read_evidence(reference:, offset: 0)
     record = @records[reference] ||= fetch_record(reference)
     content = record.fetch('content')
@@ -256,6 +299,7 @@ class TriageTools
     end
 
     close_evidence!(decision) if decision[:close_as]
+    release_checked!(sources)
 
     if decision[:related_issue]
       reference = "issue:#{decision[:related_issue]}"
@@ -282,6 +326,24 @@ class TriageTools
     return if kind.nil? || decision.fetch(:sources).any? { |source| source.start_with?(kind) }
 
     raise ArgumentError, "Cite the #{kind.delete(':')} you read that establishes close_as #{decision[:close_as]}."
+  end
+
+  # Files show the default branch. A reply citing them must first check what
+  # the latest stable release lacks, unless the evidence budget is spent.
+  def release_checked!(sources)
+    return if @pull_request || sources.none? { |source| source.start_with?('file:') }
+    return if @ledger['calls'] >= MAX_CALLS || @ledger['trace'].any? { |entry| entry['tool'] == 'search_changes' }
+
+    baseline = begin
+      release_baseline
+    rescue IOError
+      nil
+    end
+    return unless baseline&.fetch(:commits_since)&.positive?
+
+    raise ArgumentError, "Repository files are #{baseline.fetch(:commits_since)} commits ahead of " \
+                         "#{baseline.fetch(:version)}. Check search_changes for what you cite, " \
+                         'and do not present unreleased work as available.'
   end
 
   # Also used by the publisher to recheck cited remote evidence before mutation.
@@ -387,6 +449,37 @@ class TriageTools
     when 'string'
       value.is_a?(String) && value.bytesize <= schema.fetch(:maxLength, 200) && !value.include?("\0")
     end
+  end
+
+  # The 50 newest published releases, prereleases included.
+  def recent_releases
+    @recent_releases ||= api("repos/#{@repository}/releases?per_page=50").reject { |release| release['draft'] }
+  end
+
+  def release_match(release, term)
+    body = release['body'].to_s
+    at = [body.downcase.index(term) - 150, 0].max
+    { reference: "release:#{release.fetch('id')}", version: clip(release.fetch('tag_name'), 150),
+      published_at: release['published_at'], prerelease: release.fetch('prerelease'),
+      excerpt: clip(body.byteslice(at..).to_s.scrub(''), 400) }
+  end
+
+  # Default-branch commits after the latest stable release, newest first,
+  # up to five pages of 100.
+  def unreleased_commits
+    @unreleased_commits ||= begin
+      tag = release_baseline.fetch(:version)
+      pages = (release_baseline.fetch(:commits_since) / 100.0).ceil.clamp(1, UNRELEASED_PAGES)
+      @compare_pages += (2..pages).map { |page| compare_page(tag, page) }
+      @compare_pages.flat_map { |data| data.fetch('commits') }.reverse.map do |commit|
+        { sha: commit.fetch('sha')[0, 12], date: commit.dig('commit', 'committer', 'date'),
+          message: commit.dig('commit', 'message').to_s }
+      end
+    end
+  end
+
+  def compare_page(tag, page)
+    api("repos/#{@repository}/compare/#{URI.encode_www_form_component(tag)}...HEAD?per_page=100&page=#{page}")
   end
 
   def clip(text, bytes)

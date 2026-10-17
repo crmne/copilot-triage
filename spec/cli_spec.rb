@@ -38,9 +38,9 @@ RSpec.describe 'Issue assessment Copilot integration', type: :task do
     expect(JSON.parse(response)).to eq(decision.transform_keys(&:to_s))
     expect(requests.size).to eq(2)
     names = requests.first.fetch('tools').map { |tool| tool.dig('function', 'name') }
-    expect(names.size).to eq(5)
-    expect(names.join(' ')).to include('search_repository', 'search_issues', 'list_releases', 'read_evidence',
-                                       'submit_decision')
+    expect(names.size).to eq(6)
+    expect(names.join(' ')).to include('search_repository', 'search_issues', 'list_releases', 'search_changes',
+                                       'read_evidence', 'submit_decision')
     instructions = requests.first.fetch('messages').find { |message| message['role'] == 'system' }.to_json
     expect(instructions).to include('Your task is to submit a publishing decision', 'Project policy:')
   end
@@ -77,7 +77,7 @@ RSpec.describe 'Issue assessment Copilot integration', type: :task do
       assessment.send(:ask_copilot, 'Assess the report and submit your decision.')
 
       names = requests.first.fetch('tools', []).map { |tool| tool.dig('function', 'name') }
-      expect(names.size).to eq(5)
+      expect(names.size).to eq(6)
       expect(names.join(' ')).to include('submit_decision')
     end
   end
@@ -111,7 +111,7 @@ RSpec.describe 'Issue assessment Copilot integration', type: :task do
     expect(first).to include('"labels":[]')
     expect(File.readlines('github-reads.txt').size).to eq(2)
     expect(requests.size).to eq(2)
-    expect(requests.first.fetch('tools').size).to eq(5)
+    expect(requests.first.fetch('tools').size).to eq(6)
   end
 
   def run_assessment_command

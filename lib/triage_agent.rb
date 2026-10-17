@@ -53,6 +53,7 @@ class TriageAgent < RubyLLM::Agent
   class SearchRepository < Tool; end
   class SearchIssues < Tool; end
   class ListReleases < Tool; end
+  class SearchChanges < Tool; end
   class ReadEvidence < Tool; end
   class SubmitDecision < Tool; end
 
@@ -60,7 +61,8 @@ class TriageAgent < RubyLLM::Agent
 
   instructions { system_prompt }
   tools do
-    [SearchRepository, SearchIssues, ListReleases, ReadEvidence, SubmitDecision].map { |tool| tool.new(toolbox) }
+    [SearchRepository, SearchIssues, ListReleases, SearchChanges, ReadEvidence, SubmitDecision]
+      .map { |tool| tool.new(toolbox) }
   end
   # Requiring a tool call keeps most models on task, but OpenRouter's hosts of
   # gpt-oss answer a required call with an empty error turn, so it can be

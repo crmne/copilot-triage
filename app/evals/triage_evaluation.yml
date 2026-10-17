@@ -261,6 +261,51 @@ cases:
     max_calls: 8
     min_calls: 1
     min_evidence_reads: 1
+- name: unreleased-feature
+  inputs:
+    title: Support voice calls
+    body: Please add voice calls. I am on version 1.2.1 and cannot call anyone.
+    release:
+      id: 1
+      tag_name: v1.2.1
+      name: Windows image fix
+      body: Fixed all inline images failing on Windows.
+      html_url: https://github.com/example/project/releases/tag/v1.2.1
+      published_at: '2026-09-16T12:00:00Z'
+      draft: false
+      prerelease: false
+    unreleased:
+    - Fix a typo in the guide
+    - Add one-to-one voice calls
+    - Translate the call screen
+    decision:
+      labels:
+      - enhancement
+      reply:
+      comment: Voice calls are on the default branch but not in a release yet, so v1.2.1
+        does not have them.
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+    tools:
+    - name: search_changes
+      arguments:
+        query: call
+  expected_output:
+    action: reply
+    contains:
+    - 1.2.1
+    contains_any:
+    - not in
+    - not yet
+    - not included
+    - not available
+    - not part of
+    - not present
+    - unreleased
+    max_calls: 8
+    min_calls: 1
 - name: new-regression-without-question
   inputs:
     title: Images fail on Windows

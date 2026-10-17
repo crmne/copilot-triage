@@ -26,6 +26,12 @@ class EvaluationTools < TriageTools
     when %r{/pulls/\d+/files\?}
       @example.dig('pull_request', 'files').to_a.map { |file| { 'filename' => file['path'], 'status' => 'modified' } }
     when %r{/releases\?} then [release].compact
+    when %r{/compare/}
+      commits = @example.fetch('unreleased', []).each_with_index.map do |message, index|
+        { 'sha' => format('%040x', index + 1),
+          'commit' => { 'message' => message, 'committer' => { 'date' => '2026-10-13T12:00:00Z' } } }
+      end
+      { 'ahead_by' => commits.size, 'commits' => commits }
     when %r{/releases/(\d+)\z}
       return release if release && release['id'] == Regexp.last_match(1).to_i
 

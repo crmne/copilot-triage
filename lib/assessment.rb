@@ -479,7 +479,7 @@ class IssueAssessment # :nodoc:
       This is a #{assessment_kind}.
       Initial issue recap permitted: #{@initial_recap_allowed}.
       Duplicate policy: #{duplicate_mode}.
-      Follow-up policy: #{@config.fetch('followups', 'selective')}.#{board_prompt}#{pull_request_prompt(item)}#{issue_prompt}#{move_prompt}
+      Follow-up policy: #{@config.fetch('followups', 'selective')}.#{release_prompt}#{board_prompt}#{pull_request_prompt(item)}#{issue_prompt}#{move_prompt}
       Allowed labels: #{JSON.generate(allowed)}
       Configured replies: #{JSON.generate(@config.fetch('replies'))}
       These are optional templates, not a checklist of missing information to request.
@@ -522,6 +522,18 @@ class IssueAssessment # :nodoc:
     return unless @kind == 'issue'
 
     "\nIssue: also submit close_as. Closing is #{closing_mode == 'auto' ? 'automatic' : 'proposed to the maintainer'}."
+  end
+
+  # Repository files are the default branch; users have what a release ships.
+  def release_prompt
+    baseline = evidence_tools.release_baseline
+    return "\nReleases: none stable; repository files show the default branch." unless baseline
+
+    since = baseline.fetch(:commits_since)
+    "\nReleases: repository files show the default branch, #{since} #{since == 1 ? 'commit' : 'commits'} after " \
+      "the latest stable release, #{baseline.fetch(:version)} (#{baseline.fetch(:published_at).to_s[0, 10]})."
+  rescue IOError, KeyError
+    nil
   end
 
   def board_prompt
