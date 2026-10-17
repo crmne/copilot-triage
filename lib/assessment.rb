@@ -71,7 +71,7 @@ class IssueAssessment # :nodoc:
     @skip_reason = @related_snapshot = @follow_through_failed = @cost = @moved_issue = @item_id = nil
     @recovered_comments = []
     @tool_ledger = { 'calls' => 0, 'bytes' => 0, 'evidence' => {} }
-    prepared = load_prepared_report || prepare_report
+    prepared = @config ? load_prepared_report || prepare_report : skip(missing_policy)
     if @environment['TRIAGE_PREPARE_ONLY'] == 'true'
       write_prepared_report(prepared)
       return
@@ -137,6 +137,11 @@ class IssueAssessment # :nodoc:
   end
 
   private
+
+  # Pull requests that add the policy file start triage before it merges.
+  def missing_policy
+    "no policy file #{@environment.fetch('TRIAGE_CONFIG', '.github/triage.yml')} on the default branch"
+  end
 
   def comment_event?
     %w[issue_comment discussion_comment].include?(@environment['GITHUB_EVENT_NAME'])

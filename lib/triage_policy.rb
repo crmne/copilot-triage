@@ -12,11 +12,14 @@ require 'yaml'
 #
 # The repository's own settings win; sections such as board or pull_requests
 # merge key by key. An account policy that cannot be read is reported and
-# skipped, so triage keeps running on the repository's own policy.
+# skipped, so triage keeps running on the repository's own policy. A
+# repository without a policy file has none: load returns nil.
 module TriagePolicy
   module_function
 
   def load(path, token: nil)
+    return unless File.file?(path)
+
     policy = YAML.safe_load_file(path)
     return policy unless policy.is_a?(Hash) && policy['extends']
 

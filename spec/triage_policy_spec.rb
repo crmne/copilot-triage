@@ -39,4 +39,8 @@ RSpec.describe TriagePolicy do
     File.write('policy.yml', "closing: auto\n")
     expect(described_class.load('policy.yml')).to eq('closing' => 'auto')
   end
+
+  it 'has no policy for a repository without the file' do
+    expect(described_class.load('missing.yml')).to be_nil
+  end
 end

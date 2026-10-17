@@ -325,6 +325,10 @@ if $PROGRAM_NAME == __FILE__
     puts 'Skipped: no project-token is set.'
     exit 0
   end
+  unless File.file?(ENV.fetch('TRIAGE_CONFIG', '.github/triage.yml'))
+    puts "Skipped: no policy file #{ENV.fetch('TRIAGE_CONFIG', '.github/triage.yml')} on the default branch."
+    exit 0
+  end
 
   succeeded = begin
     BoardSweep.new.run

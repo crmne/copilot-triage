@@ -73,7 +73,8 @@ tickets: problems go to the job summary.
    [Models and cost](#models-and-cost).
 2. **Policy.** Save [examples/triage.yml](examples/triage.yml) as
    `.github/triage.yml` on your default branch and adapt the labels, replies,
-   source paths, and instructions to your project.
+   source paths, and instructions to your project. Until it is on the
+   default branch, triage and the sweep skip every run with a notice.
 3. **Workflow.** Add `.github/workflows/triage.yml`. It names the events that
    start triage and calls Copilot Triage's own workflow, which holds the
    permissions, queueing, and inputs and updates with the `v0` tag:

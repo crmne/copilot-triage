@@ -92,6 +92,14 @@ RSpec.describe BoardSweep do
     end
   end
 
+  it 'skips a repository without a policy file' do
+    script = File.expand_path('../lib/board_sweep.rb', __dir__)
+    output, errors, status = Open3.capture3(environment.merge('TRIAGE_CONFIG' => 'missing.yml'), RbConfig.ruby, script)
+
+    expect(status.success?).to be(true), errors
+    expect(output).to eq("Skipped: no policy file missing.yml on the default branch.\n")
+  end
+
   it 'sets the project up before sweeping' do
     sweep.run
     expect(board).to have_received(:set_up)

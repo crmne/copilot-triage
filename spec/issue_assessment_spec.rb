@@ -44,6 +44,19 @@ RSpec.describe IssueAssessment, type: :task do
     expect(assessment).to have_received(:puts).with(include('invalid assessment')).at_least(:once)
   end
 
+  it 'skips a repository whose policy file has not merged yet, without failing' do
+    assessment = described_class.new(environment.merge('TRIAGE_CONFIG' => 'missing.yml',
+                                                       'TRIAGE_PREPARE_ONLY' => 'true', 'GITHUB_OUTPUT' => 'output'))
+    allow(assessment).to receive(:read_report)
+    allow(assessment).to receive(:puts)
+
+    assessment.run
+    expect(assessment).to have_received(:puts).with('Skipped: no policy file missing.yml on the default branch.')
+    expect(File.read('output')).to eq("eligible=false\n")
+    expect(assessment.failed?).to be(false)
+    expect(assessment).not_to have_received(:read_report)
+  end
+
   it 'posts the repository-written reply selected by the model' do
     allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: ['question'], reply: 'version',
                                                                         sources: []))
