@@ -45,6 +45,10 @@ jobs:
       group: >-
         assessment-${{ github.event.discussion && 'discussion' || inputs.kind || 'issue' }}-${{ github.event.issue.number || github.event.discussion.number || github.event.pull_request.number || inputs.number }}-${{ github.event.discussion && (github.event.comment.parent_id || github.event.comment.id) || 'report' }}
       cancel-in-progress: false
+    # Issue and comment events are low-trust, so GitHub makes their cache
+    # read-only unless the job asks for more. The job runs no contributor code,
+    # and conversation state is lost on every run without saving it.
+    cache-mode: write
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

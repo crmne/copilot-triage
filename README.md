@@ -125,6 +125,12 @@ for the board and `OPENROUTER_API_KEY` for the fallback. To pick inputs the
 shared workflow does not pass, such as `engine` or `model`, call the action
 directly with `uses: crmne/copilot-triage@v0` in a job of your own.
 
+The shared workflow asks for `cache-mode: write`, because GitHub gives issue
+and comment events a read-only cache by default and the bot keeps its
+conversation state there. Leave `cache-mode` unset in your workflow, or set it
+to `write`: a caller limited to `read` cannot start it. If you call the action
+directly, set `cache-mode: write` on that job.
+
 That's it. To add the board, see [The board](#the-board).
 
 The action checks out your **default branch** (never contributor code),
