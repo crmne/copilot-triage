@@ -248,6 +248,7 @@ needs only labels. After that, replies must add new help:
 > Does restarting the app pick up the system theme?
 
 Replies stay short, normally under 60 words, with no headings or status chatter.
+Ruby turns any em dash in a reply into a comma.
 Replies are for the reporter. One that talks to the maintainer, such as "please
 investigate", "needs a product decision", or "confirmed bug", is dropped before
 posting: the labels and board still apply, and the job summary says why.

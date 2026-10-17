@@ -399,6 +399,8 @@ class IssueAssessment # :nodoc:
       decision['comment'] = "#{prefix} ##{decision['related_issue']}. #{decision['comment']}"
     end
     decision['comment'] = decision['comment']&.gsub(/\[\[([^\]]+)\]\]/) { evidence_link(Regexp.last_match(1)) }
+    # Public replies use no em dashes; a comma reads the same in their place.
+    decision['comment'] = decision['comment']&.gsub(/\s*—\s*/, ', ')
     decision['close_pull_request'] = close_pull_request?(item, decision)
     decision['close_issue'] = close_issue?(item, decision)
     decision

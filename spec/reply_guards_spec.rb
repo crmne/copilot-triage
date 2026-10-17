@@ -115,6 +115,17 @@ RSpec.describe 'Reply guards' do
     end
   end
 
+  it 'replaces em dashes in a posted comment' do
+    decide('Yes—please share the log from before the restart — the earlier one too.')
+
+    assessment.run
+
+    expect(assessment).to have_received(:mutate).with(
+      'addComment', subjectId: 'report-id',
+                    body: start_with("Yes, please share the log from before the restart, the earlier one too.\n\n")
+    )
+  end
+
   it 'still tells a contributor that a new setting needs maintainer approval' do
     comment = 'A new setting needs maintainer approval in the issue before a pull request.'
     decide(comment)
