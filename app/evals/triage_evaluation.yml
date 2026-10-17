@@ -1587,3 +1587,63 @@ cases:
     - theirs
     max_calls: 8
     min_calls: 1
+- name: committed-review-captures
+  inputs:
+    title: Add a compact player mode
+    body: |-
+      ## Why
+
+      Small windows cut off the player controls.
+
+      ## What changed
+
+      - A compact layout below 600 pixels wide keeps play, skip, and volume visible.
+      - Before and after captures are in docs/assets/review/.
+    pull_request:
+      association: CONTRIBUTOR
+      files:
+      - path: src/ui/player.rs
+        additions: 84
+        deletions: 12
+        changeType: MODIFIED
+      - path: docs/assets/review/compact-before.png
+        additions: 0
+        deletions: 0
+        changeType: ADDED
+      - path: docs/assets/review/compact-after.png
+        additions: 0
+        deletions: 0
+        changeType: ADDED
+      copilot_review: "## Copilot review overview\n\n### \U0001F7E2 Approval recommended\n\nA
+        narrow layout change with no defects found.\n\n**Findings:** None"
+    decision:
+      labels: []
+      reply:
+      comment: Please remove the captures committed under docs/assets/review/ and attach them to this pull
+        request instead; [[file:docs/contributing.md]] keeps review evidence out of the repository.
+      sources:
+      - file:docs/contributing.md
+      related_issue:
+      relationship:
+      mute: false
+      review: false
+      out_of_scope: false
+      next_move: theirs
+      priority: normal
+      next_step: Wait for the author to move the review captures into the pull request
+    tools:
+    - name: read_evidence
+      arguments:
+        reference: file:docs/contributing.md
+  expected_output:
+    action: reply
+    contains:
+    - contributing
+    contains_any:
+    - attach
+    - remove
+    next_move:
+    - theirs
+    max_calls: 8
+    min_calls: 1
+    min_evidence_reads: 1

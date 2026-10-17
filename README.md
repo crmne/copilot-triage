@@ -405,7 +405,13 @@ what makes `pull_request_target` safe here.
 - **Policy.** Replies only when the author needs something: a requirement from
   your contribution policy, one essential question, or a scope explanation. It
   does not summarize changes or review code line by line: a reply that quotes
-  code, names an identifier, or points at a line is refused.
+  code, names an identifier, or points at a line is refused. To check your
+  contribution rules, such as keeping review screenshots out of the repository
+  or approving git dependencies, the agent is told which binary and media files
+  the pull request adds and which dependency manifests it changes, with any
+  added lines that point a dependency at a git repository or a local path,
+  which the action reads from those manifests' patches. When a documented rule
+  is broken, it replies naming the rule and the card goes to **Their move**.
 - **Out of scope.** Only when your documented scope rules out the change itself,
   never for a missing process step, code quality, or tests, and always with a
   cited explanation. `suggest` stops at the explanation; `close` also closes the

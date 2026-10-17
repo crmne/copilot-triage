@@ -1,7 +1,7 @@
 # Reply evaluations
 
 `TriageEvaluation` in `app/evals` uses RubyLLM's evaluation runner. Its YAML dataset
-contains the same 27 control cases, with inputs separate from expected outcomes.
+contains the same 28 control cases, with inputs separate from expected outcomes.
 The RSpec suite declares `evaluates TriageEvaluation`, so each case also appears
 as an ordinary example with the same assertions and failure messages.
 

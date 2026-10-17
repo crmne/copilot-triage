@@ -33,6 +33,16 @@ class IssueAssessment # :nodoc:
               /\.(?:md|mdx|rst|adoc|txt|po|pot|xliff?|strings|lock|png|jpe?g|gif|svg|ico|webp|mp4|pdf)\z/i,
               %r{(?:\A|/)(?:package-lock\.json|pnpm-lock\.yaml|go\.sum)\z}].freeze
 
+  # Changes that contribution policies often govern, which the agent matches
+  # against the project's own rules: binary and media files a pull request
+  # adds, and dependency manifests it changes, with added lines that point a
+  # dependency at a git repository or a local path, or patch one.
+  BINARY = /\.(?:png|jpe?g|gif|webp|avif|bmp|tiff?|svg|ico|mp4|mov|webm|mkv|mp3|wav|ogg|flac|pdf|zip|gz|7z|bin)\z/i
+  MANIFEST = /\A(?:Cargo\.toml|Gemfile|.+\.gemspec|package\.json|go\.mod|pyproject\.toml|requirements.*\.txt|
+                 Package\.swift|pom\.xml|build\.gradle(?:\.kts)?|composer\.json|mix\.exs)\z/x
+  SOURCE_DEPENDENCY = /\b(?:git|path)\s*[:=]|:git\s*=>|git\+\w|github:|"(?:file|link):|\A\s*(?:replace\b|\[patch\b)|
+                       "(?:overrides|resolutions)"/x
+
   COPILOT_RETRY_DELAYS = [20, 40].freeze
   # Seconds between reads while GitHub works out whether a pull request merges.
   MERGEABILITY_DELAYS = [2, 4, 8].freeze
@@ -597,8 +607,33 @@ class IssueAssessment # :nodoc:
       context['copilot_review'] = copilot&.merge('requested_again' => CopilotReview.requested?(item),
                                                  'findings' => found.dig(CopilotReview::LOGIN, 'findings').to_a)
       context['other_reviews'] = BotReviews.unavailable(item).merge(found).except(CopilotReview::LOGIN)
+      context['policy_facts'] = policy_facts(item)
     end
     JSON.generate(context)
+  end
+
+  def policy_facts(item)
+    files = item.dig('files', 'nodes').to_a
+    added = files.filter_map { |file| file['path'] if file['changeType'] == 'ADDED' && file['path'].match?(BINARY) }
+    manifests = files.map { |file| file['path'] }.select { |path| File.basename(path).match?(MANIFEST) }
+    { 'added_binary_files' => added.first(20), 'changed_dependency_manifests' => manifests,
+      'source_dependency_lines' => source_dependencies(manifests) }.reject { |_, list| list.empty? }
+  end
+
+  # Added lines of the changed manifests that name a git or path source.
+  def source_dependencies(manifests)
+    return [] if manifests.empty?
+
+    github("repos/#{@repository}/pulls/#{@number}/files?per_page=100").to_a.flat_map do |file|
+      next [] unless manifests.include?(file['filename'])
+
+      file['patch'].to_s.lines.filter_map do |line|
+        added = line.delete_prefix('+')
+        "#{file['filename']}: #{added.strip[0, 160]}" if line.start_with?('+') && added.match?(SOURCE_DEPENDENCY)
+      end
+    end.first(10)
+  rescue RuntimeError
+    []
   end
 
   def comment_context(comment)

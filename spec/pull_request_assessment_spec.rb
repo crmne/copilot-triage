@@ -251,6 +251,40 @@ RSpec.describe IssueAssessment, 'with a pull request' do
     expect(runner).not_to be_failed
   end
 
+  it 'gives the agent facts that contribution rules often govern' do
+    item['files']['nodes'] += [
+      { 'path' => 'docs/assets/review/after.png', 'additions' => 0, 'deletions' => 0, 'changeType' => 'ADDED' },
+      { 'path' => 'docs/assets/logo.png', 'additions' => 0, 'deletions' => 0, 'changeType' => 'MODIFIED' },
+      { 'path' => 'Cargo.toml', 'additions' => 2, 'deletions' => 0, 'changeType' => 'MODIFIED' }
+    ]
+    runner = described_class.new(environment)
+    allow(runner).to receive_messages(read_report: [item, labels])
+    allow(runner).to receive(:ask_copilot) { JSON.generate(decision) }
+    allow(runner).to receive(:mutate)
+    allow(runner).to receive(:puts)
+    patch = "@@ -10,2 +10,4 @@\n [dependencies]\n+serde = \"1\"\n" \
+            "+egui = { git = \"https://github.com/someone/egui\", branch = \"fix\" }\n"
+    allow(runner).to receive(:github).with('repos/crmne/ruby_llm/pulls/77/files?per_page=100')
+                                     .and_return([{ 'filename' => 'Cargo.toml', 'patch' => patch }])
+    runner.run
+
+    expect(runner).to have_received(:ask_copilot).with(include(
+                                                         '"policy_facts":{"added_binary_files":' \
+                                                         '["docs/assets/review/after.png"],' \
+                                                         '"changed_dependency_manifests":["Cargo.toml"],' \
+                                                         '"source_dependency_lines":["Cargo.toml: egui = { git = ' \
+                                                         '\\"https://github.com/someone/egui\\", branch = ' \
+                                                         '\\"fix\\" }"]}'
+                                                       ))
+    expect(runner.send(:system_prompt)).to include('policy_facts lists')
+  end
+
+  it 'leaves policy facts empty for an ordinary change' do
+    runner = run_with
+
+    expect(runner).to have_received(:ask_copilot).with(include('"policy_facts":{}'))
+  end
+
   it 'rejects a decision without the pull request fields' do
     decision.delete(:review)
     runner = run_with
