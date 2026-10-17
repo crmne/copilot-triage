@@ -18,6 +18,33 @@ cases:
       other operating systems. My earlier report that the problem disappeared
       after startup was based on that single successful launch. The later two
       restarts did not reproduce that improvement.
+
+      Some background, in case it matters. This is a laptop with an integrated
+      GPU and a 4K screen at 150% scaling, running a Wayland session. I use a
+      fairly ordinary setup: the default theme, notifications on, and two
+      accounts, although only one was connected during these tests. The second
+      account was signed out the whole time, so I do not think it plays a role,
+      but I mention it because a friend with a similar machine and a single
+      account does not see anything unusual.
+
+      I watched the process in a system monitor for about ten minutes each time.
+      The usage did not spike and settle; it stayed flat near one full core and
+      the fans kept running. Closing the window to the tray did not change it.
+      Signing out brought it back down to almost nothing within a few seconds,
+      and signing in again brought the high usage back shortly after the
+      history finished loading. I did not change any settings between runs.
+
+      I also wondered whether the size of my history was a factor, because the
+      main account has several years of messages and a lot of media. The copied
+      profile has the same history, which is why I used it for the comparison.
+      I have not tried a fresh account with an empty history yet, and I can do
+      that if it would help narrow it down, although it would take a while to
+      set up a second phone number for it.
+
+      Battery life is the main reason I noticed. With the app open the laptop
+      lasts roughly half as long as usual, and it is warm even when nothing is
+      happening on screen. Quitting the app completely restores normal battery
+      life, so for now I only open it when I need to reply to someone.
     decision:
       labels:
       - bug

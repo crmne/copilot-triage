@@ -59,6 +59,12 @@ class IssueAssessment # :nodoc:
                          \bplease\s(?:investigate|decide|prioriti[sz]e|triage)\b|\b(?:product|design)\sdecision\b|
                          \bfor\sprioriti[sz]ation\b|\bmarking\s(?:it|this)\s(?:for|as)\b|\A\W*confirmed\b|
                          \bconfirmed\s(?:as\s)?(?:an?\s)?(?:[\w-]+\s){0,3}(?:bug|defect|regression)\b/ix
+  # An initial recap pays off only on a long, unstructured report. Logs and
+  # code do not count toward its length, and a report with headings, or steps,
+  # expected and actual sections, is already easy to read.
+  RECAP_MIN_PROSE = 2000
+  STRUCTURED_REPORT = /^\s*(?:\#{1,6}\s|\*\*[^*\n]+\*\*:?\s*$|(?:\d+\.\s*)?(?:steps\sto\sreproduce|expected|actual)
+                       (?:\sbehaviou?r|\sresults?)?\s*(?::|$))/ix
 
   def initialize(environment = ENV)
     @environment = environment
@@ -410,7 +416,13 @@ class IssueAssessment # :nodoc:
   def initial_recap_allowed?(item)
     @kind == 'issue' && @environment['GITHUB_EVENT_NAME'] == 'issues' && event['action'] == 'opened' &&
       !@state.data['initial_assessed'] && !@state.data['history_incomplete'] &&
-      @state.data['replies'].empty? && !@state.data['maintainer_replied'] && !answered?(item)
+      @state.data['replies'].empty? && !@state.data['maintainer_replied'] && !answered?(item) &&
+      recap_worthy?(item['body'])
+  end
+
+  def recap_worthy?(body)
+    prose = body.to_s.gsub(/^\s*(```|~~~).*?^\s*\1/m, '')
+    prose.length >= RECAP_MIN_PROSE && !prose.match?(STRUCTURED_REPORT)
   end
 
   # Long threads are where triage helps most, so the whole conversation goes in.

@@ -141,9 +141,12 @@ RSpec.describe 'Report context' do
                                                                     body: start_with("#{comment}\n\n"))
   end
 
+  let(:long_report) { "On Arch Linux the app idles at 90% CPU after I connect my account. #{'More details. ' * 200}" }
+
   it 'allows one useful recap on a newly opened issue' do
     environment.merge!('GITHUB_EVENT_NAME' => 'issues', 'GITHUB_EVENT_PATH' => 'event.json')
     File.write('event.json', JSON.generate(action: 'opened'))
+    item['body'] = long_report
     comment = 'On Arch Linux, connected sessions use 90% CPU while idle; a patched build uses 0-5% on the same profile.'
     allow(assessment).to receive(:ask_copilot).and_return(
       JSON.generate(labels: [], reply: nil, sources: [], comment: comment)
@@ -151,8 +154,27 @@ RSpec.describe 'Report context' do
 
     assessment.run
 
+    expect(assessment).to have_received(:ask_copilot).with(include('Initial issue recap permitted: true'))
     expect(assessment).to have_received(:mutate).with('addComment', subjectId: 'report-id',
                                                                     body: start_with(comment))
+  end
+
+  {
+    'a short report' => 'The app idles at 90% CPU after I connect my account.',
+    'a long log with a short description' => "The app idles at 90% CPU.\n```text\n#{"WARN cpu busy\n" * 400}```",
+    'a long report with template headings' => "### What happened?\n\n#{'More details. ' * 200}",
+    'a long report with steps, expected, and actual' => "Steps to reproduce:\n#{'More details. ' * 200}\n" \
+                                                        "Expected: idle.\nActual: 90% CPU."
+  }.each do |description, body|
+    it "permits no recap of #{description}" do
+      environment.merge!('GITHUB_EVENT_NAME' => 'issues', 'GITHUB_EVENT_PATH' => 'event.json')
+      File.write('event.json', JSON.generate(action: 'opened'))
+      item['body'] = body
+
+      assessment.run
+
+      expect(assessment).to have_received(:ask_copilot).with(include('Initial issue recap permitted: false'))
+    end
   end
 
   it 'does not treat reopening an issue as permission for another recap' do
@@ -172,6 +194,7 @@ RSpec.describe 'Report context' do
     environment.merge!('GITHUB_EVENT_NAME' => 'issues', 'GITHUB_EVENT_PATH' => 'event.json',
                        'TRIAGE_STATE_DIR' => 'state')
     File.write('event.json', JSON.generate(action: 'opened'))
+    item['body'] = long_report
     comment = 'On Arch Linux, connected sessions use 90% CPU while idle.'
     allow(assessment).to receive(:ask_copilot).and_return(
       JSON.generate(labels: [], reply: nil, sources: [], comment: comment)
