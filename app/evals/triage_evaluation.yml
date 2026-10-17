@@ -306,6 +306,113 @@ cases:
     - unreleased
     max_calls: 8
     min_calls: 1
+- name: zapfast-508-followup-feature-only-on-main
+  inputs:
+    title: Support voice calls
+    body: I cannot start a voice call in the app, so I switch to my phone. Please
+      add calls.
+    comment: I am on version 1.2.1 and there is no phone button in any chat header.
+      Is the interface out of date?
+    release:
+      id: 1
+      tag_name: v1.2.1
+      name: Windows image fix
+      body: Fixed all inline images failing on Windows.
+      html_url: https://github.com/example/project/releases/tag/v1.2.1
+      published_at: '2026-09-16T12:00:00Z'
+      draft: false
+      prerelease: false
+    unreleased:
+    - Fix a typo in the guide
+    - Add one-to-one voice calls with a phone button in the chat header
+    tools:
+    - name: read_evidence
+      arguments:
+        reference: file:docs/guide.md
+    - name: search_changes
+      arguments:
+        query: voice call
+    decision:
+      labels:
+      - enhancement
+      reply:
+      comment: The phone button in [[file:docs/guide.md]] is on the default branch
+        but not in a release yet, so v1.2.1 does not have voice calls.
+      sources:
+      - file:docs/guide.md
+      related_issue:
+      relationship:
+      mute: false
+  expected_output:
+    action: reply
+    contains:
+    - 1.2.1
+    contains_any:
+    - not in
+    - not yet
+    - not included
+    - not available
+    - not part of
+    - unreleased
+    excludes:
+    - already
+    - stale
+    - choose the phone button
+    max_calls: 8
+    min_calls: 1
+    min_evidence_reads: 1
+- name: zapfast-532-discussion-mention-everyone-unreleased
+  inputs:
+    discussion: true
+    title: Mention everyone in a group
+    body: In the app I cannot mention everyone in a group chat. Is this planned? It
+      would be very useful.
+    release:
+      id: 1
+      tag_name: v1.2.1
+      name: Windows image fix
+      body: Fixed all inline images failing on Windows.
+      html_url: https://github.com/example/project/releases/tag/v1.2.1
+      published_at: '2026-09-16T12:00:00Z'
+      draft: false
+      prerelease: false
+    unreleased:
+    - Mention everyone in a group with `@all`
+    tools:
+    - name: read_evidence
+      arguments:
+        reference: file:docs/guide.md
+    - name: search_changes
+      arguments:
+        query: mention
+    decision:
+      labels: []
+      reply:
+      comment: Mentioning everyone with `@all` is on the default branch but not in a
+        release yet, so v1.2.1 does not offer it; see [[file:docs/guide.md]].
+      sources:
+      - file:docs/guide.md
+      related_issue:
+      relationship:
+      mute: false
+      move_to_issue: false
+  expected_output:
+    action: reply
+    contains:
+    - 1.2.1
+    contains_any:
+    - not in
+    - not yet
+    - not included
+    - not available
+    - not part of
+    - unreleased
+    excludes:
+    - already
+    - bug
+    max_calls: 8
+    min_calls: 1
+    min_evidence_reads: 1
 - name: new-regression-without-question
   inputs:
     title: Images fail on Windows

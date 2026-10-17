@@ -32,8 +32,12 @@ class EvaluationAssessment < IssueAssessment
       'COPILOT_GITHUB_TOKEN' => ENV.fetch('COPILOT_GITHUB_TOKEN', nil),
       'TRIAGE_ENGINE' => ENV.fetch('TRIAGE_ENGINE', 'copilot'), 'TRIAGE_PROVIDER' => ENV.fetch('TRIAGE_PROVIDER', nil),
       'TRIAGE_API_KEY' => ENV.fetch('TRIAGE_API_KEY', nil), 'TRIAGE_API_BASE' => ENV.fetch('TRIAGE_API_BASE', nil),
-      'TRIAGE_KIND' => example['pull_request'] ? 'pull_request' : 'issue',
+      'TRIAGE_KIND' => if example['pull_request'] then 'pull_request'
+                       elsif example['discussion'] then 'discussion'
+                       else 'issue'
+                       end,
       'GITHUB_EVENT_NAME' => if example['pull_request'] then 'pull_request_review'
+                             elsif example['discussion'] then 'discussion'
                              elsif example['comment'] then 'issue_comment'
                              else 'issues'
                              end,
@@ -48,7 +52,8 @@ class EvaluationAssessment < IssueAssessment
   end
 
   def to_h
-    action = { 'reply' => 'reply', 'duplicate_closed' => 'duplicate' }.fetch(metrics.fetch('outcome'), 'silent')
+    action = { 'reply' => 'reply', 'duplicate_closed' => 'duplicate', 'moved_to_issue' => 'moved' }
+             .fetch(metrics.fetch('outcome'), 'silent')
     action = 'error' if metrics['outcome'] == 'error' || metrics['reason'].to_s.match?(/invalid|unavailable|exhausted/)
     { action:, reply: decision && reply_body(decision), decision:, metrics:, model_responses:,
       tool_calls: tool_ledger.fetch('trace', []), copilot_debug:,
@@ -139,6 +144,10 @@ class EvaluationAssessment < IssueAssessment
       return { 'action' => 'submitted', 'repository' => { 'full_name' => 'example/project' },
                'review' => { 'user' => { 'login' => 'copilot-pull-request-reviewer[bot]' } },
                'pull_request' => { 'number' => 100, 'head' => { 'repo' => { 'full_name' => 'example/project' } } } }
+    end
+
+    if @example['discussion']
+      return { 'action' => 'created', 'sender' => { 'type' => 'User' }, 'discussion' => { 'closed' => false } }
     end
 
     { 'action' => @example['comment'] ? 'created' : 'opened',

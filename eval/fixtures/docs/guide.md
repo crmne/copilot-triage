@@ -17,3 +17,7 @@ Right-click the message or picture, choose Forward, then select the destination 
 # Voice calls
 
 Open a chat and choose the phone button in its header to start a voice call.
+
+# Group mentions
+
+In a group chat, type @ and choose all to mention everyone.

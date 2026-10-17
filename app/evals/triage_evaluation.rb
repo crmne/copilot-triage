@@ -32,6 +32,9 @@ class TriageEvaluation < RubyLLM::Evaluation
         assert_includes content, text.downcase
       end
     end
+    expected.fetch('excludes', []).each do |text|
+      refute_includes content, text.downcase
+    end
     alternatives = expected.fetch('contains_any', [])
     if alternatives.any?
       assert alternatives.any? { |text|
