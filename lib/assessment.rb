@@ -125,7 +125,8 @@ class IssueAssessment # :nodoc:
     flag_on_board(e.message)
   rescue JSON::ParserError, KeyError, ArgumentError => e
     location = e.backtrace_locations.first
-    fail_assessment("invalid assessment (#{e.class} in #{location.base_label} at " \
+    reason = "#{redact(e.message)[0, 200]}: " unless e.message == e.class.name
+    fail_assessment("invalid assessment (#{reason}#{e.class} in #{location.base_label} at " \
                     "#{File.basename(location.path)}:#{location.lineno}); left for a maintainer")
     flag_on_board('its decision was invalid')
   ensure
@@ -344,7 +345,9 @@ class IssueAssessment # :nodoc:
     @report_facts = report_facts(item)
     decision = request(build_prompt(item, labels)) { |response| validate(response, labels) }
     # Someone else's words would make the "resolved" comment false.
-    raise ArgumentError if decision['close_as'] == 'resolved' && latest_commenter(item) != item.dig('author', 'login')
+    if decision['close_as'] == 'resolved' && latest_commenter(item) != item.dig('author', 'login')
+      raise ArgumentError, 'resolved without the reporter saying so'
+    end
 
     unsourced = @answer_only && (decision['related_issue'] || decision['sources'].empty?)
     if decision['mute'] || answered?(item) || unsourced
@@ -626,15 +629,19 @@ class IssueAssessment # :nodoc:
   end
 
   def validate_comment(comment)
-    raise ArgumentError unless comment.is_a?(String) && !comment.strip.empty? && comment.bytesize <= 2000
-    raise ArgumentError if comment.match?(%r{[a-z][a-z0-9+.-]*://|\[[^\]]*\]\(}i)
+    unless comment.is_a?(String) && !comment.strip.empty? && comment.bytesize <= 2000
+      raise ArgumentError, 'the comment is empty or over 2000 bytes'
+    end
+    raise ArgumentError, 'the comment has its own link' if comment.match?(%r{[a-z][a-z0-9+.-]*://|\[[^\]]*\]\(}i)
 
     prose = comment.gsub(/```.*?```|`[^`]*`/m, '')
-    raise ArgumentError if prose.match?(%r{@|<[/!a-z]}i)
+    raise ArgumentError, 'the comment has a mention or HTML outside code' if prose.match?(%r{@|<[/!a-z]}i)
   end
 
   def validate_selection(selected, allowed)
-    raise ArgumentError unless selected.is_a?(Array) && selected.size <= 2 && (selected - allowed).empty?
+    return if selected.is_a?(Array) && selected.size <= 2 && (selected - allowed).empty?
+
+    raise ArgumentError, 'the labels are not at most two configured labels'
   end
 
   def source_url(path)
@@ -925,56 +932,74 @@ class IssueAssessment # :nodoc:
     keys += TriageTools::PULL_REQUEST_PROPERTIES.keys.map(&:to_s) if pull_request?
     keys += TriageTools::MOVE_PROPERTIES.keys.map(&:to_s) if move?
     keys += TriageTools::CLOSE_PROPERTIES.keys.map(&:to_s) if @kind == 'issue'
-    raise ArgumentError unless decision.is_a?(Hash) && (decision.keys - keys).empty?
-    raise ArgumentError unless (%w[labels reply] - decision.keys).empty?
+    raise ArgumentError, 'the decision has unknown fields' unless decision.is_a?(Hash) && (decision.keys - keys).empty?
+    raise ArgumentError, 'the decision lacks labels or reply' unless (%w[labels reply] - decision.keys).empty?
 
     validate_board(decision) if board?
     validate_pull_request(decision) if pull_request?
-    raise ArgumentError if move? && ![true, false].include?(decision['move_to_issue'])
-    raise ArgumentError if decision['move_to_issue'] && (decision['related_issue'] || decision['mute'])
-    raise ArgumentError unless TriageTools::CLOSE_PROPERTIES[:close_as][:enum].include?(decision['close_as'])
-    raise ArgumentError if decision['close_as'] && (decision['comment'].nil? || decision['related_issue'])
+    raise ArgumentError, 'move_to_issue is not a boolean' if move? && ![true, false].include?(decision['move_to_issue'])
+    if decision['move_to_issue'] && (decision['related_issue'] || decision['mute'])
+      raise ArgumentError, 'a move also names a related issue or mutes'
+    end
+    unless TriageTools::CLOSE_PROPERTIES[:close_as][:enum].include?(decision['close_as'])
+      raise ArgumentError, 'close_as is not a known reason'
+    end
+    if decision['close_as'] && (decision['comment'].nil? || decision['related_issue'])
+      raise ArgumentError, 'a closure lacks a comment or names a related issue'
+    end
 
     validate_labels(decision['labels'], allowed, moving: decision['move_to_issue'] == true)
-    raise ArgumentError if TriageTools.label_conflict(decision['labels'], @report_facts.fetch('labels'))
-    raise ArgumentError if decision['move_to_issue'] && decision['labels'].intersect?(TriageTools::DECLINING_LABELS)
-    raise ArgumentError unless decision['reply'].nil? || @config.fetch('replies').key?(decision['reply'])
-    raise ArgumentError if decision.key?('mute') && ![true, false].include?(decision['mute'])
+    if TriageTools.label_conflict(decision['labels'], @report_facts.fetch('labels'))
+      raise ArgumentError, 'the labels contradict each other or add a second type'
+    end
+    if decision['move_to_issue'] && decision['labels'].intersect?(TriageTools::DECLINING_LABELS)
+      raise ArgumentError, 'a move carries a declining label'
+    end
+    unless decision['reply'].nil? || @config.fetch('replies').key?(decision['reply'])
+      raise ArgumentError, 'the reply is not a configured reply'
+    end
+    raise ArgumentError, 'mute is not a boolean' if decision.key?('mute') && ![true, false].include?(decision['mute'])
 
     sources = decision['sources'] ||= []
-    raise ArgumentError unless sources.is_a?(Array) && sources.size <= 3 &&
-                               (sources - @tool_ledger.fetch('evidence').keys).empty?
+    unless sources.is_a?(Array) && sources.size <= 3 && (sources - @tool_ledger.fetch('evidence').keys).empty?
+      raise ArgumentError, 'the sources are more than three or were not read'
+    end
 
     if decision['comment'].nil?
-      raise ArgumentError if sources.any?
+      raise ArgumentError, 'sources without a comment' if sources.any?
     else
       validate_comment(decision['comment'])
-      raise ArgumentError if decision['reply']
+      raise ArgumentError, 'both a comment and a configured reply' if decision['reply']
 
       references = decision['comment'].scan(/\[\[([^\]]+)\]\]/).flatten
-      raise ArgumentError unless references.uniq.sort == sources.uniq.sort
+      raise ArgumentError, 'the comment cites other than its sources' unless references.uniq.sort == sources.uniq.sort
     end
     if decision['related_issue']
       number = decision['related_issue']
       entry = @tool_ledger.fetch('evidence')["issue:#{number}"]
-      raise ArgumentError unless number.is_a?(Integer) && number.positive? && duplicate_mode != 'off' &&
-                                 %w[related duplicate].include?(decision['relationship']) && decision['comment'] &&
-                                 entry && entry['complete']
-      raise ArgumentError if @kind == 'issue' && number == @number
+      unless number.is_a?(Integer) && number.positive? && duplicate_mode != 'off' &&
+             %w[related duplicate].include?(decision['relationship']) && decision['comment'] &&
+             entry && entry['complete']
+        raise ArgumentError, 'the related issue lacks a relationship or comment, or was not read in full'
+      end
+      raise ArgumentError, 'the related issue is the report itself' if @kind == 'issue' && number == @number
     elsif decision['relationship']
-      raise ArgumentError
+      raise ArgumentError, 'a relationship without a related issue'
     end
     decision
   end
 
   def validate_pull_request(decision)
-    raise ArgumentError unless %w[review out_of_scope].all? { |key| [true, false].include?(decision[key]) }
+    return if %w[review out_of_scope].all? { |key| [true, false].include?(decision[key]) }
+
+    raise ArgumentError, 'review or out_of_scope is not true or false'
   end
 
   def validate_board(decision)
-    raise ArgumentError unless TriageTools::BOARD_PROPERTIES[:next_move][:enum].include?(decision['next_move']) &&
-                               ProjectBoard::PRIORITIES.key?(decision['priority']) &&
-                               ProjectBoard.next_step?(decision['next_step'])
+    return if TriageTools::BOARD_PROPERTIES[:next_move][:enum].include?(decision['next_move']) &&
+              ProjectBoard::PRIORITIES.key?(decision['priority']) && ProjectBoard.next_step?(decision['next_step'])
+
+    raise ArgumentError, 'the board fields are missing or invalid'
   end
 
   def board?
@@ -1327,7 +1352,7 @@ class IssueAssessment # :nodoc:
 
   def validate_labels(selected, allowed, moving: false)
     validate_selection(selected, allowed)
-    raise ArgumentError if @kind == 'discussion' && selected.any? && !moving
+    raise ArgumentError, 'labels on a discussion that stays' if @kind == 'discussion' && selected.any? && !moving
   end
 
   def publish(item, labels, decision)
