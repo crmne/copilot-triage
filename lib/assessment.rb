@@ -365,6 +365,7 @@ class IssueAssessment # :nodoc:
   # What the tools check a decision against.
   def report_facts(item)
     { 'author' => item.dig('author', 'login'), 'latest_commenter' => latest_commenter(item),
+      'labels' => item.dig('labels', 'nodes').to_a.map { |label| label.fetch('name') },
       'recurring' => item['stateReason'] == 'REOPENED' && bot?(item['author']) && report_bot?(item['author']) }
   end
 
@@ -437,6 +438,7 @@ class IssueAssessment # :nodoc:
           labels(first: 100) { nodes { id name } }
           #{KINDS.fetch(@kind).first}(number: $number) {
             id url title body closed authorAssociation author { __typename login }
+            labels(first: 20) { nodes { name } }
             #{'stateReason' unless pull_request?}
             #{'assignees { totalCount }' unless @kind == 'discussion'}
             #{pull_request_fields if pull_request?}
@@ -929,6 +931,7 @@ class IssueAssessment # :nodoc:
     raise ArgumentError if decision['close_as'] && (decision['comment'].nil? || decision['related_issue'])
 
     validate_labels(decision['labels'], allowed, moving: decision['move_to_issue'] == true)
+    raise ArgumentError if TriageTools.label_conflict(decision['labels'], @report_facts.fetch('labels'))
     raise ArgumentError unless decision['reply'].nil? || @config.fetch('replies').key?(decision['reply'])
     raise ArgumentError if decision.key?('mute') && ![true, false].include?(decision['mute'])
 

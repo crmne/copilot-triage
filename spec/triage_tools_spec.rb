@@ -234,6 +234,35 @@ RSpec.describe TriageTools do
     expect(tools.ledger).not_to have_key('decision')
   end
 
+  describe 'labels' do
+    let(:decision) do
+      { 'labels' => [], 'reply' => nil, 'comment' => nil, 'sources' => [], 'related_issue' => nil,
+        'relationship' => nil, 'mute' => false }
+    end
+
+    def submit(labels, existing = [])
+      config['labels'].merge!('wontfix' => 'Ruled out.', 'out-of-scope' => 'Outside the product.')
+      tools = described_class.new(root: Dir.pwd, repository: 'owner/project', config: config,
+                                  report: { 'labels' => existing })
+      result = tools.call('submit_decision', decision.merge('labels' => labels))
+      result[:isError] ? result[:content].first[:text] : 'accepted'
+    end
+
+    it 'refuses labels that contradict each other or the report' do
+      expect(submit(%w[bug enhancement])).to include('bug and enhancement contradict')
+      expect(submit(%w[enhancement], %w[wontfix])).to include('wontfix and enhancement contradict')
+      expect(submit(%w[out-of-scope], %w[enhancement])).to include('out-of-scope and enhancement contradict')
+      expect(submit(%w[wontfix])).to eq('accepted')
+    end
+
+    it 'keeps the type label a report already has' do
+      expect(submit(%w[question], %w[bug])).to include('already labeled bug')
+      expect(submit(%w[question], %w[documentation])).to include('add no other type label')
+      expect(submit(%w[bug], %w[bug])).to eq('accepted')
+      expect(submit(%w[wontfix], %w[question])).to eq('accepted')
+    end
+  end
+
   describe 'duplicates that would hide a recurrence' do
     let(:issue) do
       { 'node_id' => 'issue-42', 'number' => 42, 'title' => 'Memory grows', 'body' => 'Memory grows to 2 GB.',

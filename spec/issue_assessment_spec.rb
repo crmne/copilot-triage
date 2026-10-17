@@ -37,6 +37,13 @@ RSpec.describe IssueAssessment, type: :task do
     expect(assessment).not_to have_received(:mutate).with('addComment', anything)
   end
 
+  it 'adds no second type label to a report a maintainer already typed' do
+    item['labels'] = { 'nodes' => [{ 'name' => 'question' }] }
+    assessment.run
+    expect(assessment).not_to have_received(:mutate)
+    expect(assessment).to have_received(:puts).with(include('invalid assessment')).at_least(:once)
+  end
+
   it 'posts the repository-written reply selected by the model' do
     allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: ['question'], reply: 'version',
                                                                         sources: []))

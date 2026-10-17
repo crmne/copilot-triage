@@ -551,6 +551,11 @@ Labels stay public and simple: the types in your policy, such as `bug`,
 alike. Triage creates any of them a repository lacks. Priority, next steps, and
 columns stay private on the board.
 
+`bug`, `enhancement`, `question`, and `documentation` are type labels. Once a
+report has one, whether a maintainer or an earlier run set it, the agent adds no
+other type, only labels such as `wontfix`. It never pairs `enhancement` with
+`bug`, `wontfix`, or `out-of-scope`.
+
 ## Preview a report
 
 Add manual inputs to the workflow:

@@ -116,6 +116,24 @@ class TriageTools
     end
   end
 
+  # Labels that say what kind of report it is. Once a report has one, from a
+  # maintainer or an earlier run, the agent adds no other.
+  TYPE_LABELS = %w[bug enhancement question documentation].freeze
+  # Labels that cannot describe the same report.
+  CONTRADICTIONS = [%w[bug enhancement], %w[wontfix enhancement], %w[out-of-scope enhancement]].freeze
+
+  # Why these labels cannot be added to a report that already has existing, or nil.
+  def self.label_conflict(labels, existing)
+    added = labels - existing
+    pair = CONTRADICTIONS.find { |names| (names - labels - existing).empty? && names.intersect?(added) }
+    return "#{pair.join(' and ')} contradict each other; keep the one that fits." if pair
+
+    type = (existing & TYPE_LABELS).first
+    return unless type && added.intersect?(TYPE_LABELS)
+
+    "This report is already labeled #{type}; add no other type label (#{TYPE_LABELS.join(', ')})."
+  end
+
   # Why this report cannot be closed as a duplicate of the issue snapshot, or
   # nil. A target closed as completed means the bug came back, and an error
   # tracker reopens its report when the error recurs. A reporter who closed
@@ -295,6 +313,9 @@ class TriageTools
     if @move && decision[:labels].any? && !decision[:move_to_issue]
       raise ArgumentError, 'Labels apply only to an issue created by move_to_issue; use [] for a discussion that stays.'
     end
+
+    conflict = self.class.label_conflict(decision[:labels], @report.fetch('labels', []))
+    raise ArgumentError, conflict if conflict
 
     reply = decision.fetch(:reply)
     raise ArgumentError, 'Unknown configured reply.' if reply && !@config.fetch('replies').key?(reply)
