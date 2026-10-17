@@ -49,6 +49,7 @@ class TriageTools
       description: 'Read a file, issue (body and latest comments), or release from this repository. ' \
                    'Use the exact reference returned by a search, e.g. file:docs/guide.md, issue:42, release:123. ' \
                    'Returns at most 6 KB of text, a citation reference, and next_offset when more remains. ' \
+                   'A file shows the default branch; revision says when it is ahead of the latest release. ' \
                    'offset is a byte offset; repository search supplies offsets near matches. ' \
                    'Page size is fixed: pass only reference and optional offset, not a length or limit. ' \
                    'Only references read with this tool may be cited in the final decision.',
@@ -249,7 +250,8 @@ class TriageTools
     raise ArgumentError, 'Offset is beyond the content.' if offset > content.bytesize
 
     text = clip(content.byteslice(offset..), 6000)
-    result = { reference: reference, content: text, offset: offset, total_bytes: content.bytesize }
+    result = { reference: reference, revision: file_revision(record), content: text, offset: offset,
+               total_bytes: content.bytesize }.compact
     while JSON.generate(result).bytesize > MAX_RESULT_BYTES - 100
       text = clip(text, text.bytesize / 2)
       result[:content] = text
@@ -401,6 +403,23 @@ class TriageTools
 
     content = file['patch'] || "No text patch for this #{file['status']} file (binary or too large)."
     { 'kind' => 'diff', 'path' => path, 'digest' => Digest::SHA256.hexdigest(content), 'content' => content }
+  end
+
+  # Beside each file read, not in its content, so offsets and the digest the
+  # publisher rechecks stay those of the file.
+  def file_revision(record)
+    return if record['kind'] != 'file' || @pull_request || @baseline_failed
+
+    baseline = begin
+      release_baseline
+    rescue IOError, KeyError
+      @baseline_failed = true
+      nil
+    end
+    since = baseline&.fetch(:commits_since).to_i
+    return unless since.positive?
+
+    "(default branch, #{since} #{since == 1 ? 'commit' : 'commits'} after #{baseline.fetch(:version)})"
   end
 
   def changed_files

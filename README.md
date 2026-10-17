@@ -241,7 +241,8 @@ Replies stay short, normally under 60 words, with no headings or status chatter.
 Facts learned through tools carry citations to evidence the agent actually read,
 and Ruby renders the links. A released-fix claim needs release notes, not code
 on `main` or a closed issue. Your docs and code show the default branch, so
-before citing them the agent checks what landed after your latest stable release,
+every file the agent reads is marked with how many commits it is ahead of your
+latest stable release, and before citing one the agent checks what landed since,
 and tells users when something is not in a release yet instead of calling it
 available. Map documentation files to your public site:
 

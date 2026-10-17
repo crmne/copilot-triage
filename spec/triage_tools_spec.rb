@@ -151,6 +151,34 @@ RSpec.describe TriageTools do
     expect(call('submit_decision', **decision)).to eq('accepted' => true)
   end
 
+  it 'marks a file read as the default branch when it is ahead of the latest release', :releases do
+    allow(tools).to receive(:api) do |endpoint|
+      if endpoint.include?('/releases?') then [{ 'tag_name' => 'v1.9', 'prerelease' => false }]
+      else { 'ahead_by' => 183, 'commits' => [] }
+      end
+    end
+
+    read = call('read_evidence', reference: 'file:docs/tools.md')
+
+    expect(read).to include('revision' => '(default branch, 183 commits after v1.9)',
+                            'content' => File.read('docs/tools.md'))
+    expect(tools.ledger.dig('evidence', 'file:docs/tools.md', 'digest'))
+      .to eq(tools.fetch_record('file:docs/tools.md').fetch('digest'))
+  end
+
+  it 'reads files without a revision note when the release baseline is current or unavailable', :releases do
+    allow(tools).to receive(:api).and_return([{ 'tag_name' => 'v1.9', 'prerelease' => false }],
+                                             { 'ahead_by' => 0, 'commits' => [] })
+    expect(call('read_evidence', reference: 'file:docs/tools.md')).not_to have_key('revision')
+
+    failing = described_class.new(root: Dir.pwd, repository: 'owner/project', config: config)
+    allow(failing).to receive(:api).and_raise(IOError)
+    2.times do
+      expect(failing.call('read_evidence', { 'reference' => 'file:docs/tools.md' })).not_to include(isError: true)
+    end
+    expect(failing).to have_received(:api).once
+  end
+
   it 'cannot read draft releases or pull requests as evidence' do
     allow(tools).to receive(:api).and_return('draft' => true)
     expect(tools.call('read_evidence', { 'reference' => 'release:1' })).to include(isError: true)
