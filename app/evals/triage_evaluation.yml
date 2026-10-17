@@ -1090,9 +1090,9 @@ cases:
       mute: false
       review: false
       out_of_scope: false
-      next_move: sign_off
+      next_move: theirs
       priority: normal
-      next_step: Read the change; Copilot only flagged its breadth
+      next_step: Move the review captures out of docs/assets into the pull request
     tools: []
   expected_output:
     action: silent
@@ -1100,8 +1100,7 @@ cases:
     - silent
     - reply
     next_move:
-    - sign_off
-    - do
+    - theirs
     max_calls: 8
     min_calls: 1
 - name: ruby_llm-1000-closer-look-risk
