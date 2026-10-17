@@ -541,6 +541,47 @@ cases:
     max_calls: 8
     min_calls: 1
     min_evidence_reads: 1
+- name: spotifast-821-wrong-duplicate
+  inputs:
+    title: No "show desktop overlay when using media keys" setting
+    body: My keyboard keys for skipping, pausing, and resuming a song do nothing
+      while another application is focused or maximized. In Spotify the fix is to
+      disable its desktop overlay setting. Either add that setting or let media
+      keys work while another application is in front.
+    candidate:
+      node_id: candidate-42
+      number: 42
+      title: Hide the media overlay on Windows
+      body: The Windows media overlay appears every time I use the media keys to
+        change songs. Spotify has a toggle to hide it. I find it distracting, so
+        please add the same toggle.
+      state: closed
+      state_reason: not_planned
+      comments: 0
+      html_url: https://github.com/example/project/issues/42
+    tools:
+    - name: search_issues
+      arguments:
+        query: media keys overlay
+    - name: read_evidence
+      arguments:
+        reference: issue:42
+    decision:
+      labels:
+      - bug
+      reply:
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+  expected_output:
+    action: silent
+    allowed_actions:
+    - silent
+    - reply
+    max_calls: 8
+    min_calls: 1
 - name: ruby_llm-974-closer-look-risk
   inputs:
     title: Let an MCP server use a custom transport

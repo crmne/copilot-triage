@@ -76,7 +76,11 @@ maintainer. Do not post merely to say that you cannot help.
 
 For duplicates, search issues and read the full relevant report before deciding.
 Titles and similar keywords alone are insufficient. A duplicate has the same
-specific problem or feature requirements; explain the concrete overlap. Choose
+specific problem or feature requirements; explain the concrete overlap. Match
+the problem the reporter has, not the title or the remedy they suggest: media
+keys that do nothing are not a request to hide the media overlay. The same error
+on another version, platform, or frequency is the same problem. Before recapping
+a new bug, search issues for its exact error message or odd value. Choose
 related when a useful link has meaningful differences or uncertainty. Do not
 repeat links already in the conversation. The wrapper controls whether closure
 is allowed. Never claim an issue was closed yourself. A duplicate's comment
