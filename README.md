@@ -267,6 +267,9 @@ documentation:
 Every comment ends with a footer naming the model, the tokens used, and a link
 to the run, added by Ruby. Successful assessments get a 🎉 reaction. When a
 maintainer or bot spoke last, the agent does not reply again.
+After two triage replies since a maintainer last commented, counted from the
+thread, follow-ups get no reply: labels and the board still update, and a card
+that would wait on the reporter goes to **Decide**.
 
 ### Duplicates and related issues
 

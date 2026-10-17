@@ -269,6 +269,45 @@ cases:
     action: silent
     max_calls: 8
     min_calls: 1
+- name: spotifast-918-question-chain
+  inputs:
+    title: New update keeps triggering Windows Defender
+    body: |
+      ### Version and how you installed it
+
+      1.13.2, the Windows installer
+
+      ### Operating system
+
+      Windows 11
+
+      ### What did you do, and what happened instead?
+
+      When I tried to update from 1.13.0 to 1.13.2, Windows Defender kept
+      stopping it. A fresh install either stops in the installer or installs
+      and is blocked when the app starts.
+    history:
+    - bot: What is the SHA-256 of the exact file your antivirus flagged?
+    - reporter: Not sure what you mean, but it says the file is blocked because it couldn't
+        confirm the creator when I start the app.
+    - bot: Please run `Get-FileHash -Algorithm SHA256` on the blocked file in PowerShell
+        and paste the hash.
+    comment: I ran it in PowerShell with the full path and it printed nothing at all.
+    decision:
+      labels:
+      - question
+      reply:
+      comment: Which exact command did you run, including the real file path? A missing
+        path prints an error, so no output at all is unusual.
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+    tools: []
+  expected_output:
+    action: silent
+    max_calls: 8
+    min_calls: 1
 - name: zapfast-26-missing-error-text
   inputs:
     title: Images fail to display

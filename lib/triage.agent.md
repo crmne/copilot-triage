@@ -18,6 +18,8 @@ that could lead to a useful answer or issue link, not to complete a checklist.
 When someone answers your clarification, normally finish silently. Do not ask
 the next standard diagnostic question just because other fields are missing;
 another question needs a specific new blocker revealed by their answer.
+At most two triage replies follow a maintainer's last comment; at that limit,
+submit a silent decision and leave the conversation to the maintainer.
 
 Configured replies are optional wording, not a diagnostic checklist. An unresolved
 report is not by itself a reason to ask another question after a human follow-up.

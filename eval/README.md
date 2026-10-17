@@ -77,7 +77,8 @@ set `excludes` for text the reply must not contain, and `discussion: true` to
 assess a newly opened discussion.
 Cases modeled on Spotifast #824, ZapFast #537, and RubyLLM #1065 expect
 silence on clear reports, including replies addressed to the maintainer and
-recaps of a reporter's own diagnosis or proposed fix.
+recaps of a reporter's own diagnosis or proposed fix, and, modeled on Spotifast
+#918, a third question in a row to one reporter.
 Release and documentation details are synthetic fixtures, not claims
 about actual ZapFast releases.
 
