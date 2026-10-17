@@ -519,8 +519,8 @@ Urgent issues are assigned to `maintainer`, the one notification GitHub sends
 you.
 
 Pull requests follow GitHub's facts on their latest commit, without a model.
-Drafts, failing checks, conflicts, and requested changes are the author's move
-(**Do** for your own), and an approved, green, mergeable pull request goes to
+Drafts, failing checks, conflicts, and a person's requested changes that the
+author has not pushed after are the author's move (**Do** for your own), and an approved, green, mergeable pull request goes to
 **Sign off**. Another review bot's approval of a ready pull request, such as
 CodeRabbit's when it found nothing, also goes to **Sign off**; when it requests
 changes or leaves findings, the agent weighs them, since bots ask for changes
@@ -528,8 +528,9 @@ over nitpicks too. With CodeRabbit, set `request_changes_workflow: true` in
 `.coderabbit.yaml` so it approves clean pull requests instead of only
 summarizing them. Copilot's **Approval recommended** goes to
 **Sign off**, **Changes recommended** to **Their move**, and a pull request
-whose review or checks are still running waits, including right after a new
-push. **Needs a closer look** is the agent's call, because it means two things:
+whose review or checks are still running waits in **Their move**, including
+right after a new push; a card already placed keeps its column meanwhile, so
+your review is not withdrawn and requested again. **Needs a closer look** is the agent's call, because it means two things:
 when Copilot only says a change is broad or risky, the pull request is ready
 for you (**Sign off**, or **Do** when it deserves a close read); when Copilot
 names something still wrong, it goes back to its author. Triage runs when

@@ -261,6 +261,21 @@ RSpec.describe BoardSweep do
       expect(moves.map(&:last)).to eq(%w[do theirs])
     end
 
+    it "neither withdraws nor requests the maintainer's review again while nothing has changed" do
+      rabbit = lambda { |state, commit|
+        { 'author' => { 'login' => 'coderabbitai' }, 'state' => state, 'commit' => { 'oid' => commit } }
+      }
+      pulls.push(pull(1, status: 'Do', requested: 'crmne', review: 'CHANGES_REQUESTED',
+                         copilot: rabbit.call('CHANGES_REQUESTED', 'older')),
+                 pull(2, status: 'Sign off', requested: 'crmne', review: 'APPROVED', checks: 'PENDING',
+                         copilot: rabbit.call('APPROVED', 'head')),
+                 pull(3, status: 'Do', requested: %w[crmne copilot-pull-request-reviewer]))
+
+      sweep.run
+      expect(moves).to be_empty
+      expect(review_requests).to be_empty
+    end
+
     it "sends CodeRabbit's requested changes to the agent, and takes its approval of a ready pull request" do
       rabbit = lambda { |state|
         { 'author' => { 'login' => 'coderabbitai' }, 'state' => state, 'commit' => { 'oid' => 'head' } }

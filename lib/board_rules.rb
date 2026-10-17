@@ -12,9 +12,12 @@ module BoardRules
   # Returns a column key, or :agent when Copilot asks for a closer look or
   # another review bot left findings, which only triage can judge. Sign off
   # means only the maintainer's yes is needed, so a contributor's pull request
-  # nobody reviewed on its latest commit is theirs to read first.
-  def pull_request_column(pull)
+  # nobody reviewed on its latest commit is theirs to read first. While checks
+  # or a review are still running, a placed card stays in its column, current,
+  # so the maintainer's review is not withdrawn and requested again.
+  def pull_request_column(pull, current = nil)
     column = facts_column(pull)
+    column = current || 'theirs' if column == :waiting
     column == 'sign_off' && !maintainer?(pull) && !reviewed?(pull) ? 'do' : column
   end
 
@@ -27,7 +30,7 @@ module BoardRules
     green = [nil, 'SUCCESS'].include?(checks)
     ready = green && pull['mergeable'] == 'MERGEABLE'
     return yours_or_theirs if %w[FAILURE ERROR].include?(checks) || pull['mergeable'] == 'CONFLICTING' ||
-                              (!own && pull['reviewDecision'] == 'CHANGES_REQUESTED' && !pushed_since_changes?(pull))
+                              (!own && pull['reviewDecision'] == 'CHANGES_REQUESTED' && changes_pending?(pull))
     return 'sign_off' if pull['reviewDecision'] == 'APPROVED' && ready
 
     reviewer = reviewer_state(pull)
@@ -36,7 +39,7 @@ module BoardRules
     # request is enough.
     return own ? 'do' : :agent if reviewer == 'CHANGES_REQUESTED'
     return 'sign_off' if reviewer == 'APPROVED' && ready
-    return 'theirs' if CopilotReview.requested?(pull) || %w[PENDING EXPECTED].include?(checks)
+    return :waiting if CopilotReview.requested?(pull) || %w[PENDING EXPECTED].include?(checks)
 
     review = CopilotReview.latest(pull)
     case review && review['current'] && review['verdict']
@@ -121,10 +124,22 @@ module BoardRules
   # The author pushed after a person asked for changes: it is the reviewer's
   # move again.
   def pushed_since_changes?(pull)
-    asked = pull.dig('reviews', 'nodes').to_a.select do |review|
+    asked = changes_asked(pull)
+    asked && asked.dig('commit', 'oid') != pull['headRefOid']
+  end
+
+  # A person asked for changes to the latest commit. A bot's request, which
+  # GitHub also counts in the review decision, is the agent's to weigh, and is
+  # answered by a push like a person's.
+  def changes_pending?(pull)
+    asked = changes_asked(pull)
+    asked && asked.dig('commit', 'oid') == pull['headRefOid']
+  end
+
+  def changes_asked(pull)
+    pull.dig('reviews', 'nodes').to_a.select do |review|
       review['state'] == 'CHANGES_REQUESTED' && !bot_login?(review.dig('author', 'login'))
     end.last
-    asked && asked.dig('commit', 'oid') != pull['headRefOid']
   end
 
   # A bot or a person reviewed the latest commit. A review that only says the

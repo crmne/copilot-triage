@@ -87,7 +87,7 @@ class BoardSweep
       @pull_columns[node.fetch('number')] = current
       return keep_review_request(node, current)
     end
-    column = if pull then BoardRules.pull_request_column(node)
+    column = if pull then BoardRules.pull_request_column(node, current)
              else BoardRules.issue_column(node, current, updated_at, linked_column: linked_column(node))
              end
     if column == :agent
