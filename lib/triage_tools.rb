@@ -121,6 +121,8 @@ class TriageTools
   TYPE_LABELS = %w[bug enhancement question documentation].freeze
   # Labels that cannot describe the same report.
   CONTRADICTIONS = [%w[bug enhancement], %w[wontfix enhancement], %w[out-of-scope enhancement]].freeze
+  # Labels that rule a request out, so it has nothing to track as an issue.
+  DECLINING_LABELS = %w[wontfix out-of-scope invalid].freeze
 
   # Why these labels cannot be added to a report that already has existing, or nil.
   def self.label_conflict(labels, existing)
@@ -312,6 +314,10 @@ class TriageTools
 
     if @move && decision[:labels].any? && !decision[:move_to_issue]
       raise ArgumentError, 'Labels apply only to an issue created by move_to_issue; use [] for a discussion that stays.'
+    end
+    if decision[:move_to_issue] && decision[:labels].intersect?(DECLINING_LABELS)
+      raise ArgumentError, 'A request your labels rule out stays a discussion: answer it here with move_to_issue ' \
+                           'false and no labels.'
     end
 
     conflict = self.class.label_conflict(decision[:labels], @report.fetch('labels', []))

@@ -418,6 +418,16 @@ RSpec.describe TriageTools do
     expect(tools.call('submit_decision', decision.merge('move_to_issue' => false))).not_to include(isError: true)
   end
 
+  it 'keeps a request its labels rule out in the discussion' do
+    config['labels']['out-of-scope'] = 'Outside the product.'
+    tools = described_class.new(root: Dir.pwd, repository: 'owner/project', config: config, move: true)
+    decision = { 'labels' => ['out-of-scope'], 'reply' => nil, 'comment' => nil, 'sources' => [],
+                 'related_issue' => nil, 'relationship' => nil, 'mute' => false, 'move_to_issue' => true }
+
+    expect(tools.call('submit_decision', decision)[:content].first[:text]).to include('stays a discussion')
+    expect(tools.call('submit_decision', decision.merge('labels' => ['enhancement']))).not_to include(isError: true)
+  end
+
   it 'offers diffs only when assessing a pull request' do
     expect(tools.call('read_evidence', { 'reference' => 'diff:lib/stream.rb' })[:content].first[:text])
       .to include('only available when assessing a pull request')

@@ -932,6 +932,7 @@ class IssueAssessment # :nodoc:
 
     validate_labels(decision['labels'], allowed, moving: decision['move_to_issue'] == true)
     raise ArgumentError if TriageTools.label_conflict(decision['labels'], @report_facts.fetch('labels'))
+    raise ArgumentError if decision['move_to_issue'] && decision['labels'].intersect?(TriageTools::DECLINING_LABELS)
     raise ArgumentError unless decision['reply'].nil? || @config.fetch('replies').key?(decision['reply'])
     raise ArgumentError if decision.key?('mute') && ![true, false].include?(decision['mute'])
 

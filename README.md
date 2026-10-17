@@ -346,9 +346,10 @@ the author had just opened it, so it gets its answer, labels, and board card
 there, and later comments on it are triaged too. The new issue is opened by the
 workflow's bot, so the author cannot edit it. Questions, ideas still being explored, anything
 already tracked, and anything the agent is unsure about stay put. So does a
-request your documented scope rules out or a maintainer already declined: the
-agent answers it in the discussion with the citation, rather than opening an
-issue only you can close. To never move discussions:
+request your documented scope rules out, a maintainer already declined, or the
+agent would label `wontfix`, `out-of-scope`, or `invalid`: the agent answers it
+in the discussion with the citation, rather than opening an issue only you can
+close. To never move discussions:
 
 ```yaml
 discussions:
