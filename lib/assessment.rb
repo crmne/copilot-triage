@@ -115,6 +115,7 @@ class IssueAssessment # :nodoc:
     request_review(item) if pull_request? && decision['review'] && reviews? && substantial_change?(item) && !quiet?
     posted = (!body.nil? && !quiet?) || maintainer_comment?
     update_board(item, decision, reply_posted: posted) if board? && (@kind != 'discussion' || @moved_issue)
+    assess_moved_issue if @moved_issue
   rescue Skipped => e
     skip("#{e.message}; left for a maintainer")
     flag_on_board(e.message)
@@ -375,7 +376,9 @@ class IssueAssessment # :nodoc:
   def skip_reason(item)
     return 'pull request triage is not enabled in the policy' if pull_request? && !@config['pull_requests']
     return 'pull request is a draft' if item['isDraft']
-    return 'report was opened by an unlisted bot' if bot?(item['author']) && !report_bot?(item['author'])
+    if bot?(item['author']) && !report_bot?(item['author']) && !moved_discussion?(item)
+      return 'report was opened by an unlisted bot'
+    end
     return 'report is closed' if item['closed'] && (!dry_run? || comment_event?)
     return 'a participant asked the triage bot to stop' if @state.data['muted']
     return unless comment_event?
@@ -1311,6 +1314,30 @@ class IssueAssessment # :nodoc:
                            stateReason: decision['close_as'] == 'out_of_scope' ? 'NOT_PLANNED' : 'COMPLETED')
     end
     mutate('addReaction', subjectId: item.fetch('id'), content: 'HOORAY')
+  end
+
+  # Issues created with the workflow token start no workflow, so the issue a
+  # discussion moved to is assessed here, as if its author had just opened it.
+  def assess_moved_issue
+    number = @moved_issue.fetch('number')
+    Dir.mktmpdir('triage-moved-') do |directory|
+      path = File.join(directory, 'event.json')
+      File.write(path, JSON.generate(action: 'opened', issue: { number: number, state: 'open' }))
+      environment = @environment.to_h.except('TRIAGE_PREPARED_PATH', 'TRIAGE_METRICS_PATH').merge(
+        'TRIAGE_KIND' => 'issue', 'TRIAGE_NUMBER' => number.to_s, 'GITHUB_EVENT_NAME' => 'issues',
+        'GITHUB_EVENT_PATH' => path
+      )
+      report("Assessing ##{number}, the issue this discussion moved to.")
+      moved = self.class.new(environment)
+      moved.run
+      @follow_through_failed = true if moved.failed?
+    end
+  end
+
+  # The bot opens these issues itself, on behalf of the discussion's author.
+  def moved_discussion?(item)
+    server = @environment.fetch('GITHUB_SERVER_URL', 'https://github.com')
+    item['body'].to_s.start_with?("_Moved from #{server}/#{@repository}/discussions/")
   end
 
   # GitHub has no API to convert a discussion, so the issue is created here,

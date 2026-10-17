@@ -30,7 +30,9 @@ RSpec.describe IssueAssessment, 'moving discussions to issues' do
     allow(assessment).to receive(:puts)
     allow(assessment).to receive(:github)
       .and_return('data' => { 'createIssue' => { 'issue' => { 'id' => 'issue-id', 'number' => 42 } } })
+    allow(described_class).to receive(:new).and_return(moved)
   end
+  let(:moved) { instance_double(described_class, run: nil, failed?: false) }
 
   it 'creates a labeled issue crediting the author, links it, and closes the discussion' do
     assessment.run
@@ -47,6 +49,34 @@ RSpec.describe IssueAssessment, 'moving discussions to issues' do
     expect(assessment).to have_received(:mutate).with('closeDiscussion', discussionId: 'discussion-id',
                                                                          reason: 'OUTDATED').ordered
     expect(assessment).to have_received(:puts).with(include('"outcome":"moved_to_issue"'))
+  end
+
+  it 'assesses the new issue as just opened, since the workflow token starts no workflow' do
+    event = nil
+    allow(described_class).to receive(:new) do |moved_environment|
+      event = JSON.parse(File.read(moved_environment.fetch('GITHUB_EVENT_PATH')))
+      expect(moved_environment).to include('TRIAGE_KIND' => 'issue', 'TRIAGE_NUMBER' => '42',
+                                           'GITHUB_EVENT_NAME' => 'issues')
+      moved
+    end
+
+    assessment.run
+
+    expect(event).to include('action' => 'opened', 'issue' => { 'number' => 42, 'state' => 'open' })
+    expect(moved).to have_received(:run)
+    expect(assessment).not_to be_failed
+  end
+
+  it 'triages the moved issue although the bot opened it, unlike other bots\' issues' do
+    allow(described_class).to receive(:new).and_call_original
+    issue = described_class.new(environment.merge('TRIAGE_KIND' => 'issue', 'TRIAGE_NUMBER' => '42'))
+    issue.instance_variable_set(:@state, ConversationState.new(nil, 'test'))
+    bot = { '__typename' => 'Bot', 'login' => 'github-actions' }
+    moved_issue = item.merge('author' => bot,
+                             'body' => "_Moved from https://github.com/crmne/spotifast/discussions/41._\n\nCrash.")
+
+    expect(issue.send(:skip_reason, moved_issue)).to be_nil
+    expect(issue.send(:skip_reason, item.merge('author' => bot))).to eq('report was opened by an unlisted bot')
   end
 
   it 'leaves a question in discussions without labels' do

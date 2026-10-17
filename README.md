@@ -329,8 +329,10 @@ request that no issue tracks yet, it moves to an issue. GitHub has no API to
 convert a discussion, so the action creates the issue itself: same title, the
 original text under a "Moved from" line that mentions the author (which
 subscribes them), and the agent's labels. It replies in the discussion with the
-link and closes it as outdated. The new issue is opened by the workflow's bot,
-so the author cannot edit it. Questions, ideas still being explored, anything
+link and closes it as outdated. The same run then triages the new issue as if
+the author had just opened it, so it gets its answer, labels, and board card
+there, and later comments on it are triaged too. The new issue is opened by the
+workflow's bot, so the author cannot edit it. Questions, ideas still being explored, anything
 already tracked, and anything the agent is unsure about stay put. To never
 move discussions:
 
