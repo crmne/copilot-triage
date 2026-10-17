@@ -88,6 +88,10 @@ class TriageTools
   # Extra submit_decision argument for an issue: a proposed closure.
   CLOSE_PROPERTIES = { close_as: { type: %w[string null], enum: ['fixed', 'resolved', 'out_of_scope', nil] } }.freeze
   DIFF_HINT = ' For the pull request being assessed, diff:path reads the patch of a changed file.'
+  # A pull request reply that quotes code, points at a line, or discusses an
+  # identifier, such as drag_delta, reviews code, which belongs to the
+  # maintainer and the review bots. Paths and file names are fine.
+  CODE_REVIEW = /```|\S\.\w+:\d+|\blines? \d+|::|\b\w+\(\)|\b[a-z]+_[a-z0-9_]+\b/i
 
   attr_reader :ledger
 
@@ -348,6 +352,10 @@ class TriageTools
       raise ArgumentError, 'A move cites no sources; the new issue is assessed next. If what you read rules the ' \
                            'request out or a maintainer declined it, set move_to_issue false and answer here.'
     end
+    if @pull_request && code_review?(decision[:comment])
+      raise ArgumentError, 'Do not review code in a pull request reply: no code, identifiers, or line numbers. ' \
+                           'Reply only for a policy requirement or an essential question.'
+    end
     if (decision[:out_of_scope] || decision[:close_as]) && !decision[:comment]
       raise ArgumentError, 'Explain in comment why it can be closed.'
     end
@@ -374,6 +382,13 @@ class TriageTools
 
     @ledger['decision'] = decision.transform_keys(&:to_s)
     { accepted: true }
+  end
+
+  def code_review?(comment)
+    return false unless comment
+
+    words = comment.gsub(/\[\[[^\]]*\]\]/, '').split.reject { |word| word.match?(%r{/|\.\w}) && !word.match?(/:\d/) }
+    comment.include?('```') || words.join(' ').match?(CODE_REVIEW)
   end
 
   # A closure must rest on evidence the agent read: release notes for a fix,

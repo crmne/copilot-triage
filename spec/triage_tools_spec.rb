@@ -363,6 +363,19 @@ RSpec.describe TriageTools do
       expect(tools.call('submit_decision', decision.except('review'))[:content].first[:text])
         .to include('Missing required arguments: review')
     end
+
+    it 'refuses a reply that reviews code, and takes one about a contribution rule' do
+      review = lambda do |comment|
+        tools.call('submit_decision', decision.merge('comment' => comment))[:content].first[:text]
+      end
+      ['The resize applies cumulative drag_delta against the updated width; use a stable start width.',
+       'src/ui/queue.rs:42 applies the delta twice.', 'Line 42 applies the delta twice.',
+       "Use this instead:\n```rust\nlet width = start;\n```", 'Call `reset()` before the loop.'].each do |comment|
+        expect(review.call(comment)).to include('Do not review code')
+      end
+      expect(review.call('Please remove the screenshots added under docs/assets/review_captures/ and attach ' \
+                         'them to the pull request instead, as CONTRIBUTING.md asks.')).to include('accepted')
+    end
   end
 
   context 'with an issue' do

@@ -404,7 +404,8 @@ what makes `pull_request_target` safe here.
   board places them from their checks, conflicts, and reviews.
 - **Policy.** Replies only when the author needs something: a requirement from
   your contribution policy, one essential question, or a scope explanation. It
-  does not summarize changes or review code line by line.
+  does not summarize changes or review code line by line: a reply that quotes
+  code, names an identifier, or points at a line is refused.
 - **Out of scope.** Only when your documented scope rules out the change itself,
   never for a missing process step, code quality, or tests, and always with a
   cited explanation. `suggest` stops at the explanation; `close` also closes the
