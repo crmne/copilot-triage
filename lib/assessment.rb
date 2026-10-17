@@ -191,7 +191,8 @@ class IssueAssessment # :nodoc:
   def report_fingerprint(item)
     human = item.fetch('comments').fetch('nodes').reject { |comment| bot?(comment['author']) }.last
     if pull_request?
-      review = [CopilotReview.latest(item), BotReviews.current(item).transform_values { |entry| entry['submitted_at'] }]
+      review = [CopilotReview.latest(item), BotReviews.current(item).transform_values { |entry| entry['submitted_at'] },
+                BotReviews.unavailable(item)]
     end
     Digest::SHA256.hexdigest(JSON.generate([item['title'], item['body'], item['stateReason'], human, review].compact))
   end
@@ -387,6 +388,7 @@ class IssueAssessment # :nodoc:
     unless latest && latest['id'] == event.fetch('comment').fetch('node_id')
       return 'a newer comment superseded this event'
     end
+    return if bot_notice_event?
     return 'a maintainer or bot has already answered' if answered?(item) && !maintainer_comment?
 
     nil
@@ -496,7 +498,7 @@ class IssueAssessment # :nodoc:
   def assessment_kind
     if maintainer_comment?
       'maintainer comment: place the card by what the maintainer just said, never reply'
-    elsif review_event?
+    elsif review_event? || bot_notice_event?
       'review update: judge copilot_review and other_reviews for the board; ' \
         'reply only if the author needs something new'
     elsif comment_event?
@@ -560,7 +562,7 @@ class IssueAssessment # :nodoc:
       copilot = CopilotReview.latest(item)
       context['copilot_review'] = copilot&.merge('requested_again' => CopilotReview.requested?(item),
                                                  'findings' => found.dig(CopilotReview::LOGIN, 'findings').to_a)
-      context['other_reviews'] = found.except(CopilotReview::LOGIN)
+      context['other_reviews'] = BotReviews.unavailable(item).merge(found).except(CopilotReview::LOGIN)
     end
     JSON.generate(context)
   end
@@ -1015,6 +1017,12 @@ class IssueAssessment # :nodoc:
 
   def review_event?
     @environment['GITHUB_EVENT_NAME'] == 'pull_request_review'
+  end
+
+  # A review bot's comment saying it will not review the latest commit.
+  def bot_notice_event?
+    pull_request? && @environment['GITHUB_EVENT_PATH'] && comment_event? &&
+      BotReviews.reviewer?(event.dig('comment', 'user', 'login')) && BotReviews.notice?(event.dig('comment', 'body'))
   end
 
   def pull_request_policy

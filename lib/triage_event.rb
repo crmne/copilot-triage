@@ -35,6 +35,13 @@ module TriageEvent
     author && (author['__typename'] == 'Bot' || author['type'] == 'Bot' || author['login']&.end_with?('[bot]'))
   end
 
+  # A review bot, such as CodeRabbit, saying on a pull request that it will
+  # not review the latest commit: the agent then judges without it.
+  def review_notice?(event)
+    event.dig('issue', 'pull_request') && BotReviews.reviewer?(event.dig('comment', 'user', 'login')) &&
+      BotReviews.notice?(event.dig('comment', 'body'))
+  end
+
   PULL_REQUEST_ACTIONS = %w[opened reopened ready_for_review synchronize closed].freeze
 
   # Pull request events pass through; the policy decides whether to triage them.
@@ -48,7 +55,9 @@ module TriageEvent
     end
     return unless %w[issue_comment discussion_comment].include?(name)
     return 'only new comments trigger triage' unless event['action'] == 'created'
-    return 'comment was posted by a bot' if bot?(event['sender']) || bot?(event.dig('comment', 'user'))
+    if (bot?(event['sender']) || bot?(event.dig('comment', 'user'))) && !review_notice?(event)
+      return 'comment was posted by a bot'
+    end
     return 'report is closed' if event.dig('issue', 'state') == 'closed' || event.dig('discussion', 'closed')
 
     nil

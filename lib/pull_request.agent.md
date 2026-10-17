@@ -43,6 +43,12 @@ Copilot has the next move ("theirs"). For a current verdict:
   suggestion alone is not a reason to send a pull request back.
 - "reviewed": false means Copilot could not review, for example because a
   quota ran out. That is no review at all, never a clean one.
+- An other_reviews entry with "unavailable" is a bot, such as CodeRabbit, that
+  said it will not review the latest commit: its review limit ran out or it
+  paused. Do not wait for it or read its silence as clean: judge the change
+  yourself from the patch and any other reviews, and when the change deserves
+  that bot's review, say in next_step that it can be asked again, for
+  CodeRabbit with "@coderabbitai review" once its limit resets.
 
 Review bots' findings come in copilot_review.findings and other_reviews, such
 as CodeRabbit's, each with its file, the bot's severity label, and an excerpt.

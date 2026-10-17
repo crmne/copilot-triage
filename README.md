@@ -375,7 +375,9 @@ what makes `pull_request_target` safe here.
   major send the pull request back to its author; documentation, translation,
   and style remarks, nitpicks, and low-rated findings do not. A review that
   only says the bot ran out of quota counts as no review. A review from either
-  bot runs triage, like a new comment.
+  bot runs triage, like a new comment. So does CodeRabbit's comment that it
+  reached its review limit or paused reviews: the agent then judges the change
+  without it, and the card's next step says when to ask CodeRabbit again.
 - **Your own pull requests** are not assessed and never cost a model call: the
   board places them from their checks, conflicts, and reviews.
 - **Policy.** Replies only when the author needs something: a requirement from

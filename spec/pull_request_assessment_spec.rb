@@ -89,6 +89,34 @@ RSpec.describe IssueAssessment, 'with a pull request' do
     end
   end
 
+  it "judges the pull request itself when CodeRabbit's review limit ran out" do
+    notice = { 'id' => 'notice-id', 'author' => { '__typename' => 'Bot', 'login' => 'coderabbitai' },
+               'authorAssociation' => 'NONE',
+               'body' => "> [!WARNING]\n> ## Review limit reached\n>\n> You've used all free OSS reviews for " \
+                         "now.\n>\n> **Next included review available in 2 minutes.**" }
+    item['comments']['nodes'] << notice
+    File.write('event.json', JSON.generate('action' => 'created', 'issue' => { 'pull_request' => {} },
+                                           'comment' => { 'node_id' => 'notice-id', 'body' => notice['body'],
+                                                          'user' => { 'login' => 'coderabbitai[bot]' } }))
+    environment.merge!('GITHUB_EVENT_NAME' => 'issue_comment', 'GITHUB_EVENT_PATH' => 'event.json')
+
+    runner = run_with
+
+    expect(runner).to have_received(:ask_copilot) do |prompt|
+      expect(prompt).to include('review update: judge copilot_review and other_reviews',
+                                '"coderabbitai":{"reviewed":false,' \
+                                '"unavailable":"review limit reached; next review in 2 minutes"}')
+    end
+  end
+
+  it "keeps CodeRabbit's review when it reviewed the latest commit despite an older notice" do
+    item['comments']['nodes'] << { 'author' => { 'login' => 'coderabbitai' }, 'body' => '> ## Reviews paused' }
+    item['findings'] = { 'nodes' => [{ 'author' => { 'login' => 'coderabbitai' }, 'state' => 'APPROVED',
+                                       'body' => '', 'commit' => { 'oid' => 'a' * 40 }, 'comments' => {} }] }
+
+    expect(BotReviews.unavailable(item)).to eq({})
+  end
+
   context 'when Copilot reviews only private repositories' do
     let(:policy) { { 'reviews' => 'private' } }
 

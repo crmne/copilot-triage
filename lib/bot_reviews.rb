@@ -10,6 +10,10 @@ module BotReviews
   # A review that only says the bot could not review, such as when the
   # requester ran out of quota, is no review at all.
   UNREVIEWED = /unable to review|quota limit|reached (?:their|your) (?:monthly )?quota/i
+  # CodeRabbit says in a comment, not a review, when it will not review a
+  # commit: its review limit ran out, or it paused reviews of a busy branch.
+  NOTICE = /Review limit reached|You(?:'|’)ve used all .{0,40}reviews|Reviews paused/i
+  NEXT_REVIEW = /Next included review available in ([^.*\n]{1,40})/i
   # The latest reviews with their inline comments, under an alias so it can sit
   # beside CopilotReview::FIELDS in one query.
   FIELDS = 'findings: reviews(last: 20) { nodes { author { login } state body submittedAt commit { oid } ' \
@@ -37,6 +41,31 @@ module BotReviews
       [bot, { 'state' => latest['state'], 'submitted_at' => latest['submittedAt'], 'reviewed' => reviewed,
               'findings' => findings.first(MAX_FINDINGS) }]
     end
+  end
+
+  def notice?(body)
+    body.to_s.match?(NOTICE)
+  end
+
+  # { bot => { 'reviewed' => false, 'unavailable' => why } } for each review
+  # bot whose latest comment says it will not review the latest commit, and
+  # that has not reviewed it anyway.
+  def unavailable(pull)
+    reviewed = current(pull)
+    notices = pull.dig('comments', 'nodes').to_a.select do |comment|
+      reviewer?(comment.dig('author', 'login')) && notice?(comment['body'])
+    end
+    notices.group_by { |comment| comment.dig('author', 'login').delete_suffix('[bot]') }.filter_map do |bot, list|
+      next if reviewed.dig(bot, 'reviewed')
+
+      body = list.last['body'].to_s
+      wait = body[NEXT_REVIEW, 1]&.strip
+      why = if body.match?(/Reviews paused/i) then 'reviews paused on this branch'
+            elsif wait then "review limit reached; next review in #{wait}"
+            else 'review limit reached'
+            end
+      [bot, { 'reviewed' => false, 'unavailable' => why }]
+    end.to_h
   end
 
   def finding(comment)

@@ -122,6 +122,21 @@ RSpec.describe 'Comment assessments' do
     expect(TriageEvent.skip_reason('pull_request_review', review.call(action: 'edited'))).to include('submitted')
   end
 
+  it "passes CodeRabbit's notice that it will not review a pull request, and no other bot comment" do
+    notice = lambda do |body, login: 'coderabbitai[bot]', pull: true|
+      issue = { 'state' => 'open', 'pull_request' => (pull ? {} : nil) }
+      { 'action' => 'created', 'sender' => { 'type' => 'Bot' }, 'issue' => issue,
+        'comment' => { 'user' => { 'login' => login, 'type' => 'Bot' }, 'body' => body } }
+    end
+    limit = "> [!WARNING]\n> ## Review limit reached\n> You've used all free OSS reviews for now."
+
+    expect(TriageEvent.skip_reason('issue_comment', notice.call(limit))).to be_nil
+    expect(TriageEvent.skip_reason('issue_comment', notice.call('> ## Reviews paused'))).to be_nil
+    expect(TriageEvent.skip_reason('issue_comment', notice.call('## Walkthrough'))).to include('bot')
+    expect(TriageEvent.skip_reason('issue_comment', notice.call(limit, login: 'dependabot[bot]'))).to include('bot')
+    expect(TriageEvent.skip_reason('issue_comment', notice.call(limit, pull: false))).to include('bot')
+  end
+
   it 'skips an older event when another comment arrived during the delay' do
     item['comments']['nodes'] << comment.merge('id' => 'newer-comment', 'body' => 'Here are the logs.')
 
