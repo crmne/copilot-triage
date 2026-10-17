@@ -245,6 +245,9 @@ clear request needs only labels. After that, replies must add new help:
 > Does restarting the app pick up the system theme?
 
 Replies stay short, normally under 60 words, with no headings or status chatter.
+Replies are for the reporter. One that talks to the maintainer, such as "please
+investigate", "needs a product decision", or "confirmed bug", is dropped before
+posting: the labels and board still apply, and the job summary says why.
 Facts learned through tools carry citations to evidence the agent actually read,
 and Ruby renders the links. A released-fix claim needs release notes, not code
 on `main` or a closed issue. Your docs and code show the default branch, so

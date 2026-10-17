@@ -25,6 +25,10 @@ Do not reply merely to acknowledge a clear request, offer encouragement, call it
 reasonable, thank someone for offering to help, or say contributions are welcome.
 Choosing a label is enough; leave the public reply empty unless you can add
 concrete help.
+The comment is written for the reporter. Never address the maintainer or say
+what they should decide, investigate, or fix; that belongs in next_step. Never
+restate the reporter's own diagnosis, code pointers, or proposed fix, never grade
+a proposed fix, and never call a report confirmed. A clear report gets labels only.
 For a silent decision, explicitly submit reply:null and comment:null. Do not omit
 either argument or substitute an empty string.
 

@@ -53,6 +53,12 @@ class IssueAssessment # :nodoc:
                            '<!-- end of auto-generated comment: release notes by coderabbit\.ai -->', Regexp::MULTILINE)
   # Premium requests kept back before triage switches to its fallback model.
   COPILOT_RESERVE = 50
+  # Replies are for the reporter. A comment that talks to the maintainer or
+  # grades the report for them is dropped, and the decision stays silent.
+  MAINTAINER_DIRECTED = /\b(?>maintainers?(?:['’]s?)?)(?![-\s](?:explicit\s|explicitly\s)?approv|-)|
+                         \bplease\s(?:investigate|decide|prioriti[sz]e|triage)\b|\b(?:product|design)\sdecision\b|
+                         \bfor\sprioriti[sz]ation\b|\bmarking\s(?:it|this)\s(?:for|as)\b|\A\W*confirmed\b|
+                         \bconfirmed\s(?:as\s)?(?:an?\s)?(?:[\w-]+\s){0,3}(?:bug|defect|regression)\b/ix
 
   def initialize(environment = ENV)
     @environment = environment
@@ -367,6 +373,7 @@ class IssueAssessment # :nodoc:
       decision['comment'] = nil
       decision['related_issue'] = nil
     end
+    drop_reply(decision, 'it was addressed to the maintainer') if decision['comment']&.match?(MAINTAINER_DIRECTED)
     if decision['related_issue']
       @related_snapshot = @tool_ledger.fetch('evidence').fetch("issue:#{decision['related_issue']}").fetch('snapshot')
       if decision['relationship'] == 'duplicate' && TriageTools.duplicate_conflict(@related_snapshot, @report_facts)
@@ -391,6 +398,13 @@ class IssueAssessment # :nodoc:
 
   def latest_commenter(item)
     item.fetch('comments').fetch('nodes').reject { |comment| bot?(comment['author']) }.last&.dig('author', 'login')
+  end
+
+  # Labels, the board, and a proposed closure still apply; only the public
+  # reply goes, and the job summary says why.
+  def drop_reply(decision, reason)
+    report("Dropped the reply: #{reason}.")
+    decision.merge!('reply' => nil, 'comment' => nil, 'sources' => [], 'related_issue' => nil, 'relationship' => nil)
   end
 
   def initial_recap_allowed?(item)

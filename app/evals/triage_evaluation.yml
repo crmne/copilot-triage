@@ -129,6 +129,119 @@ cases:
     action: silent
     max_calls: 8
     min_calls: 1
+- name: spotifast-824-maintainer-directed
+  inputs:
+    title: Keeps asking me to sign in again
+    body: |
+      ### Version and how you installed it
+
+      0.12.0, the Windows installer
+
+      ### Operating system
+
+      Windows 11
+
+      ### What did you do, and what happened instead?
+
+      I was listening to music when playback jumped to my phone and the app kept
+      loading when I pressed play. Later it asked me to sign in again in the
+      browser. This happened twice this week.
+
+      ### Log
+
+      ```text
+      [04:54:15Z WARN api::client] rate limit source=shared wait=24s
+      [04:54:31Z WARN dealer] Websocket connection failed: Remote sent after having closed
+      [04:58:02Z WARN audio] queue underrun, refilling
+      [05:20:44Z WARN dealer] failed to resolve host: temporary DNS failure
+      ```
+    decision:
+      labels:
+      - bug
+      reply:
+      comment: The pauses line up with the log's audio underruns, connection closures,
+        and DNS errors. Please investigate this as a playback and network recovery bug.
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+    tools: []
+  expected_output:
+    action: silent
+    max_calls: 8
+    min_calls: 1
+- name: zapfast-537-reporter-diagnosis
+  inputs:
+    title: Messages sent to a broadcast list open a separate read-only chat
+    body: |
+      **Version and how you installed it**
+      Built from source at main.
+
+      **Operating system**
+      Windows 11
+
+      **What did you do, and what happened instead?**
+      A contact sent a message to a broadcast list that includes me. On the phone
+      it appears in my normal chat with them. Here it opens a new chat titled
+      "Unknown" that holds only that message, and I cannot reply from it.
+
+      As far as I can tell from the code, the message arrives with the list as its
+      chat, and only status broadcasts are special-cased, so it is filed under the
+      list. A possible fix: file received broadcast-list messages under the
+      sender's chat and move the existing list chats once. I have this working on
+      a branch and can open a pull request.
+    decision:
+      labels:
+      - bug
+      reply:
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+    tools: []
+  expected_output:
+    action: silent
+    max_calls: 8
+    min_calls: 1
+- name: ruby_llm-1065-proposed-fix
+  inputs:
+    title: Destroying a chat deletes its billed usage rows
+    body: |
+      ### What's broken?
+
+      Destroying a chat record deletes its usage rows, including attempts the
+      provider billed, because the association uses `dependent: :destroy`. The
+      message association uses `dependent: :nullify`, and the guide says usage
+      belongs to provider work, not to the transcript.
+
+      ### How to reproduce
+
+      Create a chat, ask one question so a usage row is written, then destroy
+      the chat. The owner's usage count drops from 1 to 0.
+
+      ### Expected behavior
+
+      The usage row stays, with `chat_id` set to `NULL`.
+
+      ### Question
+
+      Was `dependent: :destroy` kept on purpose? If not, I would change it to
+      `dependent: :nullify` with a spec. I would like to work on this myself.
+    decision:
+      labels:
+      - bug
+      reply:
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+    tools: []
+  expected_output:
+    action: silent
+    max_calls: 8
+    min_calls: 1
 - name: zapfast-26-missing-error-text
   inputs:
     title: Images fail to display
