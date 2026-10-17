@@ -735,7 +735,7 @@ class IssueAssessment # :nodoc:
   # them, which is what a reply about "@all" or a user needs.
   def quote_mentions(comment)
     comment.split(/(```.*?```|`[^`]*`)/m).map.with_index do |part, index|
-      index.odd? ? part : part.gsub(%r{(?<![\w`])@[\w/.-]*\w}) { |mention| "`#{mention}`" }
+      index.odd? ? part : part.gsub(%r{(?<![\w`])@(?:[\w/.-]*\w)?}) { |mention| "`#{mention}`" }
     end.join
   end
 

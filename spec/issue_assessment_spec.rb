@@ -321,10 +321,10 @@ RSpec.describe IssueAssessment, type: :task do
     end
 
     it 'quotes a mention as code instead of rejecting the answer' do
-      answer.replace('Mention everyone with @all, or one person with @octocat. See [[file:lib/ruby_llm/tool.rb]].')
+      answer.replace('Type @ and choose all, or mention @octocat. See [[file:lib/ruby_llm/tool.rb]].')
       assessment.run
       expect(assessment).to have_received(:mutate).with(
-        'addComment', hash_including(body: include('Mention everyone with `@all`, or one person with `@octocat`.'))
+        'addComment', hash_including(body: include('Type `@` and choose all, or mention `@octocat`.'))
       )
     end
 
