@@ -117,6 +117,16 @@ RSpec.describe IssueAssessment, 'moving discussions to issues' do
       assessment.run
       expect(board).to have_received(:update).with('issue-id', hash_including(column: 'do'))
     end
+
+    it 'leaves the board alone when an assessment of a discussion fails, since a discussion has no card' do
+      board = instance_double(ProjectBoard, update: {})
+      allow(assessment).to receive(:board).and_return(board)
+      allow(assessment).to receive(:ask_copilot).and_return('{"not": "a decision"}')
+
+      assessment.run
+      expect(assessment).to be_failed
+      expect(board).not_to have_received(:update)
+    end
   end
 
   context 'without a discussions policy' do

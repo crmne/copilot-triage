@@ -306,12 +306,14 @@ class IssueAssessment # :nodoc:
   # GitHub notifies only whoever triggered a run, so a run that leaves the item
   # for the maintainer says so in its card's next step, in plain words. The
   # card keeps its column: a failed run says nothing about whose move it is.
+  # A discussion has no card, only the issue it moved to.
   def flag_on_board(reason)
-    return unless @item_id && board? && !dry_run? && !@environment['TRIAGE_PROJECT_TOKEN'].to_s.empty?
+    id = @kind == 'discussion' ? @moved_issue&.fetch('id') : @item_id
+    return unless id && board? && !dry_run? && !@environment['TRIAGE_PROJECT_TOKEN'].to_s.empty?
 
     reason = reason.sub(/ \(.*\)\z/, '')
-    board.update(@item_id, column: 'do', movable: [nil],
-                           next_step: "Triage could not assess the latest update: #{reason}"[0, 150])
+    board.update(id, column: 'do', movable: [nil],
+                     next_step: "Triage could not assess the latest update: #{reason}"[0, 150])
     report('Board: flagged the card for a maintainer.')
   rescue RuntimeError => e
     report("Board note failed: #{e.message}.")
