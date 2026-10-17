@@ -58,7 +58,8 @@ module TriageEvent
     if (bot?(event['sender']) || bot?(event.dig('comment', 'user'))) && !review_notice?(event)
       return 'comment was posted by a bot'
     end
-    return 'report is closed' if event.dig('issue', 'state') == 'closed' || event.dig('discussion', 'closed')
+    # A closed discussion can still get a new question; the assessment decides.
+    return 'report is closed' if event.dig('issue', 'state') == 'closed'
 
     nil
   end

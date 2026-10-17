@@ -323,7 +323,11 @@ backtrace, which works in private repositories too.
 ## Discussions
 
 Discussions can stay a place for questions and community. The agent answers
-questions your docs establish, in the thread they were asked in.
+questions your docs establish, in the thread they were asked in. A new question
+on a discussion closed as resolved still gets that answer when the agent can
+cite one, and nothing else: no questions back, no issue links, and the
+discussion stays closed. Discussions closed as duplicates or moved to issues
+are left alone.
 
 When a new discussion is really a reproducible bug report or a concrete feature
 request that no issue tracks yet, it moves to an issue. GitHub has no API to

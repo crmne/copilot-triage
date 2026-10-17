@@ -83,6 +83,7 @@ class IssueAssessment # :nodoc:
     labels = ensure_labels(labels)
     @allowed_labels = labels.map { |label| label.fetch('name') }
     @initial_recap_allowed = initial_recap_allowed?(item)
+    @answer_only = answerable_closed_discussion?(item)
     decision = assess(item, labels)
     suppress_repeated_reply(item, decision)
     current, = read_report
@@ -336,7 +337,8 @@ class IssueAssessment # :nodoc:
 
   def assess(item, labels)
     decision = request(build_prompt(item, labels)) { |response| validate(response, labels) }
-    if decision['mute'] || answered?(item)
+    unsourced = @answer_only && (decision['related_issue'] || decision['sources'].empty?)
+    if decision['mute'] || answered?(item) || unsourced
       decision['reply'] = nil
       decision['comment'] = nil
       decision['related_issue'] = nil
@@ -380,7 +382,7 @@ class IssueAssessment # :nodoc:
     if bot?(item['author']) && !report_bot?(item['author']) && !moved_discussion?(item)
       return 'report was opened by an unlisted bot'
     end
-    return 'report is closed' if item['closed'] && (!dry_run? || comment_event?)
+    return 'report is closed' if item['closed'] && (!dry_run? || comment_event?) && !answerable_closed_discussion?(item)
     return 'a participant asked the triage bot to stop' if @state.data['muted']
     return unless comment_event?
 
@@ -418,7 +420,7 @@ class IssueAssessment # :nodoc:
           labels(first: 100) { nodes { id name } }
           #{KINDS.fetch(@kind).first}(number: $number) {
             id url title body closed authorAssociation author { __typename login }
-            #{'stateReason' if @kind == 'issue'}
+            #{'stateReason' unless pull_request?}
             #{'assignees { totalCount }' unless @kind == 'discussion'}
             #{pull_request_fields if pull_request?}
             comments(last: 100) { pageInfo { hasPreviousPage startCursor } nodes { #{comment_fields} } }
@@ -498,6 +500,9 @@ class IssueAssessment # :nodoc:
   def assessment_kind
     if maintainer_comment?
       'maintainer comment: place the card by what the maintainer just said, never reply'
+    elsif @answer_only
+      'follow-up on a closed discussion: answer a new question in the latest_comment only with a cited source, ' \
+        'otherwise stay silent'
     elsif review_event? || bot_notice_event?
       'review update: judge copilot_review and other_reviews for the board; ' \
         'reply only if the author needs something new'
@@ -1340,6 +1345,13 @@ class IssueAssessment # :nodoc:
       moved.run
       @follow_through_failed = true if moved.failed?
     end
+  end
+
+  # A new question on a resolved discussion still deserves its documented
+  # answer, and only that: it is never reopened, moved, or marked a duplicate.
+  # One closed as a duplicate or outdated continues where it moved.
+  def answerable_closed_discussion?(item)
+    @kind == 'discussion' && comment_event? && item['closed'] && item['stateReason'] == 'RESOLVED'
   end
 
   # The bot opens these issues itself, on behalf of the discussion's author.

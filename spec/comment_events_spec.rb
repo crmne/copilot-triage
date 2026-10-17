@@ -82,7 +82,6 @@ RSpec.describe 'Comment assessments' do
     'bot comments' => ->(e) { e['comment']['user']['type'] = 'Bot' },
     'bot senders' => ->(e) { e['sender']['type'] = 'Bot' },
     'closed issues' => ->(e) { e['issue']['state'] = 'closed' },
-    'closed discussions' => ->(e) { e['discussion'] = { 'closed' => true } },
     'edited comments' => ->(e) { e['action'] = 'edited' },
     'owner comments' => ->(e) { e['comment']['author_association'] = 'OWNER' },
     'member comments' => ->(e) { e['comment']['author_association'] = 'MEMBER' },
@@ -98,6 +97,13 @@ RSpec.describe 'Comment assessments' do
       expect(assessment).not_to have_received(:ask_copilot)
       expect(assessment).not_to have_received(:mutate)
     end
+  end
+
+  it 'passes comments on closed discussions to the assessment, unlike comments on closed issues' do
+    event.delete('issue')
+    event['discussion'] = { 'number' => 123, 'closed' => true }
+
+    expect(TriageEvent.skip_reason('discussion_comment', event)).to be_nil
   end
 
   it 'passes only opened, reopened, ready, and updated pull request events' do
@@ -377,6 +383,54 @@ RSpec.describe 'Comment assessments' do
         'addDiscussionComment', discussionId: 'report-id', replyToId: 'comment-id',
                                 body: start_with("Which provider are you using?\n\n")
       )
+    end
+
+    context 'when the discussion was closed as resolved' do
+      before do
+        event['discussion']['closed'] = true
+        item.merge!('closed' => true, 'stateReason' => 'RESOLVED')
+      end
+
+      it 'answers a new question with a cited source, and only that' do
+        allow(assessment).to receive(:ask_copilot) do
+          agent_reads(assessment, 'file:docs/tools.md')
+          JSON.generate(labels: [], reply: nil, sources: ['file:docs/tools.md'],
+                        comment: 'Yes, see [[file:docs/tools.md]].')
+        end
+
+        assessment.run
+
+        expect(assessment).to have_received(:ask_copilot).with(include('follow-up on a closed discussion'))
+        expect(assessment).to have_received(:mutate).with(
+          'addDiscussionComment', discussionId: 'report-id', replyToId: 'parent-id',
+                                  body: start_with('Yes, see [the guide](https://rubyllm.com/tools/)')
+        )
+        expect(assessment).not_to have_received(:mutate).with('closeDiscussion', any_args)
+      end
+
+      it 'stays silent rather than ask a question or link an issue without a source' do
+        assessment.run
+
+        expect(assessment).to have_received(:ask_copilot)
+        expect(assessment).not_to have_received(:mutate).with('addDiscussionComment', any_args)
+      end
+
+      it 'is not offered a move to an issue' do
+        allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(labels: [], reply: nil, sources: [],
+                                                                            move_to_issue: true))
+        assessment.run
+
+        expect(assessment).not_to have_received(:mutate)
+      end
+    end
+
+    it 'skips a discussion closed as a duplicate or outdated, which continues elsewhere' do
+      event['discussion']['closed'] = true
+      item.merge!('closed' => true, 'stateReason' => 'OUTDATED')
+
+      assessment.run
+
+      expect(assessment).not_to have_received(:ask_copilot)
     end
   end
 end
