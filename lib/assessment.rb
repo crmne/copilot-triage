@@ -731,6 +731,14 @@ class IssueAssessment # :nodoc:
     end
   end
 
+  # A mention in a reply would ping someone; as inline code it only names
+  # them, which is what a reply about "@all" or a user needs.
+  def quote_mentions(comment)
+    comment.split(/(```.*?```|`[^`]*`)/m).map.with_index do |part, index|
+      index.odd? ? part : part.gsub(%r{(?<![\w`])@[\w/.-]*\w}) { |mention| "`#{mention}`" }
+    end.join
+  end
+
   def validate_comment(comment)
     unless comment.is_a?(String) && !comment.strip.empty? && comment.bytesize <= 2000
       raise ArgumentError, 'the comment is empty or over 2000 bytes'
@@ -1072,6 +1080,7 @@ class IssueAssessment # :nodoc:
     if decision['comment'].nil?
       raise ArgumentError, 'sources without a comment' if sources.any?
     else
+      decision['comment'] = quote_mentions(decision['comment']) if decision['comment'].is_a?(String)
       validate_comment(decision['comment'])
       raise ArgumentError, 'both a comment and a configured reply' if decision['reply']
 
