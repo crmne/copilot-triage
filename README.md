@@ -7,6 +7,8 @@ https://github.com/user-attachments/assets/60f4fb3f-b2d0-474a-99de-2ee71829c6aa
 
 [Download the video](https://github.com/crmne/copilot-triage/releases/download/v0.18.0/copilot-triage-v018-1080p60.mp4)
 
+Why I built it, with the numbers: [I get 215 GitHub notifications a day, so I built a bot to triage them](https://paolino.me/copilot-triage/).
+
 Open source maintenance is mostly reading. Copilot Triage reads for you. When
 someone opens an issue, starts a discussion, sends a pull request, or comments,
 an agent investigates with read-only tools and decides what helps:
