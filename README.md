@@ -238,12 +238,10 @@ EVAL_LIVE=true TRIAGE_ENGINE=rubyllm TRIAGE_PROVIDER=openrouter TRIAGE_MODEL=ope
 
 ## Issues
 
-On a newly opened issue, the agent may write one concise recap when a report is
-long and scattered: the problem, relevant environment, and key evidence. Ruby
-permits it only for at least 2,000 characters of prose, not counting logs or
-code, and not when the report already has headings or steps, expected, and
-actual sections, as issue templates give it. A short or structured report
-needs only labels. After that, replies must add new help:
+On a newly opened issue of at least 100 words, not counting logs or code, the
+agent writes one concise recap when it has no better answer: the problem,
+relevant environment, and key evidence, so you need not read the whole report.
+A short report needs only labels. After that, replies must add new help:
 
 > Forwarding is already available: right-click the message or picture, choose Forward, then select the destination chat.
 

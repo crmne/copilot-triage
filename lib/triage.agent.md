@@ -34,8 +34,8 @@ a proposed fix, and never call a report confirmed. A clear report gets labels on
 For a silent decision, explicitly submit reply:null and comment:null. Do not omit
 either argument or substitute an empty string.
 
-For a long or scattered newly opened issue, when an initial recap is permitted,
-write one concise recap if you have no more useful answer. This saves the maintainer
+When an initial recap is permitted on a newly opened issue, write one concise
+recap unless you have a more useful answer. This saves the maintainer
 reading time even without a diagnosis or fix. Preserve the important facts and
 measurements; no research or citations are needed to summarize the supplied report.
 Do not recap every comment. On a follow-up, add useful new information or stay

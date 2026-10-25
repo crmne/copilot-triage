@@ -159,12 +159,19 @@ RSpec.describe 'Report context' do
                                                                     body: start_with(comment))
   end
 
+  it 'allows a recap of a long report written in a template' do
+    environment.merge!('GITHUB_EVENT_NAME' => 'issues', 'GITHUB_EVENT_PATH' => 'event.json')
+    File.write('event.json', JSON.generate(action: 'opened'))
+    item['body'] = "### What happened?\n\n#{'More details. ' * 60}\nExpected: idle.\nActual: 90% CPU."
+
+    assessment.run
+
+    expect(assessment).to have_received(:ask_copilot).with(include('Initial issue recap permitted: true'))
+  end
+
   {
     'a short report' => 'The app idles at 90% CPU after I connect my account.',
-    'a long log with a short description' => "The app idles at 90% CPU.\n```text\n#{"WARN cpu busy\n" * 400}```",
-    'a long report with template headings' => "### What happened?\n\n#{'More details. ' * 200}",
-    'a long report with steps, expected, and actual' => "Steps to reproduce:\n#{'More details. ' * 200}\n" \
-                                                        "Expected: idle.\nActual: 90% CPU."
+    'a long log with a short description' => "The app idles at 90% CPU.\n```text\n#{"WARN cpu busy\n" * 400}```"
   }.each do |description, body|
     it "permits no recap of #{description}" do
       environment.merge!('GITHUB_EVENT_NAME' => 'issues', 'GITHUB_EVENT_PATH' => 'event.json')

@@ -63,15 +63,12 @@ class IssueAssessment # :nodoc:
                          \bplease\s(?:investigate|decide|prioriti[sz]e|triage)\b|\b(?:product|design)\sdecision\b|
                          \bfor\sprioriti[sz]ation\b|\bmarking\s(?:it|this)\s(?:for|as)\b|\A\W*confirmed\b|
                          \bconfirmed\s(?:as\s)?(?:an?\s)?(?:[\w-]+\s){0,3}(?:bug|defect|regression)\b/ix
-  # An initial recap pays off only on a long, unstructured report. Logs and
-  # code do not count toward its length, and a report with headings, or steps,
-  # expected and actual sections, is already easy to read.
-  RECAP_MIN_PROSE = 2000
+  # A newly opened issue of at least this many words gets a recap, so the
+  # maintainer need not read it all. Logs and code do not count.
+  RECAP_MIN_WORDS = 100
   # Follow-up replies stop after this many since a maintainer last commented,
   # so a reporter never gets a chain of questions from the bot alone.
   MAX_REPLIES = 2
-  STRUCTURED_REPORT = /^\s*(?:\#{1,6}\s|\*\*[^*\n]+\*\*:?\s*$|(?:\d+\.\s*)?(?:steps\sto\sreproduce|expected|actual)
-                       (?:\sbehaviou?r|\sresults?)?\s*(?::|$))/ix
 
   def initialize(environment = ENV)
     @environment = environment
@@ -464,8 +461,7 @@ class IssueAssessment # :nodoc:
   end
 
   def recap_worthy?(body)
-    prose = body.to_s.gsub(/^\s*(```|~~~).*?^\s*\1/m, '')
-    prose.length >= RECAP_MIN_PROSE && !prose.match?(STRUCTURED_REPORT)
+    body.to_s.gsub(/^\s*(```|~~~).*?^\s*\1/m, '').split.size >= RECAP_MIN_WORDS
   end
 
   # Long threads are where triage helps most, so the whole conversation goes in.
