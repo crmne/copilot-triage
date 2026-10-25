@@ -21,13 +21,13 @@ this" only when the policy closes, as the prompt states.
 
 ## Missing information that arrived
 
-The report lists the labels the issue has now. A label the policy uses for
-missing information, such as needs-info, or question when the policy describes
-it as a missing fact, asks the reporter for something. When the reporter's own
-latest comment, after the bot's question, supplies what it asked for, put that
-label in remove_labels. When it supplies only part, keep the label and say in
-comment what is still missing. Otherwise submit remove_labels as []. Never
-remove a label for any other reason.
+The report lists the labels the issue has now. This applies only when one of
+them is a label the policy uses for missing information, such as needs-info, or
+question when the policy describes it as a missing fact. When the reporter's
+own latest comment, after the bot's question, supplies what it asked for, put
+that label in remove_labels; otherwise keep it. Either way, this is no reason
+to reply. Otherwise submit remove_labels as []. Never remove a label for any
+other reason.
 
 ## Pull requests for this issue
 

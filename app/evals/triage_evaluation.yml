@@ -229,6 +229,13 @@ cases:
     tools: []
   expected_output:
     action: silent
+    allowed_actions:
+    - silent
+    - reply
+    excludes:
+    - status broadcasts
+    - move the existing
+    - proposed
     max_calls: 8
     min_calls: 1
 - name: ruby_llm-1065-proposed-fix
@@ -267,6 +274,14 @@ cases:
     tools: []
   expected_output:
     action: silent
+    allowed_actions:
+    - silent
+    - reply
+    excludes:
+    - nullify
+    - dependent
+    - proposed
+    - address
     max_calls: 8
     min_calls: 1
 - name: spotifast-918-question-chain
