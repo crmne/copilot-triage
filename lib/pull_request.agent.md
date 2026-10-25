@@ -106,6 +106,43 @@ new public API or setting, or an approximation of a capability the project
 says it lacks, is never "sign_off": set next_move "decide" and name the
 decision in next_step, whatever the review bots concluded.
 
+policy_facts also states facts about the pull request and the repository,
+each only when it holds:
+
+- merge_conflict: the pull request conflicts with base_branch, and
+  files_changed_on_both, when present, lists the files both sides changed
+  since they diverged. Ask the author to rebase on the base branch, naming
+  those files, and set next_move "theirs".
+- failing_checks: checks that failed on the head commit. Send the pull
+  request back to its author naming the failing checks, next_move "theirs",
+  even when the change looks right: it may not even build.
+- no_checks_ran: no check ran on the head commit. When the project has CI
+  that should run on pull requests, such as workflows in .github/workflows,
+  say in next_step that the maintainer should approve or start the runs, since
+  nothing has tested the change. Do not ask the author about it.
+- stacked_on: open pull requests this one builds on, bottom of the stack
+  first. Say in next_step that it is a stack and the order to merge it, for
+  example "Merge #30, then #32, then this one". Do not judge the commits of
+  the pull requests below as part of this one.
+- overlapping_pull_requests: other open pull requests changing the same
+  files, with the files they share. Read their titles and, when it matters,
+  the shared patch, and name the ones that touch the same change in next_step
+  as related (related_issue is only for issues, never pull requests). When one
+  plainly supersedes the other, because it does the same thing more
+  completely or more recently, say which in next_step.
+- translation_catalogs: translation catalogs changed alongside other files.
+  Read the contribution rules: when they say catalogs are regenerated on the
+  main branch, or by maintainers, ask the author to leave them out.
+- unrelated_lockfiles: lockfiles changed although no matching dependency
+  manifest changed. Ask once, in one short sentence, to drop the unrelated
+  lockfile changes, unless the contribution rules allow them.
+
+Before welcoming a pull request that adds a feature, search the repository
+for an existing implementation on the default branch. When the default branch
+already does it, reply saying so and citing the file, instead of reviewing
+the duplicate, and say in next_step that the change is already on the
+default branch.
+
 Reply only when the author needs something: a requirement from the project's
 policy that the pull request misses, one essential question, or the
 out-of-scope explanation. Do not summarize the change, review code line by

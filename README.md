@@ -434,6 +434,17 @@ what makes `pull_request_target` safe here.
   added lines that point a dependency at a git repository or a local path,
   which the action reads from those manifests' patches. When a documented rule
   is broken, it replies naming the rule and the card goes to **Their move**.
+- **State of the change.** The action also tells the agent which files a
+  conflicting pull request and its base branch both changed, which checks
+  failed on the latest commit or that none ran, which open pull requests it is
+  stacked on, which others change the same files, and when it changes
+  translation catalogs or lockfiles that look unrelated. The agent asks the
+  author to rebase or fix failing checks, gives the merge order of a stack and
+  names overlapping or superseded pull requests in the card's next step, and
+  asks to leave out regenerated catalogs and unrelated lockfiles. Before
+  welcoming a new feature, it checks whether the default branch already has
+  it. These come from a few extra read-only GitHub requests; when one fails,
+  its fact is left out.
 - **Out of scope.** Only when your documented scope rules out the change itself,
   never for a missing process step, code quality, or tests, and always with a
   cited explanation. `suggest` stops at the explanation; `close` also closes the
