@@ -311,6 +311,122 @@ RSpec.describe IssueAssessment, 'with a pull request' do
     expect(runner).to have_received(:ask_copilot).with(include('"policy_facts":{}'))
   end
 
+  context 'with facts read from GitHub', :github_facts do
+    let(:checks) { { 'contexts' => { 'nodes' => [{ 'name' => 'test', 'conclusion' => 'SUCCESS' }] } } }
+    let(:open_pulls) { [] }
+    let(:commits) { ['c' * 40, 'a' * 40] }
+    let(:base_files) { [] }
+    let(:runner) do
+      described_class.new(environment).tap do |runner|
+        allow(runner).to receive(:github) do |endpoint, query: '', **|
+          if endpoint.include?('/compare/') then { 'files' => base_files }
+          elsif query.include?('statusCheckRollup')
+            commit = { 'commit' => { 'statusCheckRollup' => checks } }
+            { 'data' => { 'node' => { 'commits' => { 'nodes' => [commit] } } } }
+          else
+            { 'data' => { 'repository' => {
+              'defaultBranchRef' => { 'name' => 'main' },
+              'pullRequest' => { 'commits' => { 'nodes' => commits.map { |oid| { 'commit' => { 'oid' => oid } } } } },
+              'pullRequests' => { 'nodes' => open_pulls }
+            } } }
+          end
+        end
+      end
+    end
+
+    def facts
+      runner.send(:policy_facts, item)
+    end
+
+    def open_pull(number, head: "branch-#{number}", base: 'main', oid: number.to_s * 40, paths: [])
+      { 'number' => number, 'isCrossRepository' => false, 'headRefName' => head, 'baseRefName' => base,
+        'headRefOid' => oid, 'files' => { 'nodes' => paths.map { |path| { 'path' => path } } } }
+    end
+
+    before { item.merge!('baseRefName' => 'main', 'mergeable' => 'MERGEABLE') }
+
+    it 'says nothing about a mergeable pull request with passing checks and no neighbours' do
+      expect(facts).to eq({})
+    end
+
+    it 'names the files the base branch also changed when the pull request conflicts' do
+      item['mergeable'] = 'CONFLICTING'
+      base_files.push({ 'filename' => 'README.md' }, { 'filename' => 'lib/stream.rb',
+                                                       'previous_filename' => 'lib/ruby_llm/stream.rb' })
+
+      expect(facts['merge_conflict']).to eq('base_branch' => 'main',
+                                            'files_changed_on_both' => ['lib/ruby_llm/stream.rb'])
+      expect(runner).to have_received(:github).with("repos/crmne/ruby_llm/compare/#{'a' * 40}...main")
+    end
+
+    it 'still reports a conflict when GitHub cannot list the changed files' do
+      item['mergeable'] = 'CONFLICTING'
+      allow(runner).to receive(:github).with(include('/compare/')).and_raise('GitHub request failed')
+
+      expect(facts['merge_conflict']).to eq('base_branch' => 'main')
+    end
+
+    it 'names failing checks, leaving out cancelled runs and triage itself' do
+      checks['contexts']['nodes'] += [{ 'name' => 'build', 'conclusion' => 'FAILURE' },
+                                      { 'name' => 'lint', 'conclusion' => 'CANCELLED' },
+                                      { 'name' => 'assess', 'conclusion' => 'FAILURE' },
+                                      { 'context' => 'ci/legacy', 'state' => 'ERROR' }]
+
+      expect(facts).to eq('failing_checks' => %w[build ci/legacy])
+    end
+
+    it 'says when no check ran on the head commit, and nothing when checks cannot be read' do
+      checks['contexts']['nodes'] = [{ 'name' => 'assess', 'conclusion' => 'SUCCESS' }]
+      expect(facts).to eq('no_checks_ran' => true)
+
+      allow(runner).to receive(:github).with('graphql', hash_including(query: include('statusCheckRollup')))
+                                       .and_raise('GitHub request failed')
+      expect(facts).to eq({})
+    end
+
+    it 'finds the stack under the pull request, bottom first, and other pull requests on its files' do
+      item['baseRefName'] = 'branch-30'
+      open_pulls.push(open_pull(30, base: 'branch-29'), open_pull(29),
+                      open_pull(32, oid: 'c' * 40, paths: ['lib/ruby_llm/stream.rb']),
+                      open_pull(40, paths: ['lib/ruby_llm/stream.rb', 'Gemfile.lock']),
+                      open_pull(41, paths: ['README.md']), open_pull(77, paths: ['lib/ruby_llm/stream.rb']))
+
+      expect(facts).to eq('stacked_on' => [29, 30, 32],
+                          'overlapping_pull_requests' => [{ 'number' => 40,
+                                                            'shared_files' => ['lib/ruby_llm/stream.rb'] }])
+    end
+
+    it 'takes no branch of a fork for a stack' do
+      fork = open_pull(50, head: 'main').merge('isCrossRepository' => true)
+      item['baseRefName'] = 'main'
+      open_pulls.push(fork, open_pull(51, head: 'release', base: 'main'))
+
+      expect(facts).to eq({})
+    end
+
+    it 'leaves out what it cannot read about other pull requests' do
+      allow(runner).to receive(:github).with('graphql', hash_including(query: include('pullRequests(')))
+                                       .and_raise('GitHub request failed')
+
+      expect(facts).to eq({})
+    end
+  end
+
+  it 'points out regenerated translation catalogs and lockfiles no manifest explains' do
+    item['files']['nodes'] += %w[po/de.po po/app.pot Cargo.lock crates/core/Gemfile.lock Gemfile].map do |path|
+      { 'path' => path, 'additions' => 1, 'deletions' => 1, 'changeType' => 'MODIFIED' }
+    end
+    runner = described_class.new(environment)
+    allow(runner).to receive(:github).and_return([])
+
+    expect(runner.send(:policy_facts, item)).to eq(
+      'changed_dependency_manifests' => ['Gemfile'], 'translation_catalogs' => %w[po/de.po po/app.pot],
+      'unrelated_lockfiles' => ['Cargo.lock']
+    )
+    item['files']['nodes'] = item['files']['nodes'].last(5).first(2)
+    expect(runner.send(:policy_facts, item)).to eq({})
+  end
+
   it 'rejects a decision without the pull request fields' do
     decision.delete(:review)
     runner = run_with

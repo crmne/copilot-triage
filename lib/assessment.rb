@@ -46,6 +46,13 @@ class IssueAssessment # :nodoc:
   # comments: Markdown and HTML embeds, and GitHub's attachment links.
   REVIEW_MEDIA = %r{!\[[^\]]*\]\([^)]+\)|<(?:img|video)\b|https://github\.com/user-attachments/assets/|
                     https://(?:private-)?user-images\.githubusercontent\.com/}xi
+  # Translation catalogs, which many projects regenerate on their main branch.
+  TRANSLATION = /\.(?:po|pot|mo|xliff?|xlf|strings|stringsdict|arb)\z/i
+  # Lockfiles, each with the manifests whose change explains it.
+  LOCKFILES = { 'Cargo.lock' => /\ACargo\.toml\z/, 'Gemfile.lock' => /\A(?:Gemfile|.+\.gemspec)\z/,
+                'package-lock.json' => /\Apackage\.json\z/, 'pnpm-lock.yaml' => /\Apackage\.json\z/,
+                'yarn.lock' => /\Apackage\.json\z/, 'go.sum' => /\Ago\.mod\z/,
+                'poetry.lock' => /\Apyproject\.toml\z/, 'uv.lock' => /\Apyproject\.toml\z/ }.freeze
 
   COPILOT_RETRY_DELAYS = [20, 40].freeze
   # Seconds between reads while GitHub works out whether a pull request merges.
@@ -542,7 +549,7 @@ class IssueAssessment # :nodoc:
   end
 
   def pull_request_fields
-    "isDraft mergeable reviewDecision changedFiles additions deletions #{CopilotReview::FIELDS} " \
+    "isDraft mergeable baseRefName reviewDecision changedFiles additions deletions #{CopilotReview::FIELDS} " \
       "#{BotReviews::FIELDS} " \
       'files(first: 100) { nodes { path additions deletions changeType } }'
   end
@@ -678,28 +685,147 @@ class IssueAssessment # :nodoc:
     JSON.generate(context)
   end
 
+  # Facts about the change that the agent matches against the project's rules
+  # and the state of the repository; each appears only when it says something.
   def policy_facts(item)
     files = item.dig('files', 'nodes').to_a
+    paths = files.map { |file| file['path'] }
     added = files.filter_map { |file| file['path'] if file['changeType'] == 'ADDED' && file['path'].match?(BINARY) }
-    manifests = files.map { |file| file['path'] }.select { |path| File.basename(path).match?(MANIFEST) }
-    facts = { 'added_binary_files' => added.first(20), 'changed_dependency_manifests' => manifests,
-              'source_dependency_lines' => source_dependencies(manifests),
-              'visual_files_changed' => visual_files(files) }.reject { |_, list| list.empty? }
-    facts['review_media'] = review_media(item) if facts['visual_files_changed']
-    facts
+    manifests = paths.select { |path| File.basename(path).match?(MANIFEST) }
+    { 'added_binary_files' => added.first(20), 'changed_dependency_manifests' => manifests,
+      'source_dependency_lines' => source_dependencies(manifests), **github_facts(item, paths),
+      'translation_catalogs' => translation_churn(paths), 'unrelated_lockfiles' => lockfile_churn(paths),
+      'visual_files_changed' => visual_files(paths) }
+      .select { |_, value| value.respond_to?(:empty?) ? !value.empty? : value }
+      .tap { |facts| facts['review_media'] = review_media(item) if facts['visual_files_changed'] }
   end
 
   # Changed files the policy's pull_requests.visual_paths mark as visible
   # interface, whose changes the contribution rules usually want shown.
-  def visual_files(files)
+  def visual_files(paths)
     globs = Array(pull_request_policy['visual_paths'])
-    files.map { |file| file['path'] }.select { |path| globs.any? { |glob| File.fnmatch?(glob, path) } }.first(20)
+    paths.select { |path| globs.any? { |glob| File.fnmatch?(glob, path) } }.first(20)
   end
 
   def review_media(item)
     author = item.dig('author', 'login')
     comments = item.dig('comments', 'nodes').to_a.select { |comment| comment.dig('author', 'login') == author }
     [item['body'], *comments.map { |comment| comment['body'] }].sum { |text| text.to_s.scan(REVIEW_MEDIA).size }
+  end
+
+  # Facts read from GitHub beyond the report: a conflict with the base branch,
+  # the head commit's checks, and the other open pull requests it stacks on or
+  # overlaps with.
+  def github_facts(item, paths)
+    commits, others, default_branch = open_pull_requests
+    stacked = stacked_on(item, commits, others, default_branch)
+    { 'merge_conflict' => merge_conflict(item, paths), **check_facts(item), 'stacked_on' => stacked,
+      'overlapping_pull_requests' => overlapping_pull_requests(paths, others, stacked) }
+  end
+
+  # The files most likely to conflict: those this pull request changes that
+  # the base branch also changed since they diverged. When GitHub cannot list
+  # them, the conflict is still known.
+  def merge_conflict(item, paths)
+    return unless item['mergeable'] == 'CONFLICTING'
+
+    base = item['baseRefName']
+    files = base_changes(item, base).intersection(paths).first(10)
+    conflict = { 'base_branch' => base }
+    files.empty? ? conflict : conflict.merge('files_changed_on_both' => files)
+  end
+
+  # The three-dot compare from the head to the base lists the base's changes
+  # since the merge base, renamed files under both names.
+  def base_changes(item, base)
+    github("repos/#{@repository}/compare/#{item.fetch('headRefOid')}...#{base}").fetch('files', []).flat_map do |file|
+      [file['filename'], file['previous_filename']].compact
+    end
+  rescue RuntimeError, KeyError
+    []
+  end
+
+  # The head commit's checks, leaving out triage's own: those that failed, or
+  # that none ran at all. Checks that cannot be read say nothing.
+  def check_facts(item)
+    rollup = check_rollup(item)
+    return {} unless rollup.nil? || rollup.key?('contexts')
+
+    checks = rollup&.dig('contexts', 'nodes').to_a.reject { |check| BoardRules::OWN_CHECKS.include?(check['name']) }
+    failing = checks.filter_map do |check|
+      check['name'] || check['context'] if BoardRules::FAILED.include?(check['conclusion'] || check['state'])
+    end
+    { 'failing_checks' => failing.uniq.first(10), 'no_checks_ran' => checks.empty? }
+  end
+
+  # This pull request's latest commits, the repository's other open pull
+  # requests updated most recently, and its default branch, in one query.
+  # Nothing is known about them when GitHub cannot say.
+  def open_pull_requests
+    owner, name = @repository.split('/', 2)
+    query = <<~GRAPHQL
+      query($owner: String!, $name: String!, $number: Int!) {
+        repository(owner: $owner, name: $name) {
+          defaultBranchRef { name }
+          pullRequest(number: $number) { commits(last: 100) { nodes { commit { oid } } } }
+          pullRequests(states: OPEN, first: 50, orderBy: { field: UPDATED_AT, direction: DESC }) {
+            nodes { number isCrossRepository headRefName baseRefName headRefOid files(first: 100) { nodes { path } } }
+          }
+        }
+      }
+    GRAPHQL
+    repository = github('graphql', query: query, variables: { owner: owner, name: name, number: @number })
+                 .fetch('data').fetch('repository')
+    commits = repository.dig('pullRequest', 'commits', 'nodes').to_a.map { |node| node.dig('commit', 'oid') }
+    others = repository.dig('pullRequests', 'nodes').to_a.reject { |pull| pull['number'] == @number }
+    [commits, others, repository.dig('defaultBranchRef', 'name')]
+  rescue RuntimeError, KeyError
+    [[], [], nil]
+  end
+
+  # Open pull requests this one builds on, bottom of the stack first: the one
+  # whose branch it targets, and so on down to the default branch, then those
+  # whose head commit it contains, oldest first.
+  def stacked_on(item, commits, others, default_branch)
+    branches = others.reject { |pull| pull['isCrossRepository'] }.to_h { |pull| [pull['headRefName'], pull] }
+    below = []
+    branch = item['baseRefName']
+    while (pull = branches[branch]) && branch != default_branch && !below.include?(pull)
+      below.unshift(pull)
+      branch = pull['baseRefName']
+    end
+    contained = others.select do |other|
+      other['headRefOid'] != item['headRefOid'] && commits.include?(other['headRefOid'])
+    end
+    (below + contained.sort_by { |other| commits.index(other['headRefOid']) }).map { |other| other['number'] }.uniq
+  end
+
+  # Other open pull requests changing the same files, with up to five of them
+  # each. Lockfiles change everywhere and say nothing, and a stack shares its
+  # files by design.
+  def overlapping_pull_requests(paths, others, stacked)
+    paths = paths.reject { |path| LOCKFILES.key?(File.basename(path)) }
+    others.filter_map do |pull|
+      next if stacked.include?(pull['number'])
+
+      shared = paths.intersection(pull.dig('files', 'nodes').to_a.map { |file| file['path'] })
+      { 'number' => pull['number'], 'shared_files' => shared.first(5) } unless shared.empty?
+    end.first(10)
+  end
+
+  # Translation catalogs changed alongside other files, often regenerated
+  # rather than written for this change.
+  def translation_churn(paths)
+    catalogs = paths.grep(TRANSLATION)
+    catalogs.size == paths.size ? [] : catalogs.first(20)
+  end
+
+  # Lockfiles changed without any manifest that would explain them.
+  def lockfile_churn(paths)
+    paths.select do |path|
+      manifest = LOCKFILES[File.basename(path)]
+      manifest && paths.none? { |other| File.basename(other).match?(manifest) }
+    end
   end
 
   # Added lines of the changed manifests that name a git or path source.

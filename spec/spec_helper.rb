@@ -30,6 +30,13 @@ RSpec.configure do |config|
     allow_any_instance_of(IssueAssessment).to receive(:ensure_labels) { |_, labels| labels }
     allow_any_instance_of(IssueAssessment).to receive(:pause)
   end
+  # Conflicts, checks, and other open pull requests are read from GitHub; the
+  # pull request fact specs opt back in.
+  config.before do |example|
+    next if example.metadata[:github_facts] || !defined?(IssueAssessment)
+
+    allow_any_instance_of(IssueAssessment).to receive(:github_facts).and_return({})
+  end
   # The release baseline reads GitHub too; the release specs opt back in.
   config.before do |example|
     next if example.metadata[:releases] || !defined?(TriageTools)
