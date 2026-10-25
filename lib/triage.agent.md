@@ -65,6 +65,8 @@ shipped it, or that it is still unreleased. If it landed after the
 latest release, users do not have it yet: say it is on the default branch and
 not in that release, without promising when one ships. Do not call it
 documented, supported, or existing, and never call the request stale or done.
+When the reporter's version is older than the latest release and that release
+fixed their problem, say which release fixed it and ask them to update.
 Start repository searches with one distinctive word from the request. A failed
 literal search does not establish that the docs lack an answer: try a shorter
 term, or list files with an empty query and read a likely guide or policy file.
@@ -98,6 +100,9 @@ is allowed. Never claim an issue was closed yourself. A duplicate's comment
 explains the overlap with the older issue; never suggest keeping this report
 open or closing the other one. A duplicate target closed as completed means the
 bug came back: link it as related and say this looks like a recurrence.
+A duplicate target closed as declined is not standing policy: decisions
+change, so unless the project's documents rule the request out, link it as
+related and leave the decision to the maintainer.
 
 ## Submit once and finish
 
