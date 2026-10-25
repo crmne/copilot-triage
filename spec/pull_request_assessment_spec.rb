@@ -279,6 +279,32 @@ RSpec.describe IssueAssessment, 'with a pull request' do
     expect(runner.send(:system_prompt)).to include('policy_facts lists')
   end
 
+  context 'with visual paths' do
+    let(:policy) { { 'visual_paths' => ['src/ui/**'] } }
+
+    it 'counts review media when a pull request changes the visible interface' do
+      item['files']['nodes'] << { 'path' => 'src/ui/sidebar.rs', 'additions' => 4, 'deletions' => 1,
+                                  'changeType' => 'MODIFIED' }
+      runner = run_with
+
+      expect(runner).to have_received(:ask_copilot).with(include(
+                                                           '"policy_facts":{"visual_files_changed":' \
+                                                           '["src/ui/sidebar.rs"],"review_media":0}'
+                                                         ))
+    end
+
+    it 'counts attachments in the description and the author\'s comments' do
+      item['files']['nodes'] << { 'path' => 'src/ui/sidebar.rs', 'additions' => 4, 'deletions' => 1,
+                                  'changeType' => 'MODIFIED' }
+      item['body'] = "Before and after:\n\n![before](https://github.com/user-attachments/assets/1)"
+      item['comments']['nodes'] << { 'author' => item['author'], 'authorAssociation' => 'CONTRIBUTOR',
+                                     'body' => '<img src="https://example.com/after.png">' }
+      runner = run_with
+
+      expect(runner).to have_received(:ask_copilot).with(include('"review_media":2'))
+    end
+  end
+
   it 'leaves policy facts empty for an ordinary change' do
     runner = run_with
 

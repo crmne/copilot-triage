@@ -42,6 +42,10 @@ class IssueAssessment # :nodoc:
                  Package\.swift|pom\.xml|build\.gradle(?:\.kts)?|composer\.json|mix\.exs)\z/x
   SOURCE_DEPENDENCY = /\b(?:git|path)\s*[:=]|:git\s*=>|git\+\w|github:|"(?:file|link):|\A\s*(?:replace\b|\[patch\b)|
                        "(?:overrides|resolutions)"/x
+  # Images and videos in a pull request's description or its author's
+  # comments: Markdown and HTML embeds, and GitHub's attachment links.
+  REVIEW_MEDIA = %r{!\[[^\]]*\]\([^)]+\)|<(?:img|video)\b|https://github\.com/user-attachments/assets/|
+                    https://(?:private-)?user-images\.githubusercontent\.com/}xi
 
   COPILOT_RETRY_DELAYS = [20, 40].freeze
   # Seconds between reads while GitHub works out whether a pull request merges.
@@ -682,8 +686,24 @@ class IssueAssessment # :nodoc:
     files = item.dig('files', 'nodes').to_a
     added = files.filter_map { |file| file['path'] if file['changeType'] == 'ADDED' && file['path'].match?(BINARY) }
     manifests = files.map { |file| file['path'] }.select { |path| File.basename(path).match?(MANIFEST) }
-    { 'added_binary_files' => added.first(20), 'changed_dependency_manifests' => manifests,
-      'source_dependency_lines' => source_dependencies(manifests) }.reject { |_, list| list.empty? }
+    facts = { 'added_binary_files' => added.first(20), 'changed_dependency_manifests' => manifests,
+              'source_dependency_lines' => source_dependencies(manifests),
+              'visual_files_changed' => visual_files(files) }.reject { |_, list| list.empty? }
+    facts['review_media'] = review_media(item) if facts['visual_files_changed']
+    facts
+  end
+
+  # Changed files the policy's pull_requests.visual_paths mark as visible
+  # interface, whose changes the contribution rules usually want shown.
+  def visual_files(files)
+    globs = Array(pull_request_policy['visual_paths'])
+    files.map { |file| file['path'] }.select { |path| globs.any? { |glob| File.fnmatch?(glob, path) } }.first(20)
+  end
+
+  def review_media(item)
+    author = item.dig('author', 'login')
+    comments = item.dig('comments', 'nodes').to_a.select { |comment| comment.dig('author', 'login') == author }
+    [item['body'], *comments.map { |comment| comment['body'] }].sum { |text| text.to_s.scan(REVIEW_MEDIA).size }
   end
 
   # Added lines of the changed manifests that name a git or path source.

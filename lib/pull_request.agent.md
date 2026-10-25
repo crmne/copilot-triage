@@ -86,6 +86,24 @@ review screenshots, an unapproved git dependency, or a new setting the rules
 say needs approval, reply naming the rule and citing that document, and set
 next_move "theirs".
 
+visual_files_changed lists changed files the project marks as visible
+interface, and review_media counts the images and videos in the description
+and the author's comments. When review_media is 0, read the contribution rules
+on screenshots or visual review evidence and ask for what they require in one
+short reply citing that document, with next_move "theirs", before anything
+else about the change. When the patch plainly changes nothing anyone sees,
+such as a logic fix inside one of those files, do not ask: say in next_step
+that the change looks invisible, so the maintainer can waive the evidence.
+Attachments themselves have not been viewed.
+
+A pull request that bundles unrelated changes, such as a bug fix with a
+platform change or a feature with a data refresh, gets one short reply asking
+to split it, with next_move "theirs". A change that needs the maintainer's
+judgment rather than a code review, such as a redesign of an existing view, a
+new public API or setting, or an approximation of a capability the project
+says it lacks, is never "sign_off": set next_move "decide" and name the
+decision in next_step, whatever the review bots concluded.
+
 Reply only when the author needs something: a requirement from the project's
 policy that the pull request misses, one essential question, or the
 out-of-scope explanation. Do not summarize the change, review code line by

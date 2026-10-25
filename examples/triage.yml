@@ -17,6 +17,9 @@ report_bots:
 pull_requests:
   reviews: copilot
   out_of_scope: suggest
+  # Optional: files whose changes your contribution rules want screenshots of.
+  # visual_paths:
+  #   - src/components/**
 
 # Discussions that are really bug reports or feature requests move to issues.
 # Set this to false to keep every discussion where it is.

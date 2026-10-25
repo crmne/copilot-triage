@@ -388,6 +388,8 @@ pull_requests:
   reviews: copilot      # private, or off
   review_min_lines: 100 # lines of code a change needs before Copilot reviews it
   out_of_scope: suggest # or close
+  visual_paths:         # files whose changes need screenshots, if your rules ask for them
+    - src/ui/**
 ```
 
 With this in your policy, pull requests are assessed when they open, reopen,
@@ -408,6 +410,10 @@ what makes `pull_request_target` safe here.
   thorough Copilot's review is, and what it costs, is a setting in GitHub;
   on changes this size, Balanced found about twice as many real problems as
   Lite.
+- **Screenshots.** When a pull request changes a file under `visual_paths`
+  and neither its description nor its author's comments hold an image or
+  video, the agent asks for the visual evidence your contribution rules
+  require, citing them, and the author has the next move.
 - **Findings.** The agent reads every finding Copilot and other review bots,
   such as [CodeRabbit](https://coderabbit.ai), leave on the latest commit. The
   bots catch different problems, so it weighs each one: races, data loss,
