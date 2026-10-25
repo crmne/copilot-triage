@@ -766,7 +766,10 @@ Model failures and invalid decisions appear in the job summary and leave the
 report unchanged. They never become issues, comments, or apologies. A Copilot
 session that ends without calling a single tool, which happens when many runs
 start at once, changed nothing, so it is tried again after 20 and then 40
-seconds; the failure message includes the model's final text. GitHub
+seconds; the failure message includes the model's final text. A model that
+finishes without submitting a decision, even after being reminded and made to
+call `submit_decision`, gets one fresh run before the assessment fails; the
+metrics count the model calls, tokens, and cost of both. GitHub
 write failures fail the job without marking the assessment complete, so it is
 retried. A failed board update or review request fails the job after the reply
 is published, so it never causes a repeated reply. Exhausted Copilot credits

@@ -48,6 +48,34 @@ RSpec.describe IssueAssessment, 'with the RubyLLM engine' do
                                                             '"cost_usd":0.0021', '"engine":"rubyllm"'))
   end
 
+  it 'runs once more when the model finishes without a decision, counting both runs' do
+    runs = 0
+    allow(TriageAgent).to receive(:new) do |toolbox:, **|
+      runs += 1
+      allow(agent).to receive(:triage) { toolbox.call('submit_decision', decision) if runs == 2 }
+      agent
+    end
+
+    assessment.run
+    expect(assessment).to have_received(:puts)
+      .with('Assessing once more, since the model finished without a decision.')
+    expect(assessment).to have_received(:mutate).with('addLabelsToLabelable', anything)
+    expect(assessment).to have_received(:puts).with(include('"model_calls":6', '"input_tokens":18000',
+                                                            '"cost_usd":0.0042'))
+  end
+
+  it 'fails after the second run also finishes without a decision' do
+    allow(TriageAgent).to receive(:new).and_return(agent)
+    allow(agent).to receive(:triage)
+
+    assessment.run
+    expect(TriageAgent).to have_received(:new).twice
+    expect(assessment).to be_failed
+    expect(assessment).not_to have_received(:mutate)
+    expect(assessment).to have_received(:puts)
+      .with('Failed: the model finished without calling submit_decision; left for a maintainer.')
+  end
+
   it 'accepts models a custom endpoint serves without a registry entry' do
     environment.merge!('TRIAGE_PROVIDER' => 'ollama', 'TRIAGE_API_BASE' => 'http://localhost:11434/v1',
                        'TRIAGE_API_KEY' => '')
@@ -70,6 +98,7 @@ RSpec.describe IssueAssessment, 'with the RubyLLM engine' do
     allow(agent).to receive(:triage).and_raise(RubyLLM::UnauthorizedError.new('bad key sk-or-secret'))
 
     assessment.run
+    expect(TriageAgent).to have_received(:new).once
     expect(assessment).to be_failed
     expect(assessment).not_to have_received(:mutate)
     expect(assessment).to have_received(:puts).with('Failed: model unavailable (bad key [REDACTED]); ' \

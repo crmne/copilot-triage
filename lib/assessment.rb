@@ -64,6 +64,9 @@ class IssueAssessment # :nodoc:
                            '<!-- end of auto-generated comment: release notes by coderabbit\.ai -->', Regexp::MULTILINE)
   # Premium requests kept back before triage switches to its fallback model.
   COPILOT_RESERVE = 50
+  # Why a run failed when the model ended without submitting a decision, the
+  # one failure an assessment runs again for.
+  NO_DECISION = 'the model finished without calling submit_decision'
   # Replies are for the reporter. A comment that talks to the maintainer or
   # grades the report for them is dropped, and the decision stays silent.
   MAINTAINER_DIRECTED = /\b(?>maintainers?(?:['’]s?)?)(?![-\s](?:explicit\s|explicitly\s)?approv|-)|
@@ -482,8 +485,23 @@ class IssueAssessment # :nodoc:
     @model_calls += 1
     @prompt_bytes += bytes
     fallback = @engine == 'copilot' ? 'Copilot unavailable' : 'model unavailable'
-    response = ask_model(prompt) || raise(Failed, @model_failure_reason || fallback)
+    response = ask_model(prompt) || ask_again(prompt, bytes) || raise(Failed, @model_failure_reason || fallback)
     yield response
+  end
+
+  # The agent reminds a model that stops without a decision and forces the
+  # call, but a provider can still answer in plain text, as the fallback model
+  # did on ZapFast #550. A fresh conversation usually submits, so that failure
+  # alone gets one more run; quota, provider, and invalid decisions do not.
+  # Model calls, prompt bytes, tokens, and cost count both runs.
+  def ask_again(prompt, bytes)
+    return unless @model_failure_reason == NO_DECISION
+
+    report('Assessing once more, since the model finished without a decision.')
+    spent = @model_calls
+    @model_calls = 1
+    @prompt_bytes += bytes
+    ask_model(prompt).tap { @model_calls += spent }
   end
 
   def skip_reason(item)
@@ -1027,10 +1045,11 @@ class IssueAssessment # :nodoc:
         # RubyLLM counts cached input apart from standard input; all of it was read.
         tokens = agent.tokens
         @usage << [tokens.input.to_i + tokens.cache_read.to_i + tokens.cache_write.to_i, tokens.output.to_i]
-        @cost = agent.cost.total
+        cost = agent.cost.total
+        @cost = @cost.to_f + cost if cost
       end
       decision = @tool_ledger['decision']
-      @model_failure_reason ||= 'the model finished without calling submit_decision' unless decision
+      @model_failure_reason ||= NO_DECISION unless decision
       report("The model produced no submitted decision: #{@model_failure_reason}.") unless decision
       JSON.generate(decision) if decision
     end
@@ -1123,7 +1142,11 @@ class IssueAssessment # :nodoc:
       end
 
       decision = @tool_ledger['decision']
-      JSON.generate(decision) if decision
+      next JSON.generate(decision) if decision
+
+      @model_failure_reason = NO_DECISION
+      report("Copilot produced no submitted decision: #{NO_DECISION}.")
+      nil
     end
   end
 

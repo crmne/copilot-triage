@@ -30,6 +30,33 @@ RSpec.describe IssueAssessment, 'with a fallback model' do
     expect(assessment.send(:redact, 'key sk-or-fallback')).to eq('key [REDACTED]')
   end
 
+  it 'runs the fallback once more when it finishes without a decision, as on ZapFast #550' do
+    attempts = 0
+    allow(assessment).to receive(:ask_rubyllm) do
+      attempts += 1
+      next '{"fallback": true}' if attempts == 2
+
+      assessment.instance_variable_set(:@model_failure_reason, described_class::NO_DECISION)
+      nil
+    end
+
+    expect(assessment.send(:request, 'prompt') { |response| response }).to eq('{"fallback": true}')
+    expect(assessment).to have_received(:ask_rubyllm).twice
+    expect(assessment).not_to have_received(:ask_copilot)
+    expect(assessment.instance_variable_get(:@model_calls)).to eq(2)
+  end
+
+  it 'does not run again when the model failed for another reason' do
+    allow(assessment).to receive(:ask_rubyllm) do
+      assessment.instance_variable_set(:@model_failure_reason, 'model unavailable (rate limited)')
+      nil
+    end
+
+    expect { assessment.send(:request, 'prompt') { |response| response } }
+      .to raise_error(described_class::Failed, 'model unavailable (rate limited)')
+    expect(assessment).to have_received(:ask_rubyllm).once
+  end
+
   it 'posts from a fallback run like a Copilot run' do
     assessment.send(:ask_model, 'prompt')
     expect(assessment.send(:quiet?)).to be_falsey
