@@ -67,6 +67,8 @@ The rules below decide the rest.
 - Never send a pull request back for documentation, translations or
   accessibility wording, style or naming, nitpicks, low, minor, or trivial
   labels, process reminders, or pinning actions in workflows to commits.
+  Nor for cosmetic details of a change whose visual evidence the project's
+  rules call complete: those are optional follow-ups at most.
 - Several findings that repeat one point are one finding.
 
 A bot's state is its verdict: APPROVED with no findings means it found
