@@ -19,6 +19,16 @@ is closed or proposed to the maintainer for sign-off; never claim in comment
 that you closed it. Say what happens, for example "Closing, since 2.4.1 fixed
 this" only when the policy closes, as the prompt states.
 
+## Missing information that arrived
+
+The report lists the labels the issue has now. A label the policy uses for
+missing information, such as needs-info, or question when the policy describes
+it as a missing fact, asks the reporter for something. When the reporter's own
+latest comment, after the bot's question, supplies what it asked for, put that
+label in remove_labels. When it supplies only part, keep the label and say in
+comment what is still missing. Otherwise submit remove_labels as []. Never
+remove a label for any other reason.
+
 An issue whose body starts with "Moved from" a discussion is that discussion's
 first assessment as an issue: answer any question it also asks, such as whether
 it is planned or possible, when the evidence answers it.

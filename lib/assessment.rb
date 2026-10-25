@@ -661,7 +661,8 @@ class IssueAssessment # :nodoc:
   def issue_prompt
     return unless @kind == 'issue'
 
-    "\nIssue: also submit close_as. Closing is #{closing_mode == 'auto' ? 'automatic' : 'proposed to the maintainer'}."
+    "\nIssue: also submit close_as and remove_labels. " \
+      "Closing is #{closing_mode == 'auto' ? 'automatic' : 'proposed to the maintainer'}."
   end
 
   # Repository files are the default branch; users have what a release ships.
@@ -700,6 +701,8 @@ class IssueAssessment # :nodoc:
   def report_context(item)
     context = item.slice('title', 'body', 'comments')
     context['body'] = excerpt(compact_padding(context.fetch('body')), LONG_TEXT)
+    current = item.dig('labels', 'nodes').to_a.map { |label| label.fetch('name') }
+    context['labels'] = current if current.any?
     comments = context.delete('comments').fetch('nodes').map { |comment| comment_context(comment) }
     context['latest_comment'] = comments.pop
     context['earlier_comments'] = comments
@@ -1223,7 +1226,8 @@ class IssueAssessment # :nodoc:
     keys += TriageTools::BOARD_PROPERTIES.keys.map(&:to_s) if board?
     keys += TriageTools::PULL_REQUEST_PROPERTIES.keys.map(&:to_s) if pull_request?
     keys += TriageTools::MOVE_PROPERTIES.keys.map(&:to_s) if move?
-    keys += TriageTools::CLOSE_PROPERTIES.keys.map(&:to_s) if @kind == 'issue'
+    keys += [*TriageTools::CLOSE_PROPERTIES.keys, *TriageTools::REMOVE_LABEL_PROPERTIES.keys].map(&:to_s) if
+      @kind == 'issue'
     raise ArgumentError, 'the decision has unknown fields' unless decision.is_a?(Hash) && (decision.keys - keys).empty?
     raise ArgumentError, 'the decision lacks labels or reply' unless (%w[labels reply] - decision.keys).empty?
 
@@ -1241,7 +1245,8 @@ class IssueAssessment # :nodoc:
     end
 
     validate_labels(decision['labels'], allowed, moving: decision['move_to_issue'] == true)
-    if TriageTools.label_conflict(decision['labels'], @report_facts.fetch('labels'))
+    validate_removal(decision, allowed)
+    if TriageTools.label_conflict(decision['labels'], @report_facts.fetch('labels') - decision['remove_labels'])
       raise ArgumentError, 'the labels contradict each other or add a second type'
     end
     if decision['move_to_issue'] && decision['labels'].intersect?(TriageTools::DECLINING_LABELS)
@@ -1280,6 +1285,19 @@ class IssueAssessment # :nodoc:
       raise ArgumentError, 'a relationship without a related issue'
     end
     decision
+  end
+
+  # Mirrors the tool's check: labels the issue has and the policy allows come
+  # off only after the reporter spoke last.
+  def validate_removal(decision, allowed)
+    removed = decision['remove_labels'] ||= []
+    return if removed == []
+
+    current = @report_facts.fetch('labels')
+    unless removed.is_a?(Array) && removed.size <= 2 && (removed - (current & allowed)).empty? &&
+           !removed.intersect?(decision['labels']) && @report_facts['latest_commenter'] == @report_facts['author']
+      raise ArgumentError, 'remove_labels names labels the issue lacks, or the reporter did not speak last'
+    end
   end
 
   def validate_pull_request(decision)
@@ -1663,6 +1681,8 @@ class IssueAssessment # :nodoc:
 
     ids = labels.filter_map { |label| label['id'] if decision['labels'].include?(label['name']) }
     mutate('addLabelsToLabelable', labelableId: item.fetch('id'), labelIds: ids) if ids.any?
+    removed = labels.filter_map { |label| label['id'] if decision['remove_labels'].to_a.include?(label['name']) }
+    mutate('removeLabelsFromLabelable', labelableId: item.fetch('id'), labelIds: removed) if removed.any?
     body = reply_body(decision)
     if body
       body = attributed(body)

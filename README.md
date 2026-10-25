@@ -659,6 +659,13 @@ report has one, whether a maintainer or an earlier run set it, the agent adds no
 other type, only labels such as `wontfix`. It never pairs `enhancement` with
 `bug`, `wontfix`, or `out-of-scope`.
 
+A label that asks the reporter for something, such as `needs-info:` "One
+specific missing technical fact prevents investigation.", comes off an issue
+once the reporter supplies it. The agent names the label to remove, and Ruby
+removes it only when the issue has it, your policy lists it, and the reporter
+wrote the latest comment. When the answer is partial, the label stays and the
+reply says what is still missing.
+
 ## Preview a report
 
 Add manual inputs to the workflow:

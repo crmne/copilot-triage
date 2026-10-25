@@ -67,6 +67,43 @@ RSpec.describe IssueAssessment, type: :task do
     )
   end
 
+  context 'when the reporter answers what a missing-information label asked for, as on TonePush #34' do
+    before do
+      item['labels'] = { 'nodes' => [{ 'name' => 'question' }] }
+      item['comments']['nodes'] = [
+        { 'body' => 'Which RubyLLM version are you using?', 'author' => { 'login' => 'github-actions[bot]' },
+          'authorAssociation' => 'NONE' },
+        { 'body' => '1.9.2', 'author' => { 'login' => 'reporter' }, 'authorAssociation' => 'NONE' }
+      ]
+      allow(assessment).to receive(:ask_copilot)
+        .and_return(JSON.generate(labels: ['bug'], reply: nil, sources: [], remove_labels: ['question']))
+    end
+
+    it 'lists the labels the issue has and removes the one the agent names' do
+      assessment.run
+      expect(assessment).to have_received(:ask_copilot).with(include('"labels":["question"]', 'remove_labels'))
+      expect(assessment).to have_received(:mutate).with('addLabelsToLabelable', labelableId: 'report-id',
+                                                                                labelIds: ['bug-id'])
+      expect(assessment).to have_received(:mutate).with('removeLabelsFromLabelable', labelableId: 'report-id',
+                                                                                     labelIds: ['question-id'])
+    end
+
+    it 'keeps the label when someone other than the reporter spoke last' do
+      item['comments']['nodes'].last['author'] = { 'login' => 'someone-else' }
+
+      assessment.run
+      expect(assessment).not_to have_received(:mutate)
+      expect(assessment).to have_received(:puts).with(include('invalid assessment')).at_least(:once)
+    end
+
+    it 'removes only labels the issue has' do
+      item['labels'] = { 'nodes' => [] }
+
+      assessment.run
+      expect(assessment).not_to have_received(:mutate)
+    end
+  end
+
   context 'with a discussion' do
     def kind
       'discussion'

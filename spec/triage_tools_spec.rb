@@ -382,7 +382,8 @@ RSpec.describe TriageTools do
     let(:tools) { described_class.new(root: Dir.pwd, repository: 'owner/project', config: config, issue: true) }
     let(:decision) do
       { 'labels' => [], 'reply' => nil, 'comment' => 'Closing, since this works now.', 'sources' => [],
-        'related_issue' => nil, 'relationship' => nil, 'mute' => false, 'close_as' => 'resolved' }
+        'related_issue' => nil, 'relationship' => nil, 'mute' => false, 'close_as' => 'resolved',
+        'remove_labels' => [] }
     end
 
     it 'closes only with an explanation, and on the evidence that establishes it' do
@@ -395,6 +396,23 @@ RSpec.describe TriageTools do
       expect(tools.call('submit_decision', decision.except('close_as'))[:content].first[:text])
         .to include('Missing required arguments: close_as')
       expect(call('submit_decision', **decision).transform_keys(&:to_sym)).to eq(accepted: true)
+    end
+
+    it 'removes a label the issue has once the reporter answered what it asked for' do
+      report = { 'author' => 'reporter', 'latest_commenter' => 'reporter', 'labels' => ['question'] }
+      tools = described_class.new(root: Dir.pwd, repository: 'owner/project', config: config, issue: true,
+                                  report: report)
+      answered = decision.merge('comment' => nil, 'close_as' => nil, 'remove_labels' => ['question'])
+      message = ->(changes) { tools.call('submit_decision', answered.merge(changes))[:content].first[:text] }
+
+      expect(message.call('remove_labels' => ['bug'])).to include('only configured labels this issue has')
+      expect(message.call('remove_labels' => ['needs-info'])).to include('only configured labels this issue has')
+      expect(message.call('labels' => ['question'])).to include('Do not add and remove the same label')
+      report['latest_commenter'] = 'someone-else'
+      expect(message.call({})).to include('only when the reporter')
+      report['latest_commenter'] = 'reporter'
+      expect(message.call('labels' => ['bug'])).to include('accepted')
+      expect(tools.ledger['decision']).to include('remove_labels' => ['question'], 'labels' => ['bug'])
     end
   end
 

@@ -87,6 +87,9 @@ class TriageTools
   MOVE_PROPERTIES = { move_to_issue: { type: 'boolean' } }.freeze
   # Extra submit_decision argument for an issue: a proposed closure.
   CLOSE_PROPERTIES = { close_as: { type: %w[string null], enum: ['fixed', 'resolved', 'out_of_scope', nil] } }.freeze
+  # Extra submit_decision argument for an issue: labels it has that come off,
+  # such as needs-info once the reporter supplied what it asked for.
+  REMOVE_LABEL_PROPERTIES = { remove_labels: { type: 'array', items: { type: 'string' }, maxItems: 2 } }.freeze
   DIFF_HINT = ' For the pull request being assessed, diff:path reads the patch of a changed file.'
   # A pull request reply that quotes code, points at a line, or discusses an
   # identifier, such as drag_delta, reviews code, which belongs to the
@@ -100,7 +103,7 @@ class TriageTools
     extra.merge!(BOARD_PROPERTIES) if board
     extra.merge!(PULL_REQUEST_PROPERTIES) if pull_request
     extra.merge!(MOVE_PROPERTIES) if move
-    extra.merge!(CLOSE_PROPERTIES) if issue
+    extra.merge!(CLOSE_PROPERTIES, REMOVE_LABEL_PROPERTIES) if issue
     submit = SCHEMAS.fetch('submit_decision')
     schemas = SCHEMAS.merge('submit_decision' => submit.merge(
       properties: submit.fetch(:properties).merge(extra), required: submit.fetch(:required) + extra.keys.map(&:to_s)
@@ -325,7 +328,9 @@ class TriageTools
                            'false and no labels.'
     end
 
-    conflict = self.class.label_conflict(decision[:labels], @report.fetch('labels', []))
+    label_removal!(decision)
+    remaining = @report.fetch('labels', []) - decision.fetch(:remove_labels, [])
+    conflict = self.class.label_conflict(decision[:labels], remaining)
     raise ArgumentError, conflict if conflict
 
     reply = decision.fetch(:reply)
@@ -393,6 +398,22 @@ class TriageTools
 
     words = comment.gsub(/\[\[[^\]]*\]\]/, '').split.reject { |word| word.match?(%r{/|\.\w}) && !word.match?(/:\d/) }
     comment.include?('```') || words.join(' ').match?(CODE_REVIEW)
+  end
+
+  # A label comes off only when the issue has it, the policy allows it, and
+  # the reporter spoke last, answering what it asked for.
+  def label_removal!(decision)
+    removed = decision.fetch(:remove_labels, [])
+    return if removed.empty?
+
+    unless (removed - @report.fetch('labels', [])).empty? && (removed - @config.fetch('labels').keys).empty?
+      raise ArgumentError, 'remove_labels may name only configured labels this issue has now.'
+    end
+    raise ArgumentError, 'Do not add and remove the same label.' if removed.intersect?(decision.fetch(:labels))
+    return if @report['author'] && @report['latest_commenter'] == @report['author']
+
+    raise ArgumentError, 'Remove a label only when the reporter, in the latest comment, supplied what it asked ' \
+                         'for. Use remove_labels [].'
   end
 
   # A closure must rest on evidence the agent read: release notes for a fix,

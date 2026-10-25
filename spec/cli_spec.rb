@@ -7,7 +7,7 @@ RSpec.describe 'Issue assessment Copilot integration', type: :task do
   let(:requests) { [] }
   let(:decision) do
     { labels: [], reply: nil, comment: nil, sources: [], related_issue: nil, relationship: nil, mute: false,
-      close_as: nil }
+      close_as: nil, remove_labels: [] }
   end
   let(:steps) { [['submit_decision', decision]] }
   let(:final_text) { 'Done.' }
