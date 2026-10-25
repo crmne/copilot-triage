@@ -131,6 +131,23 @@ RSpec.describe BoardSweep do
     expect(moves).to eq([%w[item-1 decide], %w[item-3 do]])
   end
 
+  it 'brings an issue back to decide once it went quiet after the maintainer replied' do
+    days_ago = ->(days) { (Time.now.utc - (days * 86_400)).iso8601 }
+    approved = [comment('NONE', days_ago.call(40)), comment('OWNER', days_ago.call(30), login: 'crmne')]
+    issues.push(issue(1, status: 'Their move', updated_at: days_ago.call(30), comments: approved),
+                issue(2, status: 'Their move', updated_at: days_ago.call(10), comments: approved),
+                issue(3, status: 'Their move', updated_at: days_ago.call(30),
+                         comments: [comment('NONE', days_ago.call(40)),
+                                    comment('OWNER', days_ago.call(BoardRules::QUIET_DAYS - 1), login: 'crmne')]),
+                issue(4, status: 'Their move', updated_at: days_ago.call(30), comments: approved, linked: 1),
+                issue(5, status: 'Decide', updated_at: days_ago.call(30), comments: approved))
+
+    sweep.run
+    expect(moves).to eq([%w[item-1 decide]])
+    expect(steps).to eq([['item-1', 'Quiet for 3 weeks after your reply: nudge, or mark it up for grabs']])
+    expect(requests).to be_empty
+  end
+
   it 'never moves cards out of Not now or a column of the maintainer own' do
     issues.push(issue(1, status: 'Not now', linked: 1), issue(2, status: 'Someday', comments: [comment('NONE')]),
                 issue(3, status: 'Decide', linked: 1))

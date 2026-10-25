@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'time'
 require_relative 'copilot_review'
 require_relative 'triage_event'
 
@@ -8,6 +9,11 @@ require_relative 'triage_event'
 # maintainer's own pull requests, which need no model.
 module BoardRules
   module_function
+
+  # An issue waiting on someone else after the maintainer's reply, such as an
+  # approved plan whose pull request never came, goes back to them after this
+  # many quiet days.
+  QUIET_DAYS = 21
 
   # Returns a column key, or :agent when Copilot asks for a closer look or
   # another review bot left findings, which only triage can judge. Sign off
@@ -56,8 +62,9 @@ module BoardRules
   # An issue with an open pull request that would close it follows that pull
   # request's card, so the two finish together. A proposed closure in Sign off
   # is stale once the issue is reopened or the maintainer joins: it is placed
-  # again from the conversation.
-  def issue_column(issue, current, status_updated_at, linked_column: nil)
+  # again from the conversation. One waiting on someone else after the
+  # maintainer's reply goes to Decide once it has been quiet for QUIET_DAYS.
+  def issue_column(issue, current, status_updated_at, linked_column: nil, now: Time.now.utc)
     linked = issue.dig('closedByPullRequestsReferences', 'totalCount').to_i.positive?
     return linked_column || 'theirs' if linked
 
@@ -74,9 +81,18 @@ module BoardRules
 
       return human && maintainer?(human) ? 'theirs' : yours
     end
-    return unless current == 'theirs' && human && !maintainer?(human)
+    return unless current == 'theirs' && human
+    return ('decide' if quiet?(issue, comments, status_updated_at, now)) if maintainer?(human)
 
     yours if status_updated_at.nil? || human.fetch('createdAt') > status_updated_at
+  end
+
+  # Nothing happened for QUIET_DAYS: no comment, no reopening, and no move of
+  # the card, so dragging it back to Their move by hand waits that long again.
+  def quiet?(issue, comments, status_updated_at, now)
+    reopened = issue.dig('reopened', 'nodes').to_a.filter_map { |event| event['createdAt'] }
+    latest = [*comments.filter_map { |comment| comment['createdAt'] }, *reopened, status_updated_at].compact.max
+    latest && latest < (now - (QUIET_DAYS * 86_400)).iso8601
   end
 
   # The maintainer's comment is the latest from a person, and the card was
@@ -232,6 +248,11 @@ module BoardRules
       number = issue.dig('closedByPullRequestsReferences', 'nodes', 0, 'number')
       return "Follows pull request ##{number}" if number
     end
+    human = issue.dig('comments', 'nodes').to_a.reject { |comment| TriageEvent.bot?(comment['author']) }.last
+    if column == 'decide' && human && maintainer?(human)
+      return "Quiet for #{QUIET_DAYS / 7} weeks after your reply: nudge, or mark it up for grabs"
+    end
+
     { 'theirs' => 'Waiting on the reporter or author', 'do' => 'They answered: read the reply and act',
       'decide' => 'They answered: read the reply and decide' }[column]
   end

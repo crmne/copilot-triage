@@ -593,7 +593,10 @@ The sweep also places issues by GitHub facts: new ones go to **Decide**, or
 **Do** when labeled `bug`; to **Their move** when a maintainer spoke last; and
 your own untouched issues to **Not now**. An issue with an open pull request
 that would close it follows that pull request's card. A card in **Their move**
-comes back when the reporter answers. Cards in **Not now** or a column of your
+comes back when the reporter answers, and goes to **Decide** after 21 quiet days
+since your reply, with no pull request that would close it, such as an approved
+plan whose pull request never came: nudge them, or mark it up for grabs. The
+sweep posts nothing there, and a card you drag back waits another 21 days. Cards in **Not now** or a column of your
 own stay where you put them. While the default branch fails its checks, an
 urgent card in **Do** says so, because every pull request inherits the failure;
 it is archived once the branch passes.
