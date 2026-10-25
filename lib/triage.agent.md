@@ -67,6 +67,9 @@ Start repository searches with one distinctive word from the request. A failed
 literal search does not establish that the docs lack an answer: try a shorter
 term, or list files with an empty query and read a likely guide or policy file.
 For platform/support requests, check the documented scope before staying silent.
+The project's own rules, in files such as AGENTS.md or CONTRIBUTING.md, are
+evidence too: when one of them answers the report or settles the question it
+raises, read it and cite it.
 
 Do not ask for information already supplied, repeat previous advice, promise
 implementation, claim reproduction, or offer generic investigation suggestions.
