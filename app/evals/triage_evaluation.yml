@@ -1825,3 +1825,80 @@ cases:
     max_calls: 8
     min_calls: 1
     min_evidence_reads: 1
+- name: tonepush-5-answered-retest
+  inputs:
+    title: HX Stomp disconnects after two seconds on Fedora
+    body: |
+      On Fedora 42 with an HX Stomp, TonePush 0.7 opens, shows all presets for
+      about two seconds, then reports the device as disconnected. HX Edit in a
+      Windows VM keeps the connection.
+    history:
+    - maintainer: Please try with the latest version, 0.8.
+    comment: Similar behaving, opens, shows all for 2 second then disconnects.
+    decision:
+      labels:
+      - bug
+      reply:
+      comment:
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+    tools: []
+  expected_output:
+    action: silent
+    excludes:
+    - '0.8'
+    max_calls: 8
+    min_calls: 1
+- name: tonepush-44-known-timeout
+  inputs:
+    title: 'HX Effects: import of a .hlx is refused with error -3, while restore and set work'
+    body: |
+      On an HX Effects (firmware 3.80) with TonePush 0.9.1 on Windows 11, reads
+      and device-native writes work, but `tonepush import <file>.hlx` always fails
+      with `Error: the device refused: error -3`, even for a preset that came off
+      the device itself. backup and restore of a slot succeed. The settings part
+      of back-up still times out waiting for a reply during the object sweep.
+
+      Happy to run diagnostics or test a patch. I can also capture the USB traffic
+      of HX Edit importing a preset to this device and send you the trace.
+    candidate:
+      node_id: candidate-9
+      number: 9
+      title: 'First hardware test on HX Effects (fw 3.80): handshake and slot write
+        work; four parser/labeling issues and a settings timeout'
+      body: |
+        First run on a real HX Effects, firmware 3.80. list, info, presets and
+        slot writes work. Issues: 1. snapshot named flag omitted, 2. ten-word
+        section table, 3. assignment source ordinal 10, 4. slot labels assume 3
+        presets per bank, 5. back-up times out in the settings sweep: after all
+        presets are read it fails with "timed out waiting for a reply to
+        transaction 1002" during the FETCH_OBJECT sweep over ids 0..256.
+      state: open
+      comments: 3
+      html_url: https://github.com/example/project/issues/9
+    decision:
+      labels:
+      - bug
+      reply:
+      comment: The back-up settings timeout here matches item 5 of the earlier HX
+        Effects report.
+      sources: []
+      related_issue: 9
+      relationship: related
+      mute: false
+    tools:
+    - name: read_evidence
+      arguments:
+        reference: issue:9
+  expected_output:
+    action: reply
+    allowed_actions:
+    - reply
+    - duplicate
+    contains:
+    - '#9'
+    max_calls: 8
+    min_calls: 1
+    min_evidence_reads: 1
