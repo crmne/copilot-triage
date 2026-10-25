@@ -1,0 +1,69 @@
+# Settles the open issues a release fixed, called by each repository's own
+# workflow when a release is published:
+#
+#   jobs:
+#     settle:
+#       uses: crmne/copilot-triage/.github/workflows/settle.yml@v0
+#       secrets: inherit
+#       with:
+#         tag: ${{ inputs.tag || github.event.release.tag_name }}
+#
+# The first job finds the issues without a model; each one is then assessed
+# like any other report, against the release, one or two at a time.
+name: Settle
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+      dry_run:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  find:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      issues: ${{ steps.find.outputs.issues }}
+    steps:
+      - id: find
+        uses: crmne/copilot-triage@v0
+        with:
+          mode: release
+          release: ${{ inputs.tag }}
+
+  assess:
+    needs: find
+    if: needs.find.outputs.issues != '' && needs.find.outputs.issues != '[]'
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.find.outputs.issues) }}
+    # The same group as the triage workflow's, so a comment arriving meanwhile
+    # waits for this assessment instead of racing it.
+    concurrency:
+      group: assessment-issue-${{ matrix.number }}-report
+      cancel-in-progress: false
+    cache-mode: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: crmne/copilot-triage@v0
+        with:
+          copilot-token: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          fallback-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          project-token: ${{ secrets.TRIAGE_PROJECT_TOKEN }}
+          kind: issue
+          number: ${{ matrix.number }}
+          release: ${{ inputs.tag }}
+          release-pulls: ${{ matrix.pulls }}
+          dry-run: ${{ inputs.dry_run }}

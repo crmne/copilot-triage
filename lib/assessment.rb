@@ -598,7 +598,7 @@ class IssueAssessment # :nodoc:
       Initial issue recap permitted: #{@initial_recap_allowed}.
       Duplicate policy: #{duplicate_mode}.
       Follow-up policy: #{@config.fetch('followups', 'selective')}.
-      Triage replies since a maintainer last commented: #{replies_since_maintainer(item)} of at most #{MAX_REPLIES}.#{release_prompt}#{board_prompt}#{pull_request_prompt(item)}#{issue_prompt}#{move_prompt}
+      Triage replies since a maintainer last commented: #{replies_since_maintainer(item)} of at most #{MAX_REPLIES}.#{release_prompt}#{release_check_prompt}#{board_prompt}#{pull_request_prompt(item)}#{issue_prompt}#{move_prompt}
       Allowed labels: #{JSON.generate(allowed)}
       Configured replies: #{JSON.generate(@config.fetch('replies'))}
       These are optional templates, not a checklist of missing information to request.
@@ -656,6 +656,21 @@ class IssueAssessment # :nodoc:
       "the latest stable release, #{baseline.fetch(:version)} (#{baseline.fetch(:published_at).to_s[0, 10]})."
   rescue IOError, KeyError
     nil
+  end
+
+  # The release pass checks open issues that a just-published release may have
+  # fixed; only its notes can establish the fix.
+  def release_check_prompt
+    tag = @environment['TRIAGE_RELEASE'].to_s.strip[0, 150]
+    return if tag.empty? || @kind != 'issue'
+
+    pulls = @environment['TRIAGE_RELEASE_PULLS'].to_s.scan(/\d+/).map { |number| "##{number}" }
+    reason = if pulls.empty? then 'its notes mention this issue'
+             elsif pulls.one? then "pull request #{pulls.first} in it references this issue"
+             else "pull requests #{pulls.join(', ')} in it reference this issue"
+             end
+    "\nRelease check: this run checks the report against #{tag}, just published, because #{reason}. Read its " \
+      'notes. If they establish the fix, close_as fixed with them as the source; otherwise stay silent.'
   end
 
   def board_prompt

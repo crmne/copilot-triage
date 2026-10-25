@@ -89,6 +89,17 @@ RSpec.describe 'Report context' do
                               'the latest stable release, v0.19.0 (2026-10-03).')
   end
 
+  it 'tells the agent only in the release pass that the issue is checked against a new release' do
+    assessment.instance_variable_set(:@state, ConversationState.new(nil, 'test'))
+    expect(assessment.send(:build_prompt, item, [])).not_to include('Release check:')
+
+    environment.merge!('TRIAGE_RELEASE' => 'v0.20.1', 'TRIAGE_RELEASE_PULLS' => '370 371')
+    prompt = assessment.send(:build_prompt, item, [])
+
+    expect(prompt).to include('Release check: this run checks the report against v0.20.1, just published, ' \
+                              'because pull requests #370, #371 in it reference this issue.')
+  end
+
   it 'leaves the release baseline out when GitHub cannot be read', :releases do
     assessment.instance_variable_set(:@state, ConversationState.new(nil, 'test'))
     allow(assessment.send(:evidence_tools)).to receive(:api).and_raise(IOError, 'GitHub read failed')

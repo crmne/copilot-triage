@@ -64,20 +64,31 @@ inputs:
     description: Wait for nearby follow-up comments before assessment (0 to 60 seconds).
     default: '10'
   mode:
-    description: triage assesses the triggering report; sweep updates the project board without a model.
+    description: triage assesses the triggering report; sweep updates the project board without a model; release lists the open issues a release may have fixed.
     default: triage
+  release:
+    description: Release tag. In release mode, the release to settle; in triage mode, the release the issue is checked against.
+    default: ''
+  release-pulls:
+    description: In triage mode with release, the pull requests in the release that reference the issue, separated by spaces.
+    default: ''
   project-token:
     description: Classic token with the project scope (and repo for private repositories), used only for the board.
     default: ''
+
+outputs:
+  issues:
+    description: In release mode, the open issues to assess, as a JSON list of number and pulls.
+    value: ${{ steps.release.outputs.issues }}
 
 runs:
   using: composite
   steps:
     - name: Check the mode and engine
-      if: (inputs.mode != 'triage' && inputs.mode != 'sweep') || (inputs.engine != 'copilot' && inputs.engine != 'rubyllm')
+      if: (inputs.mode != 'triage' && inputs.mode != 'sweep' && inputs.mode != 'release') || (inputs.engine != 'copilot' && inputs.engine != 'rubyllm')
       shell: bash
       run: |
-        echo "mode must be triage or sweep, and engine copilot or rubyllm" >&2
+        echo "mode must be triage, sweep, or release, and engine copilot or rubyllm" >&2
         exit 1
     - name: Check event eligibility
       id: event
@@ -87,7 +98,7 @@ runs:
       env:
         TRIAGE_ACTION_PATH: ${{ github.action_path }}
     - uses: actions/checkout@v7
-      if: steps.event.outputs.eligible == 'true' || inputs.mode == 'sweep'
+      if: steps.event.outputs.eligible == 'true' || inputs.mode == 'sweep' || inputs.mode == 'release'
       with:
         ref: ${{ github.event.repository.default_branch }}
         persist-credentials: false
@@ -173,6 +184,8 @@ runs:
         TRIAGE_METRICS_PATH: ${{ runner.temp }}/copilot-triage-metrics.json
         TRIAGE_PROJECT_TOKEN: ${{ inputs.project-token }}
         TRIAGE_REVIEW_TOKEN: ${{ inputs.review-token }}
+        TRIAGE_RELEASE: ${{ inputs.release }}
+        TRIAGE_RELEASE_PULLS: ${{ inputs.release-pulls }}
     - name: Sweep the project board
       if: inputs.mode == 'sweep'
       shell: bash
@@ -184,3 +197,19 @@ runs:
         TRIAGE_DRY_RUN: ${{ inputs.dry-run }}
         TRIAGE_PROJECT_TOKEN: ${{ inputs.project-token }}
         TRIAGE_WORKFLOW: ${{ inputs.triage-workflow }}
+    - name: Find the issues a release may have fixed
+      id: release
+      if: inputs.mode == 'release'
+      shell: bash
+      run: |
+        if [ ! -f "$TRIAGE_CONFIG" ]; then
+          echo "Skipped: no policy file $TRIAGE_CONFIG on the default branch."
+          echo "issues=[]" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        ruby "$TRIAGE_ACTION_PATH/lib/released_fixes.rb"
+      env:
+        TRIAGE_ACTION_PATH: ${{ github.action_path }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        TRIAGE_CONFIG: ${{ inputs.config }}
+        TRIAGE_RELEASE: ${{ inputs.release }}

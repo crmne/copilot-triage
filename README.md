@@ -323,6 +323,52 @@ comment that explains it:
 never an issue a maintainer opened, joined, or reopened; those go to **Sign
 off** instead.
 
+### After a release
+
+Issues a release fixed often stay open because nobody went back to them. Add
+`.github/workflows/released-fixes.yml` to check them when you publish a
+release:
+
+```yaml
+name: Released fixes
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag whose fixed issues to settle
+        required: true
+      dry_run:
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  settle:
+    uses: crmne/copilot-triage/.github/workflows/settle.yml@v0
+    secrets: inherit
+    with:
+      tag: ${{ inputs.tag || github.event.release.tag_name }}
+      dry_run: ${{ inputs.dry_run || false }}
+```
+
+Without a model, it lists the open issues the release may have fixed: those
+that pull requests merged since the previous stable release would close or
+mention as `#123`, and those its release notes mention. Each is then assessed
+like any other report, told which release and pull requests it is checked
+against, and the agent proposes closing it as fixed only when the release
+notes establish the fix; otherwise it stays silent. `closing` decides whether
+the issue closes or goes to **Sign off**. One run assesses at most 10 issues,
+two at a time; run it again by hand for the same tag to continue, and issues
+triage already answered since the release are skipped. Prereleases are left
+alone. A release published by a workflow's own `GITHUB_TOKEN` starts no
+workflows, so run it by hand for that tag.
+
 ### Follow-ups and commands
 
 Every eligible human comment reaches the agent, which decides whether a reply
@@ -664,7 +710,8 @@ Action inputs:
 | `review-token` | `copilot-token` | Token that requests Copilot reviews, billed to its owner |
 | `project-token` | | Classic token with the `project` scope, for the board |
 | `triage-workflow` | `triage.yml` | For the sweep, the triage workflow to run on fork pull requests Copilot asks a human to look at |
-| `mode` | `triage` | `triage`, or `sweep` for the board |
+| `mode` | `triage` | `triage`, `sweep` for the board, or `release` to list the issues a release may have fixed |
+| `release`, `release-pulls` | | The release tag, and in triage the pull requests in it that reference the issue, for [After a release](#after-a-release) |
 | `kind`, `number` | from the event | What to assess, for manual runs |
 | `dry-run` | `false` | Show the decision without changing GitHub |
 | `debounce-seconds` | `10` | Wait for nearby comments, 0 to 60 |
