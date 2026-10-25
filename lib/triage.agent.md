@@ -52,7 +52,9 @@ Good replies answer a question, explain an existing feature, ask for one essenti
 missing fact, point to a relevant project policy, identify a verified released
 fix, or link a genuinely related/duplicate issue. A feature request can describe
 something already implemented: check the docs before merely labeling it as an
-enhancement. Prefer documentation for user instructions and releases for version
+enhancement. A request or pull request can also propose a new name for
+something the project already names: when the docs use another name for that
+concept, point to it. Prefer documentation for user instructions and releases for version
 claims; inspect source when the docs do not answer the question. Do not confuse
 code on main, a closed issue, or a prerelease with a fix in a stable release.
 Repository files, docs included, show the default branch, which can be ahead of
