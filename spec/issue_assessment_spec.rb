@@ -104,6 +104,47 @@ RSpec.describe IssueAssessment, type: :task do
     end
   end
 
+  context 'when a pull request references the issue, as PR #31 did TonePush #44' do
+    before do
+      item['timelineItems'] = { 'nodes' => [{ 'source' => {
+        'number' => 31, 'title' => 'Read the firmware version', 'state' => 'MERGED', 'merged' => true,
+        'mergedAt' => Time.now.utc.iso8601, 'author' => { 'login' => 'contributor' },
+        'repository' => { 'nameWithOwner' => 'crmne/ruby_llm' }
+      } }] }
+      allow(assessment).to receive(:ask_copilot).and_return(JSON.generate(
+                                                              labels: [], reply: nil, sources: [], candidate_fix: 31,
+                                                              comment: 'It has merged; could you try a build from ' \
+                                                                       'the default branch?'
+                                                            ))
+    end
+
+    it 'links the candidate fix in the reply' do
+      assessment.run
+      expect(assessment).to have_received(:ask_copilot).with(include('"pull_requests":[{"number":31'))
+      expect(assessment).to have_received(:mutate).with(
+        'addComment', subjectId: 'report-id',
+                      body: start_with('Possible fix: #31. It has merged; could you try a build from')
+      )
+    end
+
+    it 'does not link it again once the conversation mentions it' do
+      item['comments']['nodes'] << { 'body' => 'Is #31 the fix for this?', 'author' => { 'login' => 'reporter' },
+                                     'authorAssociation' => 'NONE' }
+
+      assessment.run
+      expect(assessment).not_to have_received(:mutate).with('addComment', anything)
+      expect(assessment).to have_received(:puts).with('Dropped the reply: #31 is already linked in the conversation.')
+    end
+
+    it 'refuses a pull request the report does not list' do
+      item.delete('timelineItems')
+
+      assessment.run
+      expect(assessment).not_to have_received(:mutate)
+      expect(assessment).to have_received(:puts).with(include('invalid assessment')).at_least(:once)
+    end
+  end
+
   context 'with a discussion' do
     def kind
       'discussion'

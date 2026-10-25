@@ -73,7 +73,8 @@ RSpec.describe IssueAssessment, 'closing issues' do
     tools = lambda do
       TriageTools.new(**assessment.send(:tools_settings, Dir.pwd), report: assessment.send(:report_facts, item))
     end
-    submitted = decision.merge(related_issue: nil, relationship: nil, mute: false, remove_labels: [])
+    submitted = decision.merge(related_issue: nil, relationship: nil, mute: false, remove_labels: [],
+                               candidate_fix: nil)
                         .transform_keys(&:to_s)
     refused = tools.call.call('submit_decision', submitted)
     expect(refused[:content].first[:text]).to include('close_as resolved needs the reporter')

@@ -4,6 +4,7 @@ require 'json'
 require 'digest'
 require 'fileutils'
 require 'open3'
+require 'time'
 require 'tmpdir'
 require 'yaml'
 require_relative 'board_rules'
@@ -79,6 +80,10 @@ class IssueAssessment # :nodoc:
   # Follow-up replies stop after this many since a maintainer last commented,
   # so a reporter never gets a chain of questions from the bot alone.
   MAX_REPLIES = 2
+  # A merged pull request stays a candidate fix for this many days.
+  RECENT_MERGE_DAYS = 90
+  # What the report shows of each pull request that references an issue.
+  LINKED_PULL_REQUEST = 'number title state merged mergedAt author { login } repository { nameWithOwner }'
 
   def initialize(environment = ENV)
     @environment = environment
@@ -392,6 +397,7 @@ class IssueAssessment # :nodoc:
       decision['reply'] = nil
       decision['comment'] = nil
       decision['related_issue'] = nil
+      decision['candidate_fix'] = nil if decision.key?('candidate_fix')
     end
     drop_reply(decision, 'it was addressed to the maintainer') if decision['comment']&.match?(MAINTAINER_DIRECTED)
     if comment_event? && replies_since_maintainer(item) >= MAX_REPLIES
@@ -400,6 +406,9 @@ class IssueAssessment # :nodoc:
       decision['next_move'] = 'decide' if board? && decision['next_move'] == 'theirs'
     end
     drop_known_link(item, decision) if decision['related_issue']
+    drop_known_link(item, decision, 'candidate_fix') if decision['candidate_fix']
+    decision['comment'] = "Possible fix: ##{decision['candidate_fix']}. #{decision['comment']}" if
+      decision['candidate_fix']
     if decision['related_issue']
       @related_snapshot = @tool_ledger.fetch('evidence').fetch("issue:#{decision['related_issue']}").fetch('snapshot')
       if decision['relationship'] == 'duplicate' && TriageTools.duplicate_conflict(@related_snapshot, @report_facts)
@@ -421,6 +430,7 @@ class IssueAssessment # :nodoc:
   def report_facts(item)
     { 'author' => item.dig('author', 'login'), 'latest_commenter' => latest_commenter(item),
       'labels' => item.dig('labels', 'nodes').to_a.map { |label| label.fetch('name') },
+      'pull_requests' => linked_pull_requests(item).map { |pull| pull.fetch('number') },
       'recurring' => item['stateReason'] == 'REOPENED' && bot?(item['author']) && report_bot?(item['author']) }
   end
 
@@ -433,26 +443,29 @@ class IssueAssessment # :nodoc:
   def drop_reply(decision, reason)
     report("Dropped the reply: #{reason}.")
     decision.merge!('reply' => nil, 'comment' => nil, 'sources' => [], 'related_issue' => nil, 'relationship' => nil)
+    decision['candidate_fix'] = nil if decision.key?('candidate_fix')
   end
 
   # A link the conversation already has tells nobody anything new: one the
   # report or a comment gives, the bot's own earlier link, or the issue a pull
   # request closes. A duplicate the reporter only suspected is still worth
-  # confirming. Without cited facts, the comment only explained the link.
-  def drop_known_link(item, decision)
-    number = decision['related_issue']
+  # confirming. Without cited facts, the comment only explained the link. A
+  # candidate fix anyone already mentioned counts as linked too.
+  def drop_known_link(item, decision, field = 'related_issue')
+    number = decision[field]
     link = %r{(?<![\w&])\##{number}(?!\d)|/#{Regexp.escape(@repository)}/(?:issues|pull|discussions)/#{number}(?!\d)}i
     comments = item.fetch('comments').fetch('nodes') + (@recovered_comments || [])
     ours, theirs = comments.partition { |comment| bot?(comment['author']) }.map { |part| part.map { _1['body'] } }
     ours += @state.data['replies']
     theirs << item['body'].to_s
     closed = pull_request? && item['body'].to_s.match?(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+(?:#{link})/i)
-    return unless closed || ours.any? { _1.to_s.match?(link) } ||
-                  (decision['relationship'] == 'related' && theirs.any? { _1.to_s.match?(link) })
+    mentioned = field == 'candidate_fix' || decision['relationship'] == 'related'
+    return unless closed || ours.any? { _1.to_s.match?(link) } || (mentioned && theirs.any? { _1.to_s.match?(link) })
     return drop_reply(decision, "##{number} is already linked in the conversation") if decision['sources'].empty?
 
     report("Dropped the link to ##{number}: the conversation already has it.")
-    decision.merge!('related_issue' => nil, 'relationship' => nil)
+    decision[field] = nil
+    decision['relationship'] = nil if field == 'related_issue'
   end
 
   def initial_recap_allowed?(item)
@@ -552,6 +565,7 @@ class IssueAssessment # :nodoc:
             #{'stateReason' unless pull_request?}
             #{'assignees { totalCount }' unless @kind == 'discussion'}
             #{pull_request_fields if pull_request?}
+            #{linked_pull_request_fields if @kind == 'issue'}
             comments(last: 100) { pageInfo { hasPreviousPage startCursor } nodes { #{comment_fields} } }
           }
         }
@@ -570,6 +584,33 @@ class IssueAssessment # :nodoc:
     "isDraft mergeable baseRefName reviewDecision changedFiles additions deletions #{CopilotReview::FIELDS} " \
       "#{BotReviews::FIELDS} " \
       'files(first: 100) { nodes { path additions deletions changeType } }'
+  end
+
+  # Pull requests that reference an issue: those that close it, and those
+  # whose text mentions it.
+  def linked_pull_request_fields
+    "closedByPullRequestsReferences(first: 10, includeClosedPrs: true) { nodes { #{LINKED_PULL_REQUEST} } } " \
+      'timelineItems(itemTypes: [CROSS_REFERENCED_EVENT], first: 10) { nodes { ... on CrossReferencedEvent { ' \
+      "source { ... on PullRequest { #{LINKED_PULL_REQUEST} } } } } }"
+  end
+
+  # This repository's pull requests that reference the issue, open or merged
+  # recently: candidate fixes the reporter may not know about.
+  def linked_pull_requests(item)
+    closing = item.dig('closedByPullRequestsReferences', 'nodes').to_a
+    mentions = item.dig('timelineItems', 'nodes').to_a.filter_map { |event| event['source'] }
+    (closing + mentions).select { |pull| linkable_pull_request?(pull) }.uniq { |pull| pull['number'] }.map do |pull|
+      pull.slice('number', 'title', 'state', 'merged').merge('author' => pull.dig('author', 'login'))
+    end
+  end
+
+  def linkable_pull_request?(pull)
+    return false unless pull['number'] && pull.dig('repository', 'nameWithOwner').to_s.casecmp?(@repository)
+    return pull['state'] == 'OPEN' unless pull['merged']
+
+    Time.now - Time.iso8601(pull['mergedAt'].to_s) <= RECENT_MERGE_DAYS * 86_400
+  rescue ArgumentError
+    false
   end
 
   def comment_fields
@@ -661,7 +702,7 @@ class IssueAssessment # :nodoc:
   def issue_prompt
     return unless @kind == 'issue'
 
-    "\nIssue: also submit close_as and remove_labels. " \
+    "\nIssue: also submit close_as, remove_labels, and candidate_fix. " \
       "Closing is #{closing_mode == 'auto' ? 'automatic' : 'proposed to the maintainer'}."
   end
 
@@ -703,6 +744,8 @@ class IssueAssessment # :nodoc:
     context['body'] = excerpt(compact_padding(context.fetch('body')), LONG_TEXT)
     current = item.dig('labels', 'nodes').to_a.map { |label| label.fetch('name') }
     context['labels'] = current if current.any?
+    pulls = @kind == 'issue' ? linked_pull_requests(item) : []
+    context['pull_requests'] = pulls if pulls.any?
     comments = context.delete('comments').fetch('nodes').map { |comment| comment_context(comment) }
     context['latest_comment'] = comments.pop
     context['earlier_comments'] = comments
@@ -1226,8 +1269,7 @@ class IssueAssessment # :nodoc:
     keys += TriageTools::BOARD_PROPERTIES.keys.map(&:to_s) if board?
     keys += TriageTools::PULL_REQUEST_PROPERTIES.keys.map(&:to_s) if pull_request?
     keys += TriageTools::MOVE_PROPERTIES.keys.map(&:to_s) if move?
-    keys += [*TriageTools::CLOSE_PROPERTIES.keys, *TriageTools::REMOVE_LABEL_PROPERTIES.keys].map(&:to_s) if
-      @kind == 'issue'
+    keys += TriageTools::ISSUE_PROPERTIES.keys.map(&:to_s) if @kind == 'issue'
     raise ArgumentError, 'the decision has unknown fields' unless decision.is_a?(Hash) && (decision.keys - keys).empty?
     raise ArgumentError, 'the decision lacks labels or reply' unless (%w[labels reply] - decision.keys).empty?
 
@@ -1246,6 +1288,7 @@ class IssueAssessment # :nodoc:
 
     validate_labels(decision['labels'], allowed, moving: decision['move_to_issue'] == true)
     validate_removal(decision, allowed)
+    validate_candidate_fix(decision) if decision['candidate_fix']
     if TriageTools.label_conflict(decision['labels'], @report_facts.fetch('labels') - decision['remove_labels'])
       raise ArgumentError, 'the labels contradict each other or add a second type'
     end
@@ -1298,6 +1341,15 @@ class IssueAssessment # :nodoc:
            !removed.intersect?(decision['labels']) && @report_facts['latest_commenter'] == @report_facts['author']
       raise ArgumentError, 'remove_labels names labels the issue lacks, or the reporter did not speak last'
     end
+  end
+
+  # A candidate fix is one of the pull requests the report lists, explained
+  # in the comment, and never beside a related issue.
+  def validate_candidate_fix(decision)
+    return if @report_facts.fetch('pull_requests').include?(decision['candidate_fix']) && decision['comment'] &&
+              !decision['related_issue']
+
+    raise ArgumentError, 'candidate_fix is not a listed pull request, lacks a comment, or has a related issue'
   end
 
   def validate_pull_request(decision)

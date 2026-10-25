@@ -383,7 +383,7 @@ RSpec.describe TriageTools do
     let(:decision) do
       { 'labels' => [], 'reply' => nil, 'comment' => 'Closing, since this works now.', 'sources' => [],
         'related_issue' => nil, 'relationship' => nil, 'mute' => false, 'close_as' => 'resolved',
-        'remove_labels' => [] }
+        'remove_labels' => [], 'candidate_fix' => nil }
     end
 
     it 'closes only with an explanation, and on the evidence that establishes it' do
@@ -413,6 +413,19 @@ RSpec.describe TriageTools do
       report['latest_commenter'] = 'reporter'
       expect(message.call('labels' => ['bug'])).to include('accepted')
       expect(tools.ledger['decision']).to include('remove_labels' => ['question'], 'labels' => ['bug'])
+    end
+
+    it 'names a candidate fix only from the pull requests the report lists, with a comment' do
+      tools = described_class.new(root: Dir.pwd, repository: 'owner/project', config: config, issue: true,
+                                  report: { 'pull_requests' => [31] })
+      linked = decision.merge('comment' => 'This changes how the version is read.', 'close_as' => nil,
+                              'candidate_fix' => 31)
+      message = ->(changes) { tools.call('submit_decision', linked.merge(changes))[:content].first[:text] }
+
+      expect(message.call('candidate_fix' => 32)).to include("report's pull_requests")
+      expect(message.call('comment' => nil)).to include('Explain in comment how the pull request')
+      expect(message.call('related_issue' => 12, 'relationship' => 'related')).to include('not both')
+      expect(message.call({})).to include('accepted')
     end
   end
 

@@ -90,6 +90,11 @@ class TriageTools
   # Extra submit_decision argument for an issue: labels it has that come off,
   # such as needs-info once the reporter supplied what it asked for.
   REMOVE_LABEL_PROPERTIES = { remove_labels: { type: 'array', items: { type: 'string' }, maxItems: 2 } }.freeze
+  # Extra submit_decision argument for an issue: a pull request from the
+  # report's pull_requests that may fix it.
+  CANDIDATE_FIX_PROPERTIES = { candidate_fix: { type: %w[integer null], minimum: 1 } }.freeze
+  # Every extra submit_decision argument for an issue.
+  ISSUE_PROPERTIES = CLOSE_PROPERTIES.merge(REMOVE_LABEL_PROPERTIES, CANDIDATE_FIX_PROPERTIES).freeze
   DIFF_HINT = ' For the pull request being assessed, diff:path reads the patch of a changed file.'
   # A pull request reply that quotes code, points at a line, or discusses an
   # identifier, such as drag_delta, reviews code, which belongs to the
@@ -103,7 +108,7 @@ class TriageTools
     extra.merge!(BOARD_PROPERTIES) if board
     extra.merge!(PULL_REQUEST_PROPERTIES) if pull_request
     extra.merge!(MOVE_PROPERTIES) if move
-    extra.merge!(CLOSE_PROPERTIES, REMOVE_LABEL_PROPERTIES) if issue
+    extra.merge!(ISSUE_PROPERTIES) if issue
     submit = SCHEMAS.fetch('submit_decision')
     schemas = SCHEMAS.merge('submit_decision' => submit.merge(
       properties: submit.fetch(:properties).merge(extra), required: submit.fetch(:required) + extra.keys.map(&:to_s)
@@ -370,6 +375,7 @@ class TriageTools
     end
 
     close_evidence!(decision) if decision[:close_as]
+    candidate_fix!(decision) if decision[:candidate_fix]
     release_checked!(sources)
 
     if decision[:related_issue]
@@ -414,6 +420,18 @@ class TriageTools
 
     raise ArgumentError, 'Remove a label only when the reporter, in the latest comment, supplied what it asked ' \
                          'for. Use remove_labels [].'
+  end
+
+  # Pull requests are not issue evidence, so a candidate fix comes from the
+  # report's own list, which the wrapper links like a related issue.
+  def candidate_fix!(decision)
+    unless @report.fetch('pull_requests', []).include?(decision[:candidate_fix])
+      raise ArgumentError, "candidate_fix must be a number from the report's pull_requests, or null."
+    end
+    raise ArgumentError, 'Link a related issue or a candidate fix, not both.' if decision[:related_issue]
+    return if decision[:comment]
+
+    raise ArgumentError, 'Explain in comment how the pull request may fix this.'
   end
 
   # A closure must rest on evidence the agent read: release notes for a fix,

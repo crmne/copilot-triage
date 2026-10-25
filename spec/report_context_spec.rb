@@ -100,6 +100,37 @@ RSpec.describe 'Report context' do
                               'because pull requests #370, #371 in it reference this issue.')
   end
 
+  it "lists this repository's open and recently merged pull requests that reference the issue" do
+    pull = lambda do |number, state, merged_at: nil, repository: 'crmne/example'|
+      { 'number' => number, 'title' => "Fix #{number}", 'state' => state, 'merged' => !merged_at.nil?,
+        'mergedAt' => merged_at, 'author' => { 'login' => 'contributor' },
+        'repository' => { 'nameWithOwner' => repository } }
+    end
+    item['closedByPullRequestsReferences'] = { 'nodes' => [pull.call(31, 'OPEN')] }
+    item['timelineItems'] = { 'nodes' => [
+      { 'source' => pull.call(31, 'OPEN') }, { 'source' => { 'number' => 7, 'title' => 'An issue' } },
+      { 'source' => pull.call(40, 'MERGED', merged_at: (Time.now - 86_400).utc.iso8601) },
+      { 'source' => pull.call(41, 'MERGED', merged_at: '2020-01-01T00:00:00Z') },
+      { 'source' => pull.call(42, 'CLOSED') }, { 'source' => pull.call(43, 'OPEN', repository: 'other/fork') }, {}
+    ] }
+
+    context = JSON.parse(assessment.send(:report_context, item))
+
+    expect(context['pull_requests']).to eq([
+                                             { 'number' => 31, 'title' => 'Fix 31', 'state' => 'OPEN',
+                                               'merged' => false, 'author' => 'contributor' },
+                                             { 'number' => 40, 'title' => 'Fix 40', 'state' => 'MERGED',
+                                               'merged' => true, 'author' => 'contributor' }
+                                           ])
+    expect(assessment.send(:report_facts, item)['pull_requests']).to eq([31, 40])
+    expect(assessment.send(:linked_pull_request_fields)).to include('closedByPullRequestsReferences(first: 10',
+                                                                    'CROSS_REFERENCED_EVENT')
+  end
+
+  it 'lists no pull requests when none reference the issue' do
+    expect(JSON.parse(assessment.send(:report_context, item))).not_to have_key('pull_requests')
+  end
+
   it 'leaves the release baseline out when GitHub cannot be read', :releases do
     assessment.instance_variable_set(:@state, ConversationState.new(nil, 'test'))
     allow(assessment.send(:evidence_tools)).to receive(:api).and_raise(IOError, 'GitHub read failed')

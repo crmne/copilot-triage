@@ -302,6 +302,17 @@ pull request closes ("Fixes #42"). A duplicate the reporter only suspected is
 still confirmed. When the comment had nothing else to say, the decision is
 silent. The agent cannot cite the report itself as evidence.
 
+An issue's report also lists the pull requests in your repository that
+reference it, open or merged in the last 90 days, read from GitHub's closing
+references and cross-references (up to 10 of each). When one may fix the
+issue and nobody has linked it in the conversation, the agent names it:
+
+> Possible fix: #31. It has merged; could you try a build from the default branch and say whether the import works?
+
+When the pull request has merged and the reporter has not tried it, the reply
+asks them to retry with a build from the default branch. A pull request the
+conversation already mentions is not linked again.
+
 ### Closing finished issues
 
 ```yaml

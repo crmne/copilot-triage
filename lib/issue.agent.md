@@ -29,6 +29,19 @@ label in remove_labels. When it supplies only part, keep the label and say in
 comment what is still missing. Otherwise submit remove_labels as []. Never
 remove a label for any other reason.
 
+## Pull requests for this issue
+
+The report's pull_requests lists this repository's open pull requests, and
+recently merged ones, that reference the issue. When one plausibly fixes the
+problem and the conversation does not already mention it, set candidate_fix to
+its number and say briefly in comment what it changes for the reporter; the
+wrapper adds the link, so do not repeat the number. When that pull request has
+merged and the reporter has not said they tried it, ask them in comment to
+retry with a build from the default branch, which includes it; unless
+search_changes shows a release with it, do not say a release has it. Otherwise
+leave candidate_fix null. related_issue is for issues only, never a pull
+request, and a decision sets at most one of the two.
+
 An issue whose body starts with "Moved from" a discussion is that discussion's
 first assessment as an issue: answer any question it also asks, such as whether
 it is planned or possible, when the evidence answers it.
