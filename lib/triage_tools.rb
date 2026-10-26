@@ -93,6 +93,9 @@ class TriageTools
   # Extra submit_decision argument for an issue: a pull request from the
   # report's pull_requests that may fix it.
   CANDIDATE_FIX_PROPERTIES = { candidate_fix: { type: %w[integer null], minimum: 1 } }.freeze
+  # Extra submit_decision argument for a newly opened issue that may get a
+  # recap: whether the comment is one, so the publisher labels it.
+  RECAP_PROPERTIES = { recap: { type: 'boolean' } }.freeze
   # Every extra submit_decision argument for an issue.
   ISSUE_PROPERTIES = CLOSE_PROPERTIES.merge(REMOVE_LABEL_PROPERTIES, CANDIDATE_FIX_PROPERTIES).freeze
   DIFF_HINT = ' For the pull request being assessed, diff:path reads the patch of a changed file.'
@@ -103,12 +106,13 @@ class TriageTools
 
   attr_reader :ledger
 
-  def self.schemas(board: false, pull_request: false, move: false, issue: false)
+  def self.schemas(board: false, pull_request: false, move: false, issue: false, recap: false)
     extra = {}
     extra.merge!(BOARD_PROPERTIES) if board
     extra.merge!(PULL_REQUEST_PROPERTIES) if pull_request
     extra.merge!(MOVE_PROPERTIES) if move
     extra.merge!(ISSUE_PROPERTIES) if issue
+    extra.merge!(RECAP_PROPERTIES) if recap
     submit = SCHEMAS.fetch('submit_decision')
     schemas = SCHEMAS.merge('submit_decision' => submit.merge(
       properties: submit.fetch(:properties).merge(extra), required: submit.fetch(:required) + extra.keys.map(&:to_s)
@@ -119,8 +123,8 @@ class TriageTools
     schemas.merge('read_evidence' => read.merge(description: read.fetch(:description) + DIFF_HINT))
   end
 
-  def self.definitions(board: false, pull_request: false, move: false, issue: false)
-    schemas(board:, pull_request:, move:, issue:).map do |name, schema|
+  def self.definitions(board: false, pull_request: false, move: false, issue: false, recap: false)
+    schemas(board:, pull_request:, move:, issue:, recap:).map do |name, schema|
       { name: name, description: schema.fetch(:description),
         inputSchema: { type: 'object', properties: schema.fetch(:properties),
                        required: schema.fetch(:required), additionalProperties: false },
@@ -167,13 +171,14 @@ class TriageTools
 
   # report describes the item under assessment, for checks on the decision.
   def initialize(root:, repository:, config:, ledger_path: nil, token: nil, board: false, pull_request: nil,
-                 move: false, issue: false, report: nil, number: nil)
+                 move: false, issue: false, report: nil, number: nil, recap: false)
     @root = File.realpath(root)
     @report = report || {}
     @board = board
     @pull_request = pull_request
     @move = move
     @issue = issue
+    @recap = recap
     @number = number
     @repository = repository
     raise ArgumentError, 'Invalid repository' unless repository.match?(%r{\A[\w.-]+/[\w.-]+\z})
@@ -190,7 +195,7 @@ class TriageTools
   end
 
   def schema_options
-    { board: @board, pull_request: !@pull_request.nil?, move: @move, issue: @issue }
+    { board: @board, pull_request: !@pull_request.nil?, move: @move, issue: @issue, recap: @recap }
   end
 
   def call(name, arguments)

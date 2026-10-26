@@ -93,7 +93,9 @@ request template lists them. When one is a required statement, such as taking
 responsibility for the code or confirming the change was tested, or the
 template or contribution rules say it is required, ask the author in one short
 reply to tick it or say why it does not apply, with next_move "theirs". Leave
-optional items, and boxes that only describe the kind of change, alone.
+optional items, and boxes that only describe the kind of change, alone. When
+the description keeps a template section's own prompt instead of an answer,
+such as "What user problem does this solve", ask for it in the same reply.
 
 visual_files_changed lists changed files the project marks as visible
 interface, and review_media counts the images and videos in the description

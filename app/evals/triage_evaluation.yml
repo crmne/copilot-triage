@@ -56,12 +56,14 @@ cases:
       related_issue:
       relationship:
       mute: false
+      recap: true
     tools: []
   expected_output:
     action: reply
     contains:
     - 90%
     - patched
+    - 'recap:'
     max_calls: 8
     min_calls: 1
 - name: followup-new-evidence-no-recap
@@ -226,6 +228,7 @@ cases:
       related_issue:
       relationship:
       mute: false
+      recap: false
     tools: []
   expected_output:
     action: silent
@@ -271,6 +274,7 @@ cases:
       related_issue:
       relationship:
       mute: false
+      recap: false
     tools: []
   expected_output:
     action: silent
@@ -455,6 +459,93 @@ cases:
     max_calls: 8
     min_calls: 1
     min_evidence_reads: 1
+- name: zapfast-631-recap-of-options-for-maintainer
+  inputs:
+    title: Phone numbers outside North America are grouped approximately
+    body: |
+      The phone formatter gives every country code except Brazil the same
+      grouping: threes, with the last four together. Its own comment calls it
+      an approximation. It matches North America, but for many countries it
+      produces a form nobody there writes, and sometimes splits an area code:
+      a German mobile shows as +49 151 123 456 78 instead of +49 1511 2345678,
+      and a London number as +44 207 123 4567 instead of +44 20 7123 4567.
+
+      I tried the phonenumber crate. Its output is right, but its database
+      compiles every pattern of every region on first use: the first parse
+      took about 1.5 s and resident memory grew by about 500 MB, on the UI
+      thread the first time a number is drawn.
+
+      Possible ways forward, for you to choose:
+
+      1. Keep per-country rules for the countries users ask for, as with Brazil.
+      2. Ask phonenumber upstream to compile each region's patterns on demand.
+      3. Evaluate another library that claims about 5 ms to initialise but
+         brings a larger dependency tree.
+
+      I can work on whichever you prefer.
+    decision:
+      labels:
+      - enhancement
+      reply:
+      comment: Phone numbers outside North America use one approximate grouping that
+        can split area codes. The phonenumber crate formats them correctly but took
+        1.5 s and 500 MB on first use, so the reporter offers three options for the
+        maintainer to choose between and will implement the chosen one.
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+      recap: true
+    tools: []
+  expected_output:
+    action: reply
+    contains:
+    - 'recap:'
+    - 500 mb
+    max_calls: 8
+    min_calls: 1
+- name: spotifast-1069-short-report-fixed-on-main
+  inputs:
+    title: Compilations are missing from artists' pages
+    body: On an artist's page there are albums, EPs and singles, but compilations
+      don't show up. Compilations should also appear on that page.
+    release:
+      id: 1
+      tag_name: v1.2.1
+      name: Windows image fix
+      body: Fixed all inline images failing on Windows.
+      html_url: https://github.com/example/project/releases/tag/v1.2.1
+      published_at: '2026-09-16T12:00:00Z'
+      draft: false
+      prerelease: false
+    unreleased:
+    - Fix a typo in the guide
+    - Show compilations on artist pages
+    decision:
+      labels:
+      - enhancement
+      reply:
+      comment: Compilations on artist pages are on the default branch but not in a
+        release yet, so v1.2.1 does not show them.
+      sources: []
+      related_issue:
+      relationship:
+      mute: false
+    tools:
+    - name: search_changes
+      arguments:
+        query: compilation
+  expected_output:
+    action: reply
+    contains_any:
+    - not in
+    - not yet
+    - not included
+    - not available
+    - not part of
+    - unreleased
+    max_calls: 8
+    min_calls: 1
 - name: unreleased-feature
   inputs:
     title: Support voice calls

@@ -251,7 +251,9 @@ EVAL_LIVE=true TRIAGE_ENGINE=rubyllm TRIAGE_PROVIDER=openrouter TRIAGE_MODEL=ope
 On a newly opened issue of at least 100 words, not counting logs or code, the
 agent writes one concise recap when it has no better answer: the problem,
 relevant environment, and key evidence, so you need not read the whole report.
-A short report needs only labels. After that, replies must add new help:
+It starts with "Recap:", so nobody mistakes it for a question or an answer.
+A short report needs only labels, unless triage can help, for example when
+the request is already on the default branch but not yet released. After that, replies must add new help:
 
 > Forwarding is already available: right-click the message or picture, choose Forward, then select the destination chat.
 

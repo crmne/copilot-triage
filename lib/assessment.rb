@@ -72,10 +72,12 @@ class IssueAssessment # :nodoc:
   NO_DECISION = 'the model finished without calling submit_decision'
   # Replies are for the reporter. A comment that talks to the maintainer or
   # grades the report for them is dropped, and the decision stays silent.
-  MAINTAINER_DIRECTED = /\b(?>maintainers?(?:['’]s?)?)(?![-\s](?:explicit\s|explicitly\s)?approv|-)|
-                         \bplease\s(?:investigate|decide|prioriti[sz]e|triage)\b|\b(?:product|design)\sdecision\b|
-                         \bfor\sprioriti[sz]ation\b|\bmarking\s(?:it|this)\s(?:for|as)\b|\A\W*confirmed\b|
-                         \bconfirmed\s(?:as\s)?(?:an?\s)?(?:[\w-]+\s){0,3}(?:bug|defect|regression)\b/ix
+  # A recap may name the maintainer, since it retells what the reporter asks.
+  MAINTAINER_NAMED = /\b(?>maintainers?(?:['’]s?)?)(?![-\s](?:explicit\s|explicitly\s)?approv|-)/i
+  MAINTAINER_TASKS = /\bplease\s(?:investigate|decide|prioriti[sz]e|triage)\b|\b(?:product|design)\sdecision\b|
+                      \bfor\sprioriti[sz]ation\b|\bmarking\s(?:it|this)\s(?:for|as)\b|\A\W*confirmed\b|
+                      \bconfirmed\s(?:as\s)?(?:an?\s)?(?:[\w-]+\s){0,3}(?:bug|defect|regression)\b/ix
+  MAINTAINER_DIRECTED = Regexp.union(MAINTAINER_NAMED, MAINTAINER_TASKS)
   # A newly opened issue of at least this many words gets a recap, so the
   # maintainer need not read it all. Logs and code do not count.
   RECAP_MIN_WORDS = 100
@@ -401,7 +403,12 @@ class IssueAssessment # :nodoc:
       decision['related_issue'] = nil
       decision['candidate_fix'] = nil if decision.key?('candidate_fix')
     end
-    drop_reply(decision, 'it was addressed to the maintainer') if decision['comment']&.match?(MAINTAINER_DIRECTED)
+    recap = decision.delete('recap') && @initial_recap_allowed && decision['comment'] &&
+            !decision['related_issue'] && !decision['candidate_fix']
+    directed = recap ? MAINTAINER_TASKS : MAINTAINER_DIRECTED
+    drop_reply(decision, 'it was addressed to the maintainer') if decision['comment']&.match?(directed)
+    # Readers tell a recap from a question or an answer at a glance.
+    decision['comment'] = "Recap: #{decision['comment']}" if recap && decision['comment']
     if comment_event? && replies_since_maintainer(item) >= MAX_REPLIES
       drop_reply(decision, "triage replied #{MAX_REPLIES} times since a maintainer last commented") if
         reply_body(decision)
@@ -1031,7 +1038,7 @@ class IssueAssessment # :nodoc:
     { root: Dir.pwd, repository: @repository, config: config,
       ledger_path: File.join(directory, 'evidence.json'), token: @environment['GH_TOKEN'], board: board?,
       pull_request: (@number if pull_request?), move: move?, issue: @kind == 'issue', report: @report_facts,
-      number: @number }
+      recap: @initial_recap_allowed, number: @number }
   end
 
   def tools_command(settings_path)
@@ -1282,11 +1289,13 @@ class IssueAssessment # :nodoc:
     keys += TriageTools::PULL_REQUEST_PROPERTIES.keys.map(&:to_s) if pull_request?
     keys += TriageTools::MOVE_PROPERTIES.keys.map(&:to_s) if move?
     keys += TriageTools::ISSUE_PROPERTIES.keys.map(&:to_s) if @kind == 'issue'
+    keys += TriageTools::RECAP_PROPERTIES.keys.map(&:to_s) if @initial_recap_allowed
     raise ArgumentError, 'the decision has unknown fields' unless decision.is_a?(Hash) && (decision.keys - keys).empty?
     raise ArgumentError, 'the decision lacks labels or reply' unless (%w[labels reply] - decision.keys).empty?
 
     validate_board(decision) if board?
     validate_pull_request(decision) if pull_request?
+    raise ArgumentError, 'recap is not a boolean' unless [nil, true, false].include?(decision['recap'])
     raise ArgumentError, 'move_to_issue is not a boolean' if move? && ![true, false].include?(decision['move_to_issue'])
     if decision['move_to_issue'] && (decision['related_issue'] || decision['mute'])
       raise ArgumentError, 'a move also names a related issue or mutes'
@@ -1382,7 +1391,8 @@ class IssueAssessment # :nodoc:
   end
 
   def schema_options
-    { board: board?, pull_request: pull_request?, move: move?, issue: @kind == 'issue' }
+    { board: board?, pull_request: pull_request?, move: move?, issue: @kind == 'issue',
+      recap: @initial_recap_allowed }
   end
 
   # Only a newly assessed discussion can move, never a comment thread.

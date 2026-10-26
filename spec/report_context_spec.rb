@@ -202,6 +202,59 @@ RSpec.describe 'Report context' do
                                                                     body: start_with(comment))
   end
 
+  context 'with a recap' do
+    before do
+      environment.merge!('GITHUB_EVENT_NAME' => 'issues', 'GITHUB_EVENT_PATH' => 'event.json')
+      File.write('event.json', JSON.generate(action: 'opened'))
+      item['body'] = long_report
+    end
+
+    def recap(comment, recap: true)
+      allow(assessment).to receive(:ask_copilot).and_return(
+        JSON.generate(labels: [], reply: nil, sources: [], comment: comment, recap: recap)
+      )
+      assessment.run
+    end
+
+    it 'labels it' do
+      recap('Connected sessions idle at 90% CPU on Arch Linux.')
+
+      expect(assessment).to have_received(:mutate).with(
+        'addComment', subjectId: 'report-id', body: start_with('Recap: Connected sessions idle at 90% CPU')
+      )
+    end
+
+    it 'keeps one that says what the reporter asks the maintainer' do
+      recap('The reporter offers three ways forward for the maintainer to choose between.')
+
+      expect(assessment).to have_received(:mutate).with('addComment', subjectId: 'report-id',
+                                                                      body: start_with('Recap: The reporter offers'))
+    end
+
+    it 'still drops one that grades the report' do
+      recap('Confirmed bug: connected sessions idle at 90% CPU.')
+
+      expect(assessment).not_to have_received(:mutate).with('addComment', anything)
+    end
+
+    it 'labels no other comment' do
+      recap('Does signing out bring the CPU back down?', recap: false)
+
+      expect(assessment).to have_received(:mutate).with('addComment', subjectId: 'report-id',
+                                                                      body: start_with('Does signing out'))
+    end
+  end
+
+  it 'refuses a recap flag when no recap is permitted' do
+    allow(assessment).to receive(:ask_copilot).and_return(
+      JSON.generate(labels: [], reply: nil, sources: [], comment: 'Short recap.', recap: true)
+    )
+
+    assessment.run
+
+    expect(assessment).not_to have_received(:mutate).with('addComment', anything)
+  end
+
   it 'allows a recap of a long report written in a template' do
     environment.merge!('GITHUB_EVENT_NAME' => 'issues', 'GITHUB_EVENT_PATH' => 'event.json')
     File.write('event.json', JSON.generate(action: 'opened'))

@@ -1,7 +1,7 @@
 # Reply evaluations
 
 `TriageEvaluation` in `app/evals` uses RubyLLM's evaluation runner. Its YAML dataset
-contains the same 32 control cases, with inputs separate from expected outcomes.
+contains the same 36 control cases, with inputs separate from expected outcomes.
 The RSpec suite declares `evaluates TriageEvaluation`, so each case also appears
 as an ordinary example with the same assertions and failure messages.
 
@@ -74,7 +74,9 @@ Two cases inspired by ZapFast #508 and discussion #532 have the reporter on the
 latest release while the docs on the default branch describe the feature: the
 reply must say it is not released, never that it already exists. A case can
 set `excludes` for text the reply must not contain, and `discussion: true` to
-assess a newly opened discussion.
+assess a newly opened discussion. A case modeled on Spotifast #1069 expects that
+reply on a short, clear request too, and one modeled on ZapFast #631 expects a
+labeled recap that may say what the reporter asks the maintainer to choose.
 Cases modeled on Spotifast #824, ZapFast #537, and RubyLLM #1065 expect
 silence on clear reports, including replies addressed to the maintainer and
 recaps of a reporter's own diagnosis or proposed fix, and, modeled on Spotifast

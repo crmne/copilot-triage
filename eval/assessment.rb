@@ -98,9 +98,8 @@ class EvaluationAssessment < IssueAssessment
 
   def evidence_tools
     @evidence_tools ||= EvaluationTools.new(root: Dir.pwd, repository: @repository, config: @config, example: @example,
-                                            pull_request: (if pull_request?
-                                                             @number
-                                                           end), number: @number, **schema_options.slice(:board, :move))
+                                            pull_request: (@number if pull_request?), number: @number,
+                                            **schema_options.slice(:board, :move, :recap))
   end
 
   def read_report
