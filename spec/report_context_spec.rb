@@ -98,6 +98,7 @@ RSpec.describe 'Report context' do
 
     expect(prompt).to include('Release check: this run checks the report against v0.20.1, just published, ' \
                               'because pull requests #370, #371 in it reference this issue.')
+    expect(prompt).to include('every pull request it lists is now merged and released, ask in one sentence')
   end
 
   it "lists this repository's open and recently merged pull requests that reference the issue" do

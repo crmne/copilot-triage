@@ -373,7 +373,9 @@ that pull requests merged since the previous stable release would close or
 mention as `#123`, and those its release notes mention. Each is then assessed
 like any other report, told which release and pull requests it is checked
 against, and the agent proposes closing it as fixed only when the release
-notes establish the fix; otherwise it stays silent. `closing` decides whether
+notes establish the fix. An issue that tracks several pieces of work, whose
+pull requests are now all merged and released, gets one question whether
+anything is left. Otherwise it stays silent. `closing` decides whether
 the issue closes or goes to **Sign off**. One run assesses at most 10 issues,
 two at a time; run it again by hand for the same tag to continue, and issues
 triage already answered since the release are skipped. Prereleases are left

@@ -733,7 +733,9 @@ class IssueAssessment # :nodoc:
              else "pull requests #{pulls.join(', ')} in it reference this issue"
              end
     "\nRelease check: this run checks the report against #{tag}, just published, because #{reason}. Read its " \
-      'notes. If they establish the fix, close_as fixed with them as the source; otherwise stay silent.'
+      'notes. If they establish the fix, close_as fixed with them as the source. If the issue tracks several ' \
+      'pieces of work and every pull request it lists is now merged and released, ask in one sentence whether ' \
+      'anything is left. Otherwise stay silent.'
   end
 
   def board_prompt
