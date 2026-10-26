@@ -47,6 +47,9 @@ class IssueAssessment # :nodoc:
   # comments: Markdown and HTML embeds, and GitHub's attachment links.
   REVIEW_MEDIA = %r{!\[[^\]]*\]\([^)]+\)|<(?:img|video)\b|https://github\.com/user-attachments/assets/|
                     https://(?:private-)?user-images\.githubusercontent\.com/}xi
+  # A checkbox in a pull request's description that its author left unticked,
+  # as pull request templates list them.
+  UNCHECKED_BOX = /^\s*[-*+]\s+\[ \]\s+(\S.*)$/
   # Translation catalogs, which many projects regenerate on their main branch.
   TRANSLATION = /\.(?:po|pot|mo|xliff?|xlf|strings|stringsdict|arb)\z/i
   # Lockfiles, each with the manifests whose change explains it.
@@ -774,9 +777,13 @@ class IssueAssessment # :nodoc:
     { 'added_binary_files' => added.first(20), 'changed_dependency_manifests' => manifests,
       'source_dependency_lines' => source_dependencies(manifests), **github_facts(item, paths),
       'translation_catalogs' => translation_churn(paths), 'unrelated_lockfiles' => lockfile_churn(paths),
-      'visual_files_changed' => visual_files(paths) }
+      'visual_files_changed' => visual_files(paths), 'unchecked_boxes' => unchecked_boxes(item) }
       .select { |_, value| value.respond_to?(:empty?) ? !value.empty? : value }
       .tap { |facts| facts['review_media'] = review_media(item) if facts['visual_files_changed'] }
+  end
+
+  def unchecked_boxes(item)
+    item['body'].to_s.scan(UNCHECKED_BOX).map { |(text)| text.strip[0, 160] }.first(10)
   end
 
   # Changed files the policy's pull_requests.visual_paths mark as visible

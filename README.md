@@ -465,6 +465,9 @@ what makes `pull_request_target` safe here.
   thorough Copilot's review is, and what it costs, is a setting in GitHub;
   on changes this size, Balanced found about twice as many real problems as
   Lite.
+- **Template checkboxes.** A required checkbox the author left unticked in
+  your pull request template, such as taking responsibility for the code, is
+  asked about before review. Optional items are left alone.
 - **Screenshots.** When a pull request changes a file under `visual_paths`
   and neither its description nor its author's comments hold an image or
   video, the agent asks for the visual evidence your contribution rules

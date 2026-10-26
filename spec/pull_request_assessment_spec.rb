@@ -279,6 +279,18 @@ RSpec.describe IssueAssessment, 'with a pull request' do
     expect(runner.send(:system_prompt)).to include('policy_facts lists')
   end
 
+  it 'lists the template checkboxes the description leaves unticked' do
+    item['body'] = "## Checklist\n\n- [x] I ran the tests\n- [ ] I understand and take responsibility for " \
+                   "every submitted line\n* [ ]  Screenshots attached\n\nSee [docs](https://example.com)."
+    runner = run_with
+
+    expect(runner).to have_received(:ask_copilot).with(include(
+                                                         '"unchecked_boxes":["I understand and take ' \
+                                                         'responsibility for every submitted line",' \
+                                                         '"Screenshots attached"]'
+                                                       ))
+  end
+
   context 'with visual paths' do
     let(:policy) { { 'visual_paths' => ['src/ui/**'] } }
 

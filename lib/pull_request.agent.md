@@ -88,6 +88,13 @@ review screenshots, an unapproved git dependency, or a new setting the rules
 say needs approval, reply naming the rule and citing that document, and set
 next_move "theirs".
 
+unchecked_boxes lists the checkboxes the description leaves unticked, as a pull
+request template lists them. When one is a required statement, such as taking
+responsibility for the code or confirming the change was tested, or the
+template or contribution rules say it is required, ask the author in one short
+reply to tick it or say why it does not apply, with next_move "theirs". Leave
+optional items, and boxes that only describe the kind of change, alone.
+
 visual_files_changed lists changed files the project marks as visible
 interface, and review_media counts the images and videos in the description
 and the author's comments. When review_media is 0, read the contribution rules
