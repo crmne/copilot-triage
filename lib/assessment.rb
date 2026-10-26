@@ -803,9 +803,10 @@ class IssueAssessment # :nodoc:
   # the head commit's checks, and the other open pull requests it stacks on or
   # overlaps with.
   def github_facts(item, paths)
-    commits, others, default_branch = open_pull_requests
+    commits, others, default_branch, merged = open_pull_requests
     stacked = stacked_on(item, commits, others, default_branch)
     { 'merge_conflict' => merge_conflict(item, paths), **check_facts(item), 'stacked_on' => stacked,
+      'carries_merged_pull_requests' => merged_commits(commits, merged),
       'overlapping_pull_requests' => overlapping_pull_requests(paths, others, stacked) }
   end
 
@@ -857,6 +858,9 @@ class IssueAssessment # :nodoc:
           pullRequests(states: OPEN, first: 50, orderBy: { field: UPDATED_AT, direction: DESC }) {
             nodes { number isCrossRepository headRefName baseRefName headRefOid files(first: 100) { nodes { path } } }
           }
+          merged: pullRequests(states: MERGED, first: 30, orderBy: { field: UPDATED_AT, direction: DESC }) {
+            nodes { number headRefOid }
+          }
         }
       }
     GRAPHQL
@@ -864,9 +868,16 @@ class IssueAssessment # :nodoc:
                  .fetch('data').fetch('repository')
     commits = repository.dig('pullRequest', 'commits', 'nodes').to_a.map { |node| node.dig('commit', 'oid') }
     others = repository.dig('pullRequests', 'nodes').to_a.reject { |pull| pull['number'] == @number }
-    [commits, others, repository.dig('defaultBranchRef', 'name')]
+    [commits, others, repository.dig('defaultBranchRef', 'name'), repository.dig('merged', 'nodes').to_a]
   rescue RuntimeError, KeyError
-    [[], [], nil]
+    [[], [], nil, []]
+  end
+
+  # Merged pull requests whose original commits this one still carries: the
+  # base branch has them squashed, so this branch must drop them on rebase.
+  def merged_commits(commits, merged)
+    merged.select { |pull| commits.include?(pull['headRefOid']) }
+          .map { |pull| { 'number' => pull['number'], 'last_commit' => pull['headRefOid'] } }
   end
 
   # Open pull requests this one builds on, bottom of the stack first: the one

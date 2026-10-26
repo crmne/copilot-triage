@@ -497,7 +497,9 @@ what makes `pull_request_target` safe here.
 - **State of the change.** The action also tells the agent which files a
   conflicting pull request and its base branch both changed, which checks
   failed on the latest commit or that none ran, which open pull requests it is
-  stacked on, which others change the same files, and when it changes
+  stacked on, which merged ones it still carries the original commits of (a
+  stack whose lower pull request was squash-merged, which needs `git rebase
+  --onto`), which others change the same files, and when it changes
   translation catalogs or lockfiles that look unrelated. The agent asks the
   author to rebase or fix failing checks, gives the merge order of a stack and
   names overlapping or superseded pull requests in the card's next step, and

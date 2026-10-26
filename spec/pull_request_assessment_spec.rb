@@ -326,6 +326,7 @@ RSpec.describe IssueAssessment, 'with a pull request' do
   context 'with facts read from GitHub', :github_facts do
     let(:checks) { { 'contexts' => { 'nodes' => [{ 'name' => 'test', 'conclusion' => 'SUCCESS' }] } } }
     let(:open_pulls) { [] }
+    let(:merged_pulls) { [] }
     let(:commits) { ['c' * 40, 'a' * 40] }
     let(:base_files) { [] }
     let(:runner) do
@@ -339,7 +340,7 @@ RSpec.describe IssueAssessment, 'with a pull request' do
             { 'data' => { 'repository' => {
               'defaultBranchRef' => { 'name' => 'main' },
               'pullRequest' => { 'commits' => { 'nodes' => commits.map { |oid| { 'commit' => { 'oid' => oid } } } } },
-              'pullRequests' => { 'nodes' => open_pulls }
+              'pullRequests' => { 'nodes' => open_pulls }, 'merged' => { 'nodes' => merged_pulls }
             } } }
           end
         end
@@ -406,6 +407,12 @@ RSpec.describe IssueAssessment, 'with a pull request' do
       expect(facts).to eq('stacked_on' => [29, 30, 32],
                           'overlapping_pull_requests' => [{ 'number' => 40,
                                                             'shared_files' => ['lib/ruby_llm/stream.rb'] }])
+    end
+
+    it 'names merged pull requests whose original commits the branch still carries' do
+      merged_pulls.push({ 'number' => 32, 'headRefOid' => 'c' * 40 }, { 'number' => 31, 'headRefOid' => 'd' * 40 })
+
+      expect(facts).to eq('carries_merged_pull_requests' => [{ 'number' => 32, 'last_commit' => 'c' * 40 }])
     end
 
     it 'takes no branch of a fork for a stack' do

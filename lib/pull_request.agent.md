@@ -131,6 +131,12 @@ each only when it holds:
   first. Say in next_step that it is a stack and the order to merge it, for
   example "Merge #30, then #32, then this one". Do not judge the commits of
   the pull requests below as part of this one.
+- carries_merged_pull_requests: merged pull requests whose original commits
+  this branch still holds, usually because it was stacked on one that was then
+  squash-merged. Merging the base branch in or updating the branch would
+  conflict or duplicate code, so ask the author to rebase onto the base branch
+  dropping those commits, for example "git rebase --onto main <last_commit>",
+  naming the merged pull request, with next_move "theirs".
 - overlapping_pull_requests: other open pull requests changing the same
   files, with the files they share. Read their titles and, when it matters,
   the shared patch, and name the ones that touch the same change in next_step
