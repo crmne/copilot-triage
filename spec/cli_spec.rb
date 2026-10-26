@@ -130,7 +130,9 @@ RSpec.describe 'Issue assessment Copilot integration', type: :task do
     environment = {
       'PATH' => "#{Dir.pwd}/bin:#{ENV.fetch('PATH')}", 'GITHUB_REPOSITORY' => 'crmne/ruby_llm',
       'COPILOT_GITHUB_TOKEN' => 'offline-test', 'TRIAGE_CONFIG' => 'triage.yml',
-      'TRIAGE_NUMBER' => '123', 'TRIAGE_DRY_RUN' => 'true', 'TRIAGE_STATE_DIR' => 'state'
+      'TRIAGE_NUMBER' => '123', 'TRIAGE_DRY_RUN' => 'true', 'TRIAGE_STATE_DIR' => 'state',
+      # A CI run's own event, such as a pull request, is not the one under test.
+      'GITHUB_EVENT_NAME' => nil, 'GITHUB_EVENT_PATH' => nil
     }
     script = File.expand_path('../lib/assessment.rb', __dir__)
 
