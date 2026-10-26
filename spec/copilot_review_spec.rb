@@ -76,4 +76,15 @@ RSpec.describe CopilotReview do
 
     expect(described_class.latest(pull)).to include('verdict' => nil, 'reviewed' => false)
   end
+
+  describe '.wanted?' do
+    it 'prefers the workflow input, and falls back to the policy, then copilot' do
+      expect(described_class.wanted?({ 'reviews' => 'copilot' }, 'off') { true }).to be(false)
+      expect(described_class.wanted?({ 'reviews' => 'off' }, 'private') { true }).to be(true)
+      expect(described_class.wanted?({ 'reviews' => 'off' }, 'private') { false }).to be(false)
+      expect(described_class.wanted?({ 'reviews' => 'private' }, '') { false }).to be(false)
+      expect(described_class.wanted?({}, nil) { false }).to be(true)
+      expect { described_class.wanted?({}, 'sometimes') { true } }.to raise_error(ArgumentError)
+    end
+  end
 end

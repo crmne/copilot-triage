@@ -1461,7 +1461,7 @@ class IssueAssessment # :nodoc:
   end
 
   def reviews?
-    CopilotReview.wanted?(pull_request_policy) { private_repository? }
+    CopilotReview.wanted?(pull_request_policy, @environment['TRIAGE_REVIEWS']) { private_repository? }
   end
 
   def private_repository?

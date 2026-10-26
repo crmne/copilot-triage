@@ -540,6 +540,14 @@ RSpec.describe BoardSweep do
       end
     end
 
+    it "follows the workflow's reviews input over the policy" do
+      environment['TRIAGE_REVIEWS'] = 'off'
+      pulls.push(pull(1, status: 'Their move', copilot: copilot(:changes, commit: 'older')))
+
+      sweep.run
+      expect(copilot_requests).to be_empty
+    end
+
     context 'with reviews off' do
       let(:reviews) { false }
 

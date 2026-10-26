@@ -45,6 +45,9 @@ inputs:
   api-base:
     description: Custom endpoint for the rubyllm engine, such as an OpenAI-compatible server.
     default: ''
+  reviews:
+    description: When Copilot reviews pull requests, copilot, private (only in private repositories), or off. Empty reads pull_requests.reviews from the policy.
+    default: ''
   review-token:
     description: Token that requests Copilot code reviews of pull requests, billed to its owner; defaults to copilot-token.
     default: ''
@@ -184,6 +187,7 @@ runs:
         TRIAGE_METRICS_PATH: ${{ runner.temp }}/copilot-triage-metrics.json
         TRIAGE_PROJECT_TOKEN: ${{ inputs.project-token }}
         TRIAGE_REVIEW_TOKEN: ${{ inputs.review-token }}
+        TRIAGE_REVIEWS: ${{ inputs.reviews }}
         TRIAGE_RELEASE: ${{ inputs.release }}
         TRIAGE_RELEASE_PULLS: ${{ inputs.release-pulls }}
     - name: Sweep the project board
@@ -199,6 +203,7 @@ runs:
         TRIAGE_WORKFLOW: ${{ inputs.triage-workflow }}
         COPILOT_GITHUB_TOKEN: ${{ inputs.copilot-token }}
         TRIAGE_REVIEW_TOKEN: ${{ inputs.review-token }}
+        TRIAGE_REVIEWS: ${{ inputs.reviews }}
     - name: Find the issues a release may have fixed
       id: release
       if: inputs.mode == 'release'

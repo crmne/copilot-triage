@@ -180,7 +180,7 @@ class BoardSweep
   def refresh_copilot_review(pull)
     return if pull['isDraft'] || @changes >= MAX_CHANGES
     return if !CopilotReview.stale?(pull) || CopilotReview.requested?(pull)
-    return unless CopilotReview.wanted?(@pull_request_policy) { private_repository? }
+    return unless CopilotReview.wanted?(@pull_request_policy, @environment['TRIAGE_REVIEWS']) { private_repository? }
 
     label = "PR ##{pull.fetch('number')}: Copilot's review of #{pull.fetch('headRefOid')[0, 7]}"
     return report("#{label} skipped; no token can request one") if review_token.to_s.empty?

@@ -16,6 +16,10 @@ on:
         description: The repository's triage workflow, which the sweep sends fork pull requests to
         type: string
         default: triage.yml
+      reviews:
+        description: When Copilot reviews pull requests (copilot, private, or off); empty reads pull_requests.reviews from the policy
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -36,4 +40,5 @@ jobs:
           copilot-token: ${{ secrets.COPILOT_GITHUB_TOKEN }}
           project-token: ${{ secrets.TRIAGE_PROJECT_TOKEN }}
           triage-workflow: ${{ inputs.triage_workflow }}
+          reviews: ${{ inputs.reviews }}
           dry-run: ${{ inputs.dry_run }}

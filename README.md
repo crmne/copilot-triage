@@ -93,7 +93,7 @@ on:
   discussion_comment:
     types: [created]
   pull_request_target:
-    types: [opened, reopened, ready_for_review, closed]
+    types: [opened, reopened, ready_for_review, synchronize, closed]
   pull_request_review:
     types: [submitted]
   workflow_dispatch:
@@ -118,10 +118,20 @@ jobs:
     uses: crmne/copilot-triage/.github/workflows/assess.yml@v0
     secrets: inherit
     with:
+      reviews: copilot # private, or off: when Copilot reviews pull requests
       kind: ${{ inputs.kind || '' }}
       number: ${{ inputs.number || '' }}
       dry_run: ${{ inputs.dry_run || false }}
 ```
+
+`reviews` decides when the action asks Copilot to review a pull request:
+`copilot` in every repository, `private` only in private ones (public ones get
+free reviews elsewhere, such as CodeRabbit), or `off`. It lives in the workflow,
+not in `.github/triage.yml`, because GitHub reads it before starting a job: a
+push to a pull request, which only asks for that review, starts nothing where
+Copilot does not review. Pass the same value to the sweep. A policy that still
+sets `pull_requests.reviews` keeps working when the workflow leaves `reviews`
+out.
 
 It reads `COPILOT_GITHUB_TOKEN`, and if you set them, `TRIAGE_PROJECT_TOKEN`
 for the board and `OPENROUTER_API_KEY` for the fallback. To pick inputs the
@@ -442,7 +452,6 @@ discussions:
 
 ```yaml
 pull_requests:
-  reviews: copilot      # private, or off
   review_min_lines: 100 # lines of code a change needs before Copilot reviews it
   out_of_scope: suggest # or close
   visual_paths:         # files whose changes need screenshots, if your rules ask for them
@@ -462,15 +471,14 @@ what makes `pull_request_target` safe here.
   study of 693 review findings, Copilot found little that mattered on smaller
   changes. GitHub bills a Copilot review to whoever requests it: the
   `review-token` input, or `copilot-token`.
-  A new push does not start triage. With [the board](#the-board), the daily
-  sweep asks Copilot to review the latest commit of every pull request it
-  reviewed before, without calling the model, so a fresh review arrives the
-  day after a push rather than at once. It follows `reviews`, asks nothing of
+  After a new push, a fresh review of the new commit is requested without
+  calling the model, once per commit. Drafts wait until they are ready. Set
+  `reviews` in your triage workflow (see below), and a push starts no job at
+  all where Copilot does not review. With [the board](#the-board), the daily
+  sweep also asks Copilot to review the latest commit of any pull request it
+  reviewed before but not since, in case a push was missed. It asks nothing of
   a pull request Copilot is already reviewing, and stops while fewer than 50
-  premium requests are left and overage is off. Drafts wait until they are ready. Workflows
-  written for earlier versions list `synchronize` among the
-  `pull_request_target` types; remove it, since it now starts a job on every
-  push that only requests that review straight away. How
+  premium requests are left and overage is off. How
   thorough Copilot's review is, and what it costs, is a setting in GitHub;
   on changes this size, Balanced found about twice as many real problems as
   Lite.
@@ -604,6 +612,7 @@ jobs:
     uses: crmne/copilot-triage/.github/workflows/sweep.yml@v0
     secrets: inherit
     with:
+      reviews: copilot # the same as in the triage workflow
       dry_run: ${{ inputs.dry_run || false }}
       triage_workflow: triage.yml
 ```
@@ -746,15 +755,15 @@ Action inputs:
 | `mode` | `triage` | `triage`, `sweep` for the board, or `release` to list the issues a release may have fixed |
 | `release`, `release-pulls` | | The release tag, and in triage the pull requests in it that reference the issue, for [After a release](#after-a-release) |
 | `kind`, `number` | from the event | What to assess, for manual runs |
+| `reviews` | policy, else `copilot` | When Copilot reviews pull requests: `copilot`, `private`, or `off` |
 | `dry-run` | `false` | Show the decision without changing GitHub |
 | `debounce-seconds` | `10` | Wait for nearby comments, 0 to 60 |
 
 Several repositories can share settings: start a policy with `extends:
 owner/repo:path/to/policy.yml`, and it inherits that file's settings, section by
 section, with its own keys winning. A shared policy that cannot be read is
-reported and skipped. `pull_requests.reviews: private` requests Copilot reviews
-only in private repositories, for accounts whose public ones get free reviews
-from a bot such as CodeRabbit.
+reported and skipped. Review settings are the exception: `reviews` goes in the
+workflow, since GitHub must know it before starting a job.
 
 Policy keys in `.github/triage.yml`: `labels` (at most two per issue),
 `replies` (optional reply templates), `sources` (globs the agent may read),

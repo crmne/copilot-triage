@@ -23,11 +23,14 @@ RSpec.describe 'the shared triage workflow' do
       .to eq('${{ secrets.COPILOT_GITHUB_TOKEN }}')
   end
 
-  it 'starts no triage run on a push, which the sweep handles' do
-    workflow = YAML.load_file(File.expand_path('../.github/workflows/issue-assessment.yml', __dir__))
-    readme = File.read(File.expand_path('../README.md', __dir__))
+  it 'starts no job for a push where the reviews input rules Copilot out' do
+    workflow = YAML.load_file(File.expand_path('../.github/workflows/assess.yml', __dir__))
+    condition = workflow.dig('jobs', 'assess', 'if')
 
-    expect(workflow.dig(true, 'pull_request_target', 'types')).not_to include('synchronize')
-    expect(readme).not_to match(/types: \[[^\]]*synchronize/)
+    expect(workflow.dig(true, 'workflow_call', 'inputs', 'reviews', 'default')).to eq('')
+    expect(condition).to include("github.event.action != 'synchronize'", "inputs.reviews == ''",
+                                 "inputs.reviews == 'copilot'",
+                                 "(inputs.reviews == 'private' && github.event.repository.private)")
+    expect(workflow.dig('jobs', 'assess', 'steps', 0, 'with', 'reviews')).to eq('${{ inputs.reviews }}')
   end
 end

@@ -25,6 +25,10 @@ on:
       quiet:
         type: boolean
         default: false
+      reviews:
+        description: When Copilot reviews pull requests (copilot, private, or off); empty reads pull_requests.reviews from the policy
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -37,12 +41,17 @@ jobs:
     # Bots never start triage, except for events that only move cards or that
     # the sweep sends: an issue or pull request closing, a bot review, the
     # sweep's own dispatches, and CodeRabbit saying it will not review a commit.
+    # A push only asks Copilot to review the new commit, so it starts no job
+    # where the reviews input rules Copilot out: off, or private in a public
+    # repository. GitHub decides this before any runner starts.
     if: >-
-      github.event.sender.type != 'Bot' || github.event_name == 'issues' ||
-      github.event_name == 'pull_request_review' || github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request_target' && github.event.action == 'closed') ||
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
-       github.event.comment.user.login == 'coderabbitai[bot]')
+      (github.event.sender.type != 'Bot' || github.event_name == 'issues' ||
+       github.event_name == 'pull_request_review' || github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'pull_request_target' && github.event.action == 'closed') ||
+       (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+        github.event.comment.user.login == 'coderabbitai[bot]')) &&
+      (github.event.action != 'synchronize' || inputs.reviews == '' || inputs.reviews == 'copilot' ||
+       (inputs.reviews == 'private' && github.event.repository.private))
     # On the job, so a bot comment's skipped run never replaces a queued one.
     concurrency:
       group: >-
@@ -64,3 +73,4 @@ jobs:
           number: ${{ inputs.number || github.event.issue.number || github.event.discussion.number || github.event.pull_request.number }}
           dry-run: ${{ inputs.dry_run }}
           quiet: ${{ inputs.quiet }}
+          reviews: ${{ inputs.reviews }}

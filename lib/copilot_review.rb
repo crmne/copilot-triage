@@ -37,16 +37,16 @@ module CopilotReview
     reviews.any? && reviews.none? { |entry| entry.dig('commit', 'oid') == pull['headRefOid'] }
   end
 
-  # Whether the policy's pull_requests.reviews lets Copilot review here:
-  # copilot always, private only when the block finds the repository private,
-  # off never. Public repositories get free reviews elsewhere, such as
-  # CodeRabbit, so private keeps Copilot's, billed to its owner, to private ones.
-  def wanted?(policy)
-    mode = policy.fetch('reviews', 'copilot')
+  # Whether Copilot reviews here: copilot always, private only when the block
+  # finds the repository private, off never. Public repositories get free
+  # reviews elsewhere, such as CodeRabbit, so private keeps Copilot's, billed to
+  # its owner, to private ones. The workflow's reviews input wins over the
+  # policy's pull_requests.reviews, since only the workflow can skip a push's
+  # job before it starts.
+  def wanted?(policy, input = nil)
+    mode = input.to_s.strip.empty? ? policy.fetch('reviews', 'copilot') : input.to_s.strip
     mode = 'off' if mode == false # YAML reads a bare off as false
-    unless %w[copilot private off].include?(mode)
-      raise ArgumentError, 'pull_requests.reviews must be copilot, private, or off'
-    end
+    raise ArgumentError, 'reviews must be copilot, private, or off' unless %w[copilot private off].include?(mode)
 
     mode == 'copilot' || (mode == 'private' && yield)
   end

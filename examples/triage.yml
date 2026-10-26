@@ -14,8 +14,8 @@ report_bots:
 
 # Triage pull requests: request a Copilot review when a change deserves one,
 # and explain (suggest) or close changes your documented scope rules out.
+# When Copilot reviews is the workflow's reviews input, not a key here.
 pull_requests:
-  reviews: copilot
   out_of_scope: suggest
   # Optional: files whose changes your contribution rules want screenshots of.
   # visual_paths:
