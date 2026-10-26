@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'yaml'
+require_relative '../lib/bot_reviews'
 
 RSpec.describe 'the shared triage workflow' do
   it 'saves conversation state on the low-trust events it runs on' do
@@ -32,5 +33,16 @@ RSpec.describe 'the shared triage workflow' do
                                  "inputs.reviews == 'copilot'",
                                  "(inputs.reviews == 'private' && github.event.repository.private)")
     expect(workflow.dig('jobs', 'assess', 'steps', 0, 'with', 'reviews')).to eq('${{ inputs.reviews }}')
+  end
+
+  it "starts a job for CodeRabbit's comments only when they say it will not review" do
+    condition = YAML.load_file(File.expand_path('../.github/workflows/assess.yml', __dir__)).dig('jobs', 'assess', 'if')
+    phrases = condition.scan(/contains\(github\.event\.comment\.body, '([^']+)'\)/).flatten
+
+    expect(phrases).to eq(['Review limit reached', 'Reviews paused', 'used all'])
+    ['Review limit reached', 'Reviews paused', "You've used all 5 reviews"].each do |notice|
+      expect(phrases.any? { |phrase| notice.downcase.include?(phrase.downcase) }).to be(true)
+      expect(BotReviews.notice?(notice)).to be(true)
+    end
   end
 end
