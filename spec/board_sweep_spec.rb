@@ -21,6 +21,8 @@ RSpec.describe BoardSweep do
   let(:drafts) { {} }
   let(:steps) { [] }
   let(:main_checks) { +'SUCCESS' }
+  let(:policy) { { 'board' => settings } }
+  let(:private_repository) { false }
 
   def comment(association, created_at = '2026-09-02T00:00:00Z', login: 'someone')
     { 'createdAt' => created_at, 'authorAssociation' => association, 'author' => { 'login' => login } }
@@ -71,10 +73,13 @@ RSpec.describe BoardSweep do
   end
 
   before do
-    File.write('board.yml', YAML.dump('board' => settings))
+    File.write('board.yml', YAML.dump(policy))
     allow(sweep).to receive(:puts)
     allow(sweep).to receive(:rest) { |method, path, **body| requests << [method, path, body] }
-    allow(sweep).to receive(:repository_graphql) { |_query, **variables| review_requests << variables.fetch(:input) }
+    allow(sweep).to receive(:repository_graphql) do |_query, **variables|
+      review_requests << variables.fetch(:input)
+      instance_double(Process::Status, success?: true)
+    end
     allow(board).to receive_messages(id: 'project-id', set_up: [], drafts: drafts)
     allow(board).to receive(:add_draft)
     allow(board).to receive(:add) { |content| { 'id' => "new-#{content}" } }
@@ -83,7 +88,7 @@ RSpec.describe BoardSweep do
     allow(board).to receive(:archive) { |item| archived << item }
     allow(board).to receive(:graphql) do |query, **_variables|
       if query.include?('defaultBranchRef')
-        { 'data' => { 'repository' => { 'defaultBranchRef' => {
+        { 'data' => { 'repository' => { 'isPrivate' => private_repository, 'defaultBranchRef' => {
           'name' => 'main', 'target' => { 'statusCheckRollup' => { 'state' => main_checks } }
         } } } }
       elsif query.include?('states: CLOSED')
@@ -466,6 +471,107 @@ RSpec.describe BoardSweep do
     sweep.run
     expect(moves.size).to eq(described_class::MAX_CHANGES)
     expect(sweep).to have_received(:puts).with(/Stopped at #{described_class::MAX_CHANGES} changes/)
+  end
+
+  context "when a push made Copilot's review stale" do
+    let(:reviews) { 'copilot' }
+    let(:policy) { { 'board' => settings, 'pull_requests' => { 'reviews' => reviews } } }
+    let(:spent) { false }
+    let(:copilot_requests) { review_requests.select { |input| input[:botLogins] && input[:union] } }
+
+    before do
+      environment['COPILOT_GITHUB_TOKEN'] = 'copilot-token'
+      allow(CopilotAllowance).to receive(:spent?).and_return(spent)
+    end
+
+    it 'asks Copilot to review the latest commit with the review token, and the card waits for it' do
+      environment['TRIAGE_REVIEW_TOKEN'] = 'review-token'
+      pulls.push(pull(1, status: 'Their move', copilot: copilot(:changes, commit: 'older')))
+      allow(sweep).to receive(:repository_graphql) do |_query, token: nil, **variables|
+        review_requests << variables.fetch(:input).merge(token:)
+        instance_double(Process::Status, success?: true)
+      end
+
+      sweep.run
+      expect(review_requests).to eq([{ pullRequestId: 'pr-1', botLogins: ['copilot-pull-request-reviewer[bot]'],
+                                       union: true, token: 'review-token' }])
+      expect(CopilotAllowance).to have_received(:spent?).with('review-token')
+      expect(moves).to be_empty
+      expect(sweep).to have_received(:puts).with('Board sweep: 1 change.')
+    end
+
+    it 'leaves pull requests Copilot reviewed at their head, already asked, drafts, and ones it never reviewed' do
+      pulls.push(pull(1, copilot: copilot(:approve)),
+                 pull(2, requested: 'copilot-pull-request-reviewer', copilot: copilot(:changes, commit: 'older')),
+                 pull(3, draft: true, copilot: copilot(:changes, commit: 'older')),
+                 pull(4))
+
+      sweep.run
+      expect(copilot_requests).to be_empty
+    end
+
+    it 'only reports the request in a dry run' do
+      environment['TRIAGE_DRY_RUN'] = 'true'
+      pulls.push(pull(1, status: 'Their move', copilot: copilot(:changes, commit: 'older')))
+
+      sweep.run
+      expect(review_requests).to be_empty
+      expect(sweep).to have_received(:puts).with("PR #1: Copilot's review of head: would request")
+    end
+
+    it 'skips the request without a token that can make it' do
+      environment.delete('COPILOT_GITHUB_TOKEN')
+      pulls.push(pull(1, status: 'Their move', copilot: copilot(:changes, commit: 'older')))
+
+      sweep.run
+      expect(copilot_requests).to be_empty
+      expect(sweep).to have_received(:puts).with("PR #1: Copilot's review of head skipped; no token can request one")
+    end
+
+    context 'when the Copilot allowance is spent' do
+      let(:spent) { true }
+
+      it 'requests no review' do
+        pulls.push(pull(1, status: 'Their move', copilot: copilot(:changes, commit: 'older')))
+
+        sweep.run
+        expect(copilot_requests).to be_empty
+        expect(sweep).to have_received(:puts).with(/allowance is spent/)
+      end
+    end
+
+    context 'with reviews off' do
+      let(:reviews) { false }
+
+      it 'requests no review' do
+        pulls.push(pull(1, status: 'Their move', copilot: copilot(:changes, commit: 'older')))
+
+        sweep.run
+        expect(copilot_requests).to be_empty
+      end
+    end
+
+    context 'with reviews private' do
+      let(:reviews) { 'private' }
+
+      it 'requests no review in a public repository' do
+        pulls.push(pull(1, status: 'Their move', copilot: copilot(:changes, commit: 'older')))
+
+        sweep.run
+        expect(copilot_requests).to be_empty
+      end
+
+      context 'in a private repository' do
+        let(:private_repository) { true }
+
+        it 'requests one' do
+          pulls.push(pull(1, status: 'Their move', copilot: copilot(:changes, commit: 'older')))
+
+          sweep.run
+          expect(copilot_requests.map { |input| input[:pullRequestId] }).to eq(%w[pr-1])
+        end
+      end
+    end
   end
 
   it 'fails without a board section' do

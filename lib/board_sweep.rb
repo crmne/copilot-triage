@@ -6,6 +6,7 @@ require 'time'
 require 'yaml'
 require_relative 'board_rules'
 require_relative 'triage_policy'
+require_relative 'copilot_allowance'
 require_relative 'copilot_review'
 require_relative 'project_board'
 require_relative 'triage_event'
@@ -14,8 +15,9 @@ require_relative 'triage_event'
 # the board's shape, adds open issues and pull requests that are not on it yet,
 # applies moves that follow from GitHub facts (who spoke last, linked pull
 # requests, checks, and Copilot's verdict on the latest commit), keeps the
-# maintainer's review requested on pull requests that need it, and archives
-# finished work.
+# maintainer's review requested on pull requests that need it, asks Copilot to
+# review new pushes to pull requests it reviewed before, and archives finished
+# work.
 class BoardSweep
   MAX_CHANGES = 100
   # A pull request is never moved out of a question the agent put to the
@@ -31,6 +33,7 @@ class BoardSweep
                                token: environment['GH_TOKEN'] || environment['TRIAGE_PROJECT_TOKEN'])
     settings = config['board'] or raise ProjectBoard::Error, 'the sweep needs a board section in the triage policy'
     @maintainer = settings['maintainer'] || settings['assign_urgent_to']
+    @pull_request_policy = config['pull_requests'] || {}
     @board = ProjectBoard.new(settings, token: environment['TRIAGE_PROJECT_TOKEN'])
     @changes = 0
   end
@@ -73,6 +76,7 @@ class BoardSweep
     return dismiss(node, item) if finished && !BoardRules.revived?(node, updated_at)
 
     current = nil if finished
+    refresh_copilot_review(node) if pull
     # Right after a push to the base branch GitHub has not worked out whether a
     # pull request still merges; its card waits for the next sweep.
     if pull && node['mergeable'] == 'UNKNOWN' && item
@@ -166,6 +170,43 @@ class BoardSweep
             else CopilotReview.withdraw_input(pull, pull.fetch('id'), @maintainer)
             end
     repository_graphql(CopilotReview::REQUEST_MUTATION, input: input) if input
+  end
+
+  # A push makes Copilot's review stale. A Copilot review of an earlier commit
+  # means triage judged the pull request worth one, so the sweep asks for a
+  # review of the latest commit, billed to the review token's owner, and triage
+  # need not run on every push. The pending request keeps the card where it is
+  # until the review arrives.
+  def refresh_copilot_review(pull)
+    return if pull['isDraft'] || @changes >= MAX_CHANGES
+    return if !CopilotReview.stale?(pull) || CopilotReview.requested?(pull)
+    return unless CopilotReview.wanted?(@pull_request_policy) { private_repository? }
+
+    label = "PR ##{pull.fetch('number')}: Copilot's review of #{pull.fetch('headRefOid')[0, 7]}"
+    return report("#{label} skipped; no token can request one") if review_token.to_s.empty?
+    return report("#{label} skipped; the Copilot allowance is spent") if copilot_spent?
+
+    report("#{label}: #{dry_run? ? 'would request' : 'requested'}")
+    @changes += 1
+    return if dry_run?
+
+    input = CopilotReview.copilot_input(pull.fetch('id'))
+    return unless repository_graphql(CopilotReview::REQUEST_MUTATION, token: review_token, input: input).success?
+
+    pending = { 'requestedReviewer' => { '__typename' => 'Bot', 'login' => CopilotReview::LOGIN } }
+    pull['reviewRequests'] = { 'nodes' => pull.dig('reviewRequests', 'nodes').to_a + [pending] }
+  end
+
+  # The token triage requests Copilot reviews with.
+  def review_token
+    token = @environment['TRIAGE_REVIEW_TOKEN'].to_s
+    token.empty? ? @environment['COPILOT_GITHUB_TOKEN'] : token
+  end
+
+  def copilot_spent?
+    return @copilot_spent if defined?(@copilot_spent)
+
+    @copilot_spent = CopilotAllowance.spent?(review_token)
   end
 
   # Closed issues and closed or merged pull requests go to Done, and leave the
@@ -264,11 +305,12 @@ class BoardSweep
     token.empty? ? @environment['TRIAGE_PROJECT_TOKEN'] : token
   end
 
-  def repository_graphql(query, **variables)
-    _output, _errors, status = Open3.capture3({ 'GH_TOKEN' => repository_token, 'GITHUB_TOKEN' => nil },
+  def repository_graphql(query, token: repository_token, **variables)
+    _output, _errors, status = Open3.capture3({ 'GH_TOKEN' => token, 'GITHUB_TOKEN' => nil },
                                               'gh', 'api', 'graphql', '--input', '-',
                                               stdin_data: JSON.generate(query: query, variables: variables))
     report('GitHub refused a review request change.') unless status.success?
+    status
   end
 
   def rest(method, path, **body)
@@ -279,16 +321,24 @@ class BoardSweep
   end
 
   def default_branch
-    branch_state.fetch('name')
+    repository_state.fetch('name')
   end
 
-  def branch_state
-    @branch_state ||= begin
+  # Unknown visibility counts as private, as in triage.
+  def private_repository?
+    repository_state['private'] != false
+  end
+
+  def repository_state
+    @repository_state ||= begin
       owner, name = @repository.split('/', 2)
-      ref = @board.graphql('query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) ' \
-                           '{ defaultBranchRef { name target { ... on Commit { statusCheckRollup { state } } } } } }',
-                           owner: owner, name: name).dig('data', 'repository', 'defaultBranchRef') || {}
-      { 'name' => ref['name'] || 'main', 'checks' => ref.dig('target', 'statusCheckRollup', 'state') }
+      repository = @board.graphql('query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) ' \
+                                  '{ isPrivate defaultBranchRef { name target { ... on Commit ' \
+                                  '{ statusCheckRollup { state } } } } } }',
+                                  owner: owner, name: name).dig('data', 'repository') || {}
+      ref = repository['defaultBranchRef'] || {}
+      { 'name' => ref['name'] || 'main', 'checks' => ref.dig('target', 'statusCheckRollup', 'state'),
+        'private' => repository['isPrivate'] }
     end
   end
 
@@ -296,7 +346,7 @@ class BoardSweep
   # an urgent card of its own in Do until it passes again.
   def watch_default_branch
     title = "#{default_branch} is failing in #{@repository}"
-    failing = %w[FAILURE ERROR].include?(branch_state['checks'])
+    failing = %w[FAILURE ERROR].include?(repository_state['checks'])
     card = @board.drafts[title]
     if failing && !card
       report("#{title}: urgent card added")

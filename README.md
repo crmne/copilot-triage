@@ -93,7 +93,7 @@ on:
   discussion_comment:
     types: [created]
   pull_request_target:
-    types: [opened, reopened, ready_for_review, synchronize, closed]
+    types: [opened, reopened, ready_for_review, closed]
   pull_request_review:
     types: [submitted]
   workflow_dispatch:
@@ -462,8 +462,15 @@ what makes `pull_request_target` safe here.
   study of 693 review findings, Copilot found little that mattered on smaller
   changes. GitHub bills a Copilot review to whoever requests it: the
   `review-token` input, or `copilot-token`.
-  After a new push, a fresh review of the new commit is requested without
-  calling the model, once per commit. Drafts wait until they are ready. How
+  A new push does not start triage. With [the board](#the-board), the daily
+  sweep asks Copilot to review the latest commit of every pull request it
+  reviewed before, without calling the model, so a fresh review arrives the
+  day after a push rather than at once. It follows `reviews`, asks nothing of
+  a pull request Copilot is already reviewing, and stops while fewer than 50
+  premium requests are left and overage is off. Drafts wait until they are ready. Workflows
+  written for earlier versions list `synchronize` among the
+  `pull_request_target` types; remove it, since it now starts a job on every
+  push that only requests that review straight away. How
   thorough Copilot's review is, and what it costs, is a setting in GitHub;
   on changes this size, Balanced found about twice as many real problems as
   Lite.
@@ -573,7 +580,8 @@ board:
 ```
 
 4. Add a daily sweep as `.github/workflows/board.yml`. The sweep uses no
-   model, and the triage workflow above already passes the project token:
+   model. It reads the same secrets as triage: `TRIAGE_PROJECT_TOKEN` for the
+   board, and `COPILOT_GITHUB_TOKEN` to ask Copilot to review new pushes:
 
 ```yaml
 name: Board

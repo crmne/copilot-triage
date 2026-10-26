@@ -30,6 +30,27 @@ module CopilotReview
       'summary' => summary(body) }
   end
 
+  # Copilot reviewed an earlier commit, so triage once judged the pull request
+  # worth a review, but not the latest one.
+  def stale?(pull)
+    reviews = pull.dig('reviews', 'nodes').to_a.select { |entry| copilot?(entry['author']) }
+    reviews.any? && reviews.none? { |entry| entry.dig('commit', 'oid') == pull['headRefOid'] }
+  end
+
+  # Whether the policy's pull_requests.reviews lets Copilot review here:
+  # copilot always, private only when the block finds the repository private,
+  # off never. Public repositories get free reviews elsewhere, such as
+  # CodeRabbit, so private keeps Copilot's, billed to its owner, to private ones.
+  def wanted?(policy)
+    mode = policy.fetch('reviews', 'copilot')
+    mode = 'off' if mode == false # YAML reads a bare off as false
+    unless %w[copilot private off].include?(mode)
+      raise ArgumentError, 'pull_requests.reviews must be copilot, private, or off'
+    end
+
+    mode == 'copilot' || (mode == 'private' && yield)
+  end
+
   def requested?(pull)
     reviewers(pull).any? { |reviewer| copilot?(reviewer) }
   end
@@ -48,6 +69,10 @@ module CopilotReview
 
   def request_input(pull_id, login)
     { pullRequestId: pull_id, userLogins: [login], union: true }
+  end
+
+  def copilot_input(pull_id)
+    { pullRequestId: pull_id, botLogins: ["#{LOGIN}[bot]"], union: true }
   end
 
   def withdraw_input(pull, pull_id, login)

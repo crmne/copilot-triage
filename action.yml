@@ -197,6 +197,8 @@ runs:
         TRIAGE_DRY_RUN: ${{ inputs.dry-run }}
         TRIAGE_PROJECT_TOKEN: ${{ inputs.project-token }}
         TRIAGE_WORKFLOW: ${{ inputs.triage-workflow }}
+        COPILOT_GITHUB_TOKEN: ${{ inputs.copilot-token }}
+        TRIAGE_REVIEW_TOKEN: ${{ inputs.review-token }}
     - name: Find the issues a release may have fixed
       id: release
       if: inputs.mode == 'release'

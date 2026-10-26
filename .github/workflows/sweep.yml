@@ -33,6 +33,7 @@ jobs:
       - uses: crmne/copilot-triage@v0
         with:
           mode: sweep
+          copilot-token: ${{ secrets.COPILOT_GITHUB_TOKEN }}
           project-token: ${{ secrets.TRIAGE_PROJECT_TOKEN }}
           triage-workflow: ${{ inputs.triage_workflow }}
           dry-run: ${{ inputs.dry_run }}

@@ -10,6 +10,7 @@ require 'yaml'
 require_relative 'board_rules'
 require_relative 'bot_reviews'
 require_relative 'conversation_state'
+require_relative 'copilot_allowance'
 require_relative 'copilot_review'
 require_relative 'project_board'
 require_relative 'triage_policy'
@@ -66,8 +67,6 @@ class IssueAssessment # :nodoc:
   # look like the author changing the report during assessment.
   BOT_SUMMARY = Regexp.new('<!-- This is an auto-generated comment: release notes by coderabbit\.ai -->.*?' \
                            '<!-- end of auto-generated comment: release notes by coderabbit\.ai -->', Regexp::MULTILINE)
-  # Premium requests kept back before triage switches to its fallback model.
-  COPILOT_RESERVE = 50
   # Why a run failed when the model ended without submitting a decision, the
   # one failure an assessment runs again for.
   NO_DECISION = 'the model finished without calling submit_decision'
@@ -1064,14 +1063,7 @@ class IssueAssessment # :nodoc:
     return false if @environment['TRIAGE_FALLBACK_API_KEY'].to_s.empty?
     return @copilot_exhausted if defined?(@copilot_exhausted) && !recheck
 
-    @copilot_exhausted = begin
-      token = { 'GH_TOKEN' => @environment['COPILOT_GITHUB_TOKEN'], 'GITHUB_TOKEN' => nil }
-      output, _errors, status = Open3.capture3(token, 'gh', 'api', 'copilot_internal/user')
-      quota = status.success? ? JSON.parse(output).dig('quota_snapshots', 'premium_interactions') : nil
-      !quota.nil? && !quota['unlimited'] && !quota['overage_permitted'] && quota['remaining'].to_i < COPILOT_RESERVE
-    rescue JSON::ParserError
-      false
-    end
+    @copilot_exhausted = CopilotAllowance.spent?(@environment['COPILOT_GITHUB_TOKEN'])
   end
 
   # The fallback runs the default model through the fallback provider's key, so
@@ -1469,17 +1461,9 @@ class IssueAssessment # :nodoc:
   end
 
   def reviews?
-    mode = pull_request_policy.fetch('reviews', 'copilot')
-    mode = 'off' if mode == false # YAML reads a bare off as false
-    unless %w[copilot private off].include?(mode)
-      raise ArgumentError, 'pull_requests.reviews must be copilot, private, or off'
-    end
-
-    mode == 'copilot' || (mode == 'private' && private_repository?)
+    CopilotReview.wanted?(pull_request_policy) { private_repository? }
   end
 
-  # Public repositories get free reviews elsewhere, such as CodeRabbit, so
-  # reviews: private keeps Copilot's, billed to its owner, to private ones.
   def private_repository?
     return @private_repository if defined?(@private_repository)
 
@@ -1536,7 +1520,9 @@ class IssueAssessment # :nodoc:
   end
 
   # A new push needs no new assessment, only a fresh Copilot review when the
-  # agent judged the pull request worth reviewing. No model call.
+  # agent judged the pull request worth reviewing. No model call. The daily
+  # sweep now requests these reviews, so callers can stop sending synchronize;
+  # this stays for those that still do.
   def review_new_push(item)
     if @state.data['review_wanted'] && reviews? && substantial_change?(item) && !item['isDraft']
       request_review(item)
