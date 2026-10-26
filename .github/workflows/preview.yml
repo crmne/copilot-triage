@@ -37,7 +37,7 @@ jobs:
           persist-credentials: false
       - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.3'
+          ruby-version: '4.0'
       - run: npm install --global --no-audit --no-fund @github/copilot@1.0.83
       # The fallback model runs on RubyLLM once the Copilot allowance is spent.
       - run: gem install ruby_llm --version 2.1.0 --no-document
