@@ -513,13 +513,16 @@ class IssueAssessment # :nodoc:
 
   # The agent reminds a model that stops without a decision and forces the
   # call, but a provider can still answer in plain text, as the fallback model
-  # did on ZapFast #550. A fresh conversation usually submits, so that failure
-  # alone gets one more run; quota, provider, and invalid decisions do not.
-  # Model calls, prompt bytes, tokens, and cost count both runs.
+  # did on ZapFast #550. A model can also write a tool call whose arguments are
+  # not JSON, as gpt-5.6-luna did on pch/rawmakase #654 and #662. A fresh
+  # conversation usually submits, so those failures alone get one more run;
+  # quota, provider, truncated, and invalid decisions do not. Model calls,
+  # prompt bytes, tokens, and cost count both runs.
   def ask_again(prompt, bytes)
-    return unless @model_failure_reason == NO_DECISION
+    return unless @model_failure_reason == NO_DECISION || @malformed_tool_call
 
-    report('Assessing once more, since the model finished without a decision.')
+    why = @malformed_tool_call ? 'the model wrote a malformed tool call' : 'the model finished without a decision'
+    report("Assessing once more, since #{why}.")
     spent = @model_calls
     @model_calls = 1
     @prompt_bytes += bytes
@@ -1096,11 +1099,16 @@ class IssueAssessment # :nodoc:
   def ask_rubyllm(prompt)
     require_relative 'triage_agent'
     @model_failure_reason = nil
+    @malformed_tool_call = false
     Dir.mktmpdir('issue-assessment-') do |directory|
       toolbox = engine_tools(tools_settings(directory))
       agent = TriageAgent.new(toolbox:, system_prompt:, **rubyllm_options)
       begin
         agent.triage(prompt)
+      rescue RubyLLM::ToolCallParseError => e
+        # A truncated call would only be cut short again at the same limit.
+        @malformed_tool_call = e.finish_reason != :max_tokens
+        @model_failure_reason = "model unavailable (#{redact(e.message)[0, 300]})"
       rescue TriageAgent::Exhausted, RubyLLM::Error, RubyLLM::ConfigurationError, RubyLLM::ModelNotFoundError,
              Faraday::Error => e
         @model_failure_reason = "model unavailable (#{redact(e.message)[0, 300]})"

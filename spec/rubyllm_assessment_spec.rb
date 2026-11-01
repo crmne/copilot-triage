@@ -37,6 +37,14 @@ RSpec.describe IssueAssessment, 'with the RubyLLM engine' do
     end
   end
 
+  def malformed_every_run(finish_reason)
+    allow(TriageAgent).to receive(:new) do
+      allow(agent).to receive(:triage)
+        .and_raise(RubyLLM::ToolCallParseError.new('malformed tool call', finish_reason:))
+      agent
+    end
+  end
+
   it 'triages with the configured provider and model and records usage and cost' do
     assessment.run
 
@@ -63,6 +71,38 @@ RSpec.describe IssueAssessment, 'with the RubyLLM engine' do
     expect(assessment).to have_received(:mutate).with('addLabelsToLabelable', anything)
     expect(assessment).to have_received(:puts).with(include('"model_calls":6', '"input_tokens":18000',
                                                             '"cost_usd":0.0042'))
+  end
+
+  it 'runs once more when the model writes a malformed tool call' do
+    runs = 0
+    allow(TriageAgent).to receive(:new) do |toolbox:, **|
+      runs += 1
+      allow(agent).to receive(:triage) do
+        raise RubyLLM::ToolCallParseError.new('malformed tool call', finish_reason: :stop) if runs == 1
+
+        toolbox.call('submit_decision', decision)
+      end
+      agent
+    end
+
+    assessment.run
+    expect(assessment).to have_received(:puts).with('Assessing once more, since the model wrote a malformed tool call.')
+    expect(assessment).to have_received(:mutate).with('addLabelsToLabelable', anything)
+  end
+
+  it 'fails after a second malformed tool call' do
+    malformed_every_run(:stop)
+
+    assessment.run
+    expect(TriageAgent).to have_received(:new).twice
+    expect(assessment).to have_received(:puts).with(include('Failed: model unavailable (malformed tool call'))
+  end
+
+  it 'does not run again when the output limit cut the tool call short' do
+    malformed_every_run(:max_tokens)
+
+    assessment.run
+    expect(TriageAgent).to have_received(:new).once
   end
 
   it 'fails after the second run also finishes without a decision' do
