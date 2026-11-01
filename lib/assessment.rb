@@ -1206,7 +1206,7 @@ class IssueAssessment # :nodoc:
         @model_failure_reason = "Copilot unavailable (exit #{status.exitstatus}; " \
                                 "evidence calls #{@tool_ledger&.fetch('calls', 0) || 0}; " \
                                 "ledger present #{File.file?(ledger_path)})"
-        details = redact(errors.strip)
+        details = redact(errors.strip.empty? ? copilot_error(output) : errors.strip)
         @model_failure_reason += "; #{details[0, 500]}" unless details.empty?
         said = copilot_response(output) if status.success?
         @model_failure_reason += "; final text: #{redact(said.to_s)[0, 300]}" unless said.to_s.strip.empty?
@@ -1223,8 +1223,24 @@ class IssueAssessment # :nodoc:
     end
   end
 
+  # The decision comes from the tool ledger, so a line Copilot wrote that is not
+  # JSON, as on Spotifast #1142, costs nothing and must not fail the run.
+  def copilot_events(output)
+    output.lines.reject { |line| line.strip.empty? }.filter_map do |line|
+      JSON.parse(line)
+    rescue JSON::ParserError
+      nil
+    end
+  end
+
+  # With --silent, Copilot reports a failed start on stdout rather than stderr.
+  def copilot_error(output)
+    event = copilot_events(output).reverse.find { |entry| entry['type'] == 'session.error' }
+    event&.dig('data', 'message').to_s
+  end
+
   def copilot_response(output)
-    events = output.lines.reject { |line| line.strip.empty? }.map { |line| JSON.parse(line) }
+    events = copilot_events(output)
     return unless events.last&.slice('type', 'exitCode') == { 'type' => 'result', 'exitCode' => 0 }
 
     @model_calls = [events.count { |event| event['type'] == 'assistant.turn_start' }, 1].max
@@ -1232,7 +1248,7 @@ class IssueAssessment # :nodoc:
   end
 
   def debug_copilot(output)
-    events = output.lines.reject { |line| line.strip.empty? }.map { |line| JSON.parse(line) }
+    events = copilot_events(output)
     tool_events = events.filter_map do |event|
       next unless %w[tool.execution_start tool.execution_complete session.error].include?(event['type'])
 

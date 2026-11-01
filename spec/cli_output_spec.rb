@@ -23,6 +23,17 @@ RSpec.describe 'Copilot structured output' do
     expect(response).to eq(decision)
   end
 
+  it 'keeps going past a line that is not JSON, as on Spotifast #1142' do
+    lines = events.map { |event| JSON.generate(event) }
+    lines.insert(1, '{"type":"assistant.reasoning","data":{"content":"<a href="x">\\n\\nBrother,"}}')
+    expect(assessment.send(:copilot_response, lines.join("\n"))).to eq(decision)
+  end
+
+  it 'reports the error event when Copilot exits without writing to stderr' do
+    output = JSON.generate(type: 'session.error', data: { message: 'quota exceeded' })
+    expect(assessment.send(:copilot_error, output)).to eq('quota exceeded')
+  end
+
   it 'does not recover an earlier decision when the final answer is not JSON' do
     events.insert(-2, { type: 'assistant.message', data: { content: 'Not a decision.' } })
     expect(response).to eq('Not a decision.')
