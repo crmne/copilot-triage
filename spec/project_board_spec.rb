@@ -128,6 +128,13 @@ RSpec.describe ProjectBoard do
     expect(writes).to eq([{ fieldId: 'status-field', value: { singleSelectOptionId: 'option-Done' } }])
   end
 
+  it 'leaves an archived card alone, since GitHub refuses to change it' do
+    content_items.push({ 'id' => 'our-item', 'isArchived' => true, 'project' => { 'id' => 'project-id' } })
+
+    expect(board.finish('issue-id')).to be_nil
+    expect(writes).to be_empty
+  end
+
   it 'archives finished items' do
     board.archive('item-id')
     expect(mutations).to eq(['archiveProjectV2Item'])
@@ -182,6 +189,23 @@ RSpec.describe ProjectBoard do
     expect { board.id }.to raise_error(ProjectBoard::Error, 'GitHub project request failed: Resource not accessible')
     expect(Open3).to have_received(:capture3).with({ 'GH_TOKEN' => 'project-token', 'GITHUB_TOKEN' => nil },
                                                    'gh', 'api', 'graphql', '--input', '-', stdin_data: anything)
+  end
+
+  it 'says why when GitHub refuses the token or the rate limit runs out' do
+    allow(board).to receive(:graphql).and_call_original
+    status = instance_double(Process::Status, success?: false)
+    allow(Open3).to receive(:capture3).and_return(['{"message":"Bad credentials","status":"401"}',
+                                                   "gh: Bad credentials (HTTP 401)\n", status])
+
+    expect { board.id }.to raise_error(ProjectBoard::Error, 'GitHub project request failed: Bad credentials')
+  end
+
+  it 'falls back to what gh printed when GitHub sends no JSON' do
+    allow(board).to receive(:graphql).and_call_original
+    status = instance_double(Process::Status, success?: false)
+    allow(Open3).to receive(:capture3).and_return(['<html>Bad gateway</html>', "gh: HTTP 502\n", status])
+
+    expect { board.id }.to raise_error(ProjectBoard::Error, 'GitHub project request failed: HTTP 502')
   end
 
   it 'accepts a next step only as one short line' do

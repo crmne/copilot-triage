@@ -133,19 +133,20 @@ class ProjectBoard
   end
 
   # Moves the card of a closed issue or pull request to Done, if it has one on
-  # this board, and returns the item's ID.
+  # this board, and returns the item's ID. An archived card has already left the
+  # board, and GitHub refuses to change it.
   def finish(content_id)
     query = <<~GRAPHQL
       query($id: ID!) {
         node(id: $id) {
-          ... on Issue { projectItems(first: 20) { nodes { id project { id } } } }
-          ... on PullRequest { projectItems(first: 20) { nodes { id project { id } } } }
+          ... on Issue { projectItems(first: 20) { nodes { id isArchived project { id } } } }
+          ... on PullRequest { projectItems(first: 20) { nodes { id isArchived project { id } } } }
         }
       }
     GRAPHQL
     items = graphql(query, id: content_id).dig('data', 'node', 'projectItems', 'nodes').to_a
     item = items.find { |entry| entry.dig('project', 'id') == id }
-    return unless item
+    return if item.nil? || item['isArchived']
 
     set_column(item.fetch('id'), 'done')
     item.fetch('id')
@@ -198,9 +199,9 @@ class ProjectBoard
   end
 
   def graphql(query, **variables)
-    output, _errors, status = Open3.capture3({ 'GH_TOKEN' => @token, 'GITHUB_TOKEN' => nil },
-                                             'gh', 'api', 'graphql', '--input', '-',
-                                             stdin_data: JSON.generate(query: query, variables: variables))
+    output, errors, status = Open3.capture3({ 'GH_TOKEN' => @token, 'GITHUB_TOKEN' => nil },
+                                            'gh', 'api', 'graphql', '--input', '-',
+                                            stdin_data: JSON.generate(query: query, variables: variables))
     result = begin
       JSON.parse(output)
     rescue JSON::ParserError
@@ -208,8 +209,7 @@ class ProjectBoard
     end
     return result if status.success? && result.is_a?(Hash) && !result['errors']
 
-    message = result.is_a?(Hash) ? Array(result['errors']).filter_map { |error| error['message'] }.first : nil
-    raise Error, "GitHub project request failed#{": #{message}" if message}"
+    raise Error, "GitHub project request failed#{": #{failure(result, errors)}" if failure(result, errors)}"
   end
 
   def set_next_step(item_id, text)
@@ -217,6 +217,14 @@ class ProjectBoard
   end
 
   private
+
+  # GraphQL names what went wrong in errors; a refused token or a rate limit
+  # comes back as a plain HTTP error instead, and gh says so on stderr.
+  def failure(result, errors)
+    result = {} unless result.is_a?(Hash)
+    message = Array(result['errors']).filter_map { |error| error['message'] }.first || result['message']
+    message || errors.to_s.lines.first.to_s.strip.sub(/\Agh: /, '')[0, 300].then { |line| line unless line.empty? }
+  end
 
   def ensure_columns
     status = field(STATUS_FIELD)
